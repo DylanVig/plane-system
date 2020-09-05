@@ -196,6 +196,11 @@ public :
     }
 
     template <typename T>
+    size_t wait_for_IsEnable_casted(uint16_t code, T expect, int count=1000){
+        return size_t(wait_for_IsEnable(code, expect, count));
+    }
+
+    template <typename T>
     T* get_CurrentValue(uint16_t code, int count=1000){
         socc_examples_log log(__FUNCTION__,socc_examples_log::SOCC_EXAMPLES_LOG_INFO);
         T* CurrentValue = NULL;

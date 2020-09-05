@@ -10,6 +10,8 @@ edition = "2018"
 smol = "0.4.3"
 crossbeam = "0.7.3"
 cxx = "0.4.2"
+rusb = "0.6.3"
+tide = "0.13.0"
 
 [build-dependencies]
 cxx-build = "0.4.2"
