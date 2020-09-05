@@ -7,6 +7,7 @@ fn main() {
         .file("vendor/libsoccptp/sources/parser.cpp")
         .file("vendor/libsoccptp/sources/socc_ptp.cpp")
         .flag_if_supported("-std=c++14")
+        .warnings(false)
         .compile("soccptp");
 
     println!("cargo:rerun-if-changed=src/camera/mod.rs");
