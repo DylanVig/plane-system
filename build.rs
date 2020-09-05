@@ -6,8 +6,9 @@ fn main() {
         .file("vendor/libsoccptp/ports/ports_ptp_impl.cpp")
         .file("vendor/libsoccptp/sources/parser.cpp")
         .file("vendor/libsoccptp/sources/socc_ptp.cpp")
-        .flag_if_supported("-std=c++11")
+        .flag_if_supported("-std=c++14")
         .compile("soccptp");
 
     println!("cargo:rerun-if-changed=src/main.rs");
+    println!("cargo:rustc-link-lib=usb-1.0");
 }

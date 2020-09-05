@@ -8,6 +8,7 @@
 
 #include <string.h>
 #include <socc_ptp.h>
+#include <parser.h>
 
 typedef struct _ObjectInfo_t
 {
@@ -71,7 +72,7 @@ public:
 
         int ret;
         uint32_t params[1];
-        Container response;
+        com::sony::imaging::remote::Container response;
         params[0] = session_id;
         ret = ptp.send(0x1002, params, 1, response, NULL, 0);
     }
@@ -80,7 +81,7 @@ public:
     {
 
         int ret;
-        Container response;
+        com::sony::imaging::remote::Container response;
         ret = ptp.send(0x1003, NULL, 0, response, NULL, 0);
         fprintf(stderr, "\x1b[31mPower off the camera or disconnect USB cable before next operations.\n\x1b[39m");
     }
@@ -92,7 +93,7 @@ public:
         ObjectInfo_t *data = NULL;
         uint32_t size = 0;
         uint32_t params[1];
-        Container response;
+        com::sony::imaging::remote::Container response;
         params[0] = handle;
         ret = ptp.receive(0x1008, params, 1, response, (void **)&data, size);
 
@@ -112,7 +113,7 @@ public:
         FILE *fpo = NULL;
         uint32_t size = 0;
         uint32_t params[1];
-        Container response;
+        com::sony::imaging::remote::Container response;
         params[0] = handle;
 
         ret = ptp.receive(0x1009, params, 1, response, (void **)&data, size);
@@ -238,7 +239,7 @@ public:
 
         int ret;
         uint32_t params[1];
-        Container response;
+        com::sony::imaging::remote::Container response;
         params[0] = code;
         ret = ptp.send(0x96F8, params, 1, response, &value, sizeof(value));
     }
@@ -248,7 +249,7 @@ public:
     {
         int ret;
         uint32_t params[1];
-        Container response;
+        com::sony::imaging::remote::Container response;
         params[0] = code;
         ret = ptp.send(0x96FA, params, 1, response, &value, sizeof(value));
     }
@@ -257,7 +258,7 @@ public:
     {
         int ret;
         uint32_t params[1];
-        Container response;
+        com::sony::imaging::remote::Container response;
         params[0] = code;
         ret = ptp.send(0x96FA, params, 1, response, ptpstring.bytes, ptpstring.bytes_size);
     }
@@ -271,7 +272,7 @@ public:
         uint16_t *version;
         uint32_t size = 0;
         uint32_t params[1];
-        Container response;
+        com::sony::imaging::remote::Container response;
         params[0] = (uint32_t)initiator_version;
 
         ret = ptp.receive(0x96FD, params, 1, response, (void **)&version, size);
@@ -304,7 +305,7 @@ public:
         int ret;
         uint64_t *data;
         uint32_t params[3];
-        Container response;
+        com::sony::imaging::remote::Container response;
         uint32_t size;
         params[0] = phase_type;
         params[1] = keycode1;
@@ -321,7 +322,7 @@ public:
         bool escape = false;
         while (escape == false)
         {
-            Container event;
+            com::sony::imaging::remote::Container event;
             ret = ptp.wait_event(event);
             if (ret == SOCC_ERROR_USB_TIMEOUT)
             {
@@ -338,7 +339,7 @@ public:
     {
 
         int ret;
-        Container event;
+        com::sony::imaging::remote::Container event;
         ret = ptp.wait_event(event);
         if (ret == SOCC_ERROR_USB_TIMEOUT)
         {
@@ -359,5 +360,10 @@ public:
 private:
     com::sony::imaging::remote::socc_ptp &ptp;
 };
+
+std::unique_ptr<socc_examples_fixture> make_fixture() {
+    com::sony::imaging::remote::socc_ptp ptp(0, 0);
+    std::make_unique<socc_examples_fixture>();
+}
 
 #endif

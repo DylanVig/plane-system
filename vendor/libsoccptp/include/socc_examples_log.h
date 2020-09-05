@@ -5,6 +5,7 @@
 #define __SOCC_EXAMPLES_LOG_H__
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <stdarg.h>
 
 class socc_examples_log {
@@ -95,7 +96,7 @@ public :
                 fprintf(stderr, "\x1b[31me;%s;%s;NG;expect=%x(%d);actual=%x(%d)\n\x1b[39m", who, what, expect, expect, actual, actual);
             }
             fprintf(stderr, "\x1b[31mPower off the camera or disconnect USB cable before next operations.\n\x1b[39m");
-            exit(EXIT_FAILURE);
+            exit(-1);
         }
     }
 
