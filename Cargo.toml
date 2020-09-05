@@ -9,3 +9,7 @@ edition = "2018"
 [dependencies]
 smol = "0.4.3"
 crossbeam = "0.7.3"
+cxx = "0.4.2"
+
+[build-dependencies]
+cxx-build = "0.4.2"
