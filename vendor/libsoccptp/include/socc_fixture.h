@@ -10,6 +10,8 @@
 #include <socc_ptp.h>
 #include <parser.h>
 
+using namespace com::sony::imaging::remote;
+
 typedef struct _ObjectInfo_t
 {
     uint32_t StorageId;
@@ -360,10 +362,5 @@ public:
 private:
     com::sony::imaging::remote::socc_ptp &ptp;
 };
-
-std::unique_ptr<socc_examples_fixture> make_fixture() {
-    com::sony::imaging::remote::socc_ptp ptp(0, 0);
-    std::make_unique<socc_examples_fixture>();
-}
 
 #endif

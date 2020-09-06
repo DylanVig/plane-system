@@ -5,6 +5,7 @@
 #define __SOCC_EXAMPLES_FIXTURE_H__
 
 #include <time.h>
+#include "rust/cxx.h"
 
 #include <memory>
 #include <string>
@@ -290,6 +291,23 @@ public :
         ret = ptp.send(0x96FA, params, 1, response, ptpstring.bytes, ptpstring.bytes_size);
         log.assert_socc("ret", 0, ret);
         log.assert_socc("rc", (uint16_t)0x2001, response.code);
+    }
+
+
+
+    void SDIO_SetExtDevicePropValue_u8(uint16_t code, uint8_t value)
+    {
+        SDIO_SetExtDevicePropValue(code, value);
+    }
+
+    void SDIO_SetExtDevicePropValue_u16(uint16_t code, uint16_t value)
+    {
+        SDIO_SetExtDevicePropValue(code, value);
+    }
+
+    void SDIO_SetExtDevicePropValue_str(uint16_t code, rust::Str str)
+    {
+        SDIO_SetExtDevicePropValue(code, socc_examples_ptpstring(str.data()));
     }
     
     /* SDIO_GetExtDeviceInfo */

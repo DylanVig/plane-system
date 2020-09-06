@@ -5,14 +5,14 @@ use tide::{self, Request};
 
 #[derive(Clone)]
 struct ServerState {
-    camera: Arc<Mutex<Option<Camera>>>,
+    camera: Arc<Mutex<Camera>>,
 }
 
 pub async fn serve() -> Result<(), std::io::Error> {
     info!("initializing server");
 
     let state = ServerState {
-        camera: Arc::new(Mutex::new(None)),
+        camera: Arc::new(Mutex::new(Camera::new())),
     };
 
     let mut app = tide::with_state(state);
@@ -29,7 +29,7 @@ pub async fn serve() -> Result<(), std::io::Error> {
         .get(|req: Request<ServerState>| async move {
             let camera = req.state().camera.clone();
 
-            if camera.lock().await.is_some() {
+            if camera.lock().await.is_connected() {
                 Ok("already connected")
             } else {
                 smol::spawn(connect_camera(camera)).detach();
@@ -41,7 +41,7 @@ pub async fn serve() -> Result<(), std::io::Error> {
         .get(|req: Request<ServerState>| async move {
             let camera = req.state().camera.clone();
 
-            if camera.lock().await.is_none() {
+            if !camera.lock().await.is_connected() {
                 Ok("already disconnected")
             } else {
                 smol::spawn(disconnect_camera(camera)).detach();
@@ -57,11 +57,13 @@ pub async fn serve() -> Result<(), std::io::Error> {
     Ok(())
 }
 
-async fn connect_camera(camera: Arc<Mutex<Option<Camera>>>) {
+async fn connect_camera(camera: Arc<Mutex<Camera>>) {
     info!("connecting to camera");
-    
+    let mut camera = camera.lock().await;
+    camera.connect();
+    info!("connected to camera");
 }
 
-async fn disconnect_camera(camera: Arc<Mutex<Option<Camera>>>) {
+async fn disconnect_camera(camera: Arc<Mutex<Camera>>) {
     info!("disconnecting from to camera");
 }
