@@ -62,7 +62,7 @@ pub async fn serve() -> Result<(), std::io::Error> {
 
     let address = "127.0.0.1:8080";
     info!("initialized server");
-    info!("listening at {:#?}", address);
+    info!("listening at {}", address);
 
     app.listen(address).await?;
     Ok(())
