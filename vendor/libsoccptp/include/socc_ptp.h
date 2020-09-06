@@ -141,13 +141,13 @@ namespace com { namespace sony { namespace imaging { namespace remote {
          * @brief [MANDATORY] Connect to target device and set configuration as PTP device
          * @return 0 on success, other on failure
          */
-        int connect();
+        socc_error connect();
 
         /**
          * @brief [MANDATORY] Diconnect target device
          * @return 0 on success, other on failure
          */
-        int disconnect();
+        socc_error disconnect();
 
         /**
          * @brief [MANDATORY] Register callback function for USB hot plug detection

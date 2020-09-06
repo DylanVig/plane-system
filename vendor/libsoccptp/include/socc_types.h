@@ -21,7 +21,7 @@ typedef enum {
 /** 
   * \enum error code
   */
-enum {
+enum socc_error {
     SOCC_OK = 0,
     SOCC_ERROR_NOT_SUPPORT		= -1,
     SOCC_ERROR_INVALID_PARAMETER	= -2,

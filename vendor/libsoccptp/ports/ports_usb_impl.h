@@ -19,8 +19,8 @@ class ports_usb_impl_target_device;
 class ports_usb_impl : public ports_usb{
 public :
     ports_usb_impl(int busn, int devn);
-    int open();
-    int close();
+    socc_error open();
+    socc_error close();
     int write(void* bytes, unsigned int size);
     int read(void* bytes, unsigned int size);
     int read_interrupt(void* bytes, unsigned int size);

@@ -54,21 +54,17 @@ public :
     }
 
     /* connect */
-    void connect()
+    socc_error connect()
     {
         socc_examples_log log(__FUNCTION__,socc_examples_log::SOCC_EXAMPLES_LOG_INFO);
-        int ret = ptp.connect();
-        log.assert_socc("ret", 0, ret );
+        return ptp.connect();
     }
 
     /* disconnect */
-    void disconnect()
+    socc_error disconnect()
     {
         socc_examples_log log(__FUNCTION__,socc_examples_log::SOCC_EXAMPLES_LOG_INFO);
-        
-        int ret = ptp.disconnect();
-        
-        log.assert_socc("ret", 0, ret );
+        return ptp.disconnect();
     }
     
     /* OpenSession */

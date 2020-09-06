@@ -28,11 +28,11 @@ socc_ptp::~socc_ptp(){
     }
 }
 
-int socc_ptp::connect(){
+socc_error socc_ptp::connect(){
     return usb->open();
 }
 
-int socc_ptp::disconnect(){
+socc_error socc_ptp::disconnect(){
     return usb->close();
 }
 

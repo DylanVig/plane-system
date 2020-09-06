@@ -1,4 +1,5 @@
 use crate::camera::Camera;
+use anyhow::Context;
 use smol::lock::Mutex;
 use std::sync::Arc;
 use tide::{self, Request};
@@ -32,7 +33,12 @@ pub async fn serve() -> Result<(), std::io::Error> {
             if camera.lock().await.is_connected() {
                 Ok("already connected")
             } else {
-                smol::spawn(connect_camera(camera)).detach();
+                smol::spawn(async {
+                    if let Err(e) = connect_camera(camera).await {
+                        error!("error while connecting to camera: {:#?}", e);
+                    }
+                })
+                .detach();
                 Ok("working")
             }
         });
@@ -44,7 +50,12 @@ pub async fn serve() -> Result<(), std::io::Error> {
             if !camera.lock().await.is_connected() {
                 Ok("already disconnected")
             } else {
-                smol::spawn(disconnect_camera(camera)).detach();
+                smol::spawn(async {
+                    if let Err(e) = disconnect_camera(camera).await {
+                        error!("error while disconnecting from camera: {:#?}", e);
+                    }
+                })
+                .detach();
                 Ok("working")
             }
         });
@@ -57,13 +68,19 @@ pub async fn serve() -> Result<(), std::io::Error> {
     Ok(())
 }
 
-async fn connect_camera(camera: Arc<Mutex<Camera>>) {
+async fn connect_camera(camera: Arc<Mutex<Camera>>) -> anyhow::Result<()> {
     info!("connecting to camera");
     let mut camera = camera.lock().await;
-    camera.connect();
+
+    camera.connect().context("failed to connect to camera")?;
+
     info!("connected to camera");
+
+    Ok(())
 }
 
-async fn disconnect_camera(camera: Arc<Mutex<Camera>>) {
+async fn disconnect_camera(camera: Arc<Mutex<Camera>>) -> anyhow::Result<()> {
     info!("disconnecting from to camera");
+
+    Ok(())
 }

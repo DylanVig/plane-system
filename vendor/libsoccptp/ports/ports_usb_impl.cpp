@@ -15,7 +15,7 @@ ports_usb_impl::ports_usb_impl(int _busn, int _devn)
 :  busn(_busn), devn(_devn), inep(-1), outep(-1), intep(-1),configuration_value(-1),interface_number(-1),alternate_setting(-1),user_callback_func(NULL), user_callback_data(NULL), device(NULL), device_handle(NULL), context(NULL), hotplug_callback_handle(0), target_device(NULL){
     memset(&current_device, 0, sizeof(current_device));
 }
-int ports_usb_impl::open(){
+socc_error ports_usb_impl::open(){
     int ret = SOCC_OK;
     int count;
     libusb_device** devs = NULL;
@@ -103,7 +103,7 @@ int ports_usb_impl::open(){
     return SOCC_OK;
 }
 
-int ports_usb_impl::close(){
+socc_error ports_usb_impl::close(){
 
     pthread_cancel(thread_id);
     pthread_join(thread_id, NULL);
