@@ -47,9 +47,9 @@ mod ffi {
     extern "Rust" {}
 }
 
+// TODO: verify that the C++ code isn't doing anything thread-unsafe 🤨
+unsafe impl Send for ffi::socc_examples_fixture {}
+
 pub struct Camera {
-    device: rusb::Device<rusb::GlobalContext>,
     fixture: UniquePtr<ffi::socc_examples_fixture>,
-    busy: bool,
-    connected: bool,
 }
