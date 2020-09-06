@@ -50,7 +50,7 @@ public :
 
 class socc_examples_fixture {
 public :
-    socc_examples_fixture(com::sony::imaging::remote::socc_ptp& ptp) : ptp(ptp){
+    socc_examples_fixture(socc_ptp& ptp) : ptp(ptp){
     }
 
     /* connect */
@@ -417,8 +417,11 @@ private :
     com::sony::imaging::remote::socc_ptp& ptp;
 };
 
-std::unique_ptr<socc_examples_fixture> make_fixture() {
-    socc_ptp ptp(0, 0);
+std::unique_ptr<socc_ptp> make_ptp() {
+    return std::make_unique<socc_ptp>(0, 0);
+}
+
+std::unique_ptr<socc_examples_fixture> make_fixture(socc_ptp& ptp) {
     return std::make_unique<socc_examples_fixture>(ptp);
 }
 

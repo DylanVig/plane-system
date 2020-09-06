@@ -7,8 +7,10 @@ mod ffi {
         include!("socc_examples_fixture.h");
 
         type socc_examples_fixture;
+        type socc_ptp;
 
-        fn make_fixture() -> UniquePtr<socc_examples_fixture>;
+        fn make_ptp() -> UniquePtr<socc_ptp>;
+        fn make_fixture(ptp: &mut socc_ptp) -> UniquePtr<socc_examples_fixture>;
 
         fn connect(self: &mut socc_examples_fixture) -> ();
         fn disconnect(self: &mut socc_examples_fixture) -> ();
@@ -64,8 +66,10 @@ mod ffi {
 
 // TODO: verify that the C++ code isn't doing anything thread-unsafe 🤨
 unsafe impl Send for ffi::socc_examples_fixture {}
+unsafe impl Send for ffi::socc_ptp {}
 
 pub struct Camera {
+    ptp: UniquePtr<ffi::socc_ptp>,
     fixture: UniquePtr<ffi::socc_examples_fixture>,
     connected: bool,
     busy: bool,
@@ -73,11 +77,15 @@ pub struct Camera {
 
 impl Camera {
     pub fn new() -> Self {
-        Camera {
-            fixture: unsafe { ffi::make_fixture() },
+        let mut ptp = ffi::make_ptp();
+        let fixture = ffi::make_fixture(&mut ptp);
+        let cam = Camera {
+            ptp,
+            fixture,
             connected: false,
             busy: false,
-        }
+        };
+        return cam;
     }
 
     pub fn is_connected(&self) -> bool {
