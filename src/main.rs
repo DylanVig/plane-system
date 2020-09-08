@@ -1,4 +1,5 @@
 #[macro_use] extern crate log;
+#[macro_use] extern crate anyhow;
 
 mod airdrop;
 mod camera;
