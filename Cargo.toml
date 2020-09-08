@@ -15,6 +15,7 @@ pretty_env_logger = "0.4.0"
 log = "0.4.11"
 anyhow = "1.0.32"
 mavlink = { version = "0.8.5", features = ["ardupilotmega", "uavionix", "icarous"] }
+num-traits = "0.2.12"
 
 [build-dependencies]
 cxx-build = "0.4.2"

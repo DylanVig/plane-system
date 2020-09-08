@@ -14,8 +14,8 @@ static LAST_ROI_ID: AtomicUsize = AtomicUsize::new(0);
 
 #[derive(Clone, Debug)]
 pub struct RegionOfInterest {
-    latitude: f64,
-    longitude: f64,
+    latitude: f32,
+    longitude: f32,
     id: RegionOfInterestId,
 }
 
@@ -24,7 +24,7 @@ impl RegionOfInterest {
         Self::with_coords(0., 0.)
     }
 
-    pub fn with_coords(latitude: f64, longitude: f64) -> Self {
+    pub fn with_coords(latitude: f32, longitude: f32) -> Self {
         RegionOfInterest {
             latitude,
             longitude,
