@@ -1,4 +1,5 @@
 use std::{path::PathBuf, sync::atomic::{AtomicUsize, Ordering}};
+use crate::state::GPSLocation;
 
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
 pub struct RegionOfInterestId(usize);
@@ -46,5 +47,5 @@ pub struct Image {
     path: PathBuf,
     mode: Mode,
     rois: Vec<RegionOfInterest>,
-    geotag: (),
+    geotag: GPSLocation,
 }

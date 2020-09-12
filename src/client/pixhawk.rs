@@ -10,9 +10,15 @@ use std::{sync::Arc, time::Duration, time::Instant};
 
 use crate::scheduler::state::RegionOfInterest;
 
+pub struct PixhawkInterface {
+    connection: Box<dyn MavConnection<apm::MavMessage> + Send>,
+    telemetry: RwLock<PixhawkTelemetry>,
+    message_send_channel: (Sender<apm::MavMessage>, Receiver<apm::MavMessage>),
+    message_recv_channel: (Sender<apm::MavMessage>, Receiver<apm::MavMessage>),
+}
+
+#[derive(Debug, Clone)]
 pub struct PixhawkClient {
-    connection: Box<dyn MavConnection<apm::MavMessage>>,
-    telemetry: Arc<RwLock<PixhawkTelemetry>>,
     message_send_channel: (Sender<apm::MavMessage>, Receiver<apm::MavMessage>),
     message_recv_channel: (Sender<apm::MavMessage>, Receiver<apm::MavMessage>),
 }
@@ -38,14 +44,7 @@ pub struct PixhawkTelemetryAttitude {
     yaw: f32,
 }
 
-pub enum PixhawkAction {
-    TakeImage,
-    BeginTrackingMode,
-    BeginFixedMode { roll: f32, pitch: f32, yaw: f32 },
-    AddROI { roi: RegionOfInterest },
-}
-
-impl PixhawkClient {
+impl PixhawkInterface {
     /// Connects to the Pixhawk at the given address. Should be formatted as a
     /// Mavlink address, i.e. `tcpin:192.168.4.4`
     pub fn connect(address: &str) -> anyhow::Result<Self> {
@@ -56,21 +55,92 @@ impl PixhawkClient {
         let message_send_channel = smol::channel::unbounded();
 
         let connection = mavlink::connect(address)?;
-        let telemetry = Arc::new(RwLock::new(PixhawkTelemetry {
+        let telemetry = RwLock::new(PixhawkTelemetry {
             gps: None,
             attitude: None,
             geotag: None,
-        }));
+        });
 
-        let client = PixhawkClient {
+        let interface = PixhawkInterface {
             connection,
             telemetry,
             message_send_channel,
             message_recv_channel,
         };
 
-        Ok(client)
+        Ok(interface)
     }
+
+    pub fn new_client(&self) -> PixhawkClient {
+        PixhawkClient {
+            message_recv_channel: self.message_recv_channel.clone(),
+            message_send_channel: self.message_send_channel.clone(),
+        }
+    }
+
+    /// Starts a task that will run the Pixhawk.
+    pub async fn run(self) -> smol::Task<anyhow::Result<()>> {
+        smol::spawn(async move {
+            let (message_broadcaster, _) = self.message_recv_channel;
+            let (_, message_terminal) = self.message_send_channel;
+
+            loop {
+                let (_, message) = self.connection.recv()?;
+
+                debug!("received message: {:?}", message);
+
+                match &message {
+                    apm::MavMessage::common(common::MavMessage::GLOBAL_POSITION_INT(data)) => {
+                        let gps = PixhawkTelemetryCoords {
+                            // lat and lon are in degrees * 10^7
+                            // altitude is in mm
+                            latitude: data.lat as f32 / 1e7,
+                            longitude: data.lon as f32 / 1e7,
+                            altitude: data.relative_alt as f32 / 1e3,
+                        };
+
+                        trace!("received global position {:?}", gps);
+                        self.telemetry.write().await.gps = Some(gps);
+                    }
+                    apm::MavMessage::common(common::MavMessage::ATTITUDE(data)) => {
+                        let attitude = PixhawkTelemetryAttitude {
+                            // roll, pitch, yaw are in radians/sec
+                            roll: data.roll as f32,
+                            pitch: data.pitch as f32,
+                            yaw: data.yaw as f32,
+                        };
+
+                        trace!("received attitude {:?}", attitude);
+                        self.telemetry.write().await.attitude = Some(attitude);
+                    }
+                    apm::MavMessage::CAMERA_FEEDBACK(data) => {
+                        let gps = PixhawkTelemetryCoords {
+                            // lat and lon are in degrees * 10^7
+                            // altitude is in meters
+                            latitude: data.lat as f32 / 1e7,
+                            longitude: data.lng as f32 / 1e7,
+                            altitude: data.alt_rel as f32,
+                        };
+
+                        trace!("received camera feedback {:?}", gps);
+                        self.telemetry.write().await.gps = Some(gps);
+                    }
+                    _ => {}
+                }
+
+                message_broadcaster.send(message).await?;
+
+                while !message_terminal.is_empty() {
+                    let message = message_terminal.recv().await?;
+                    self.connection.send_default(&message)?;
+                }
+            }
+        })
+    }
+}
+
+impl PixhawkClient {
+
 
     pub async fn init(&self) -> anyhow::Result<()> {
         trace!("waiting for heartbeat");
@@ -96,90 +166,13 @@ impl PixhawkClient {
         Ok(())
     }
 
-    /// Runs the Pixhawk client. Blocks indefinitely; should be called in its
-    /// own task.
-    pub async fn run(&self) -> anyhow::Result<()> {
-        let (message_broadcaster, _) = &self.message_recv_channel;
-        let (_, message_terminal) = &self.message_send_channel;
-
-        loop {
-            let (_, message) = self.connection.recv()?;
-
-            debug!("received message: {:?}", message);
-
-            match &message {
-                apm::MavMessage::common(common::MavMessage::GLOBAL_POSITION_INT(data)) => {
-                    let gps = PixhawkTelemetryCoords {
-                        // lat and lon are in degrees * 10^7
-                        // altitude is in mm
-                        latitude: data.lat as f32 / 1e7,
-                        longitude: data.lon as f32 / 1e7,
-                        altitude: data.relative_alt as f32 / 1e3,
-                    };
-
-                    trace!("received global position {:?}", gps);
-                    self.telemetry.write().await.gps = Some(gps);
-                }
-                apm::MavMessage::common(common::MavMessage::ATTITUDE(data)) => {
-                    let attitude = PixhawkTelemetryAttitude {
-                        // roll, pitch, yaw are in radians/sec
-                        roll: data.roll as f32,
-                        pitch: data.pitch as f32,
-                        yaw: data.yaw as f32,
-                    };
-
-                    trace!("received attitude {:?}", attitude);
-                    self.telemetry.write().await.attitude = Some(attitude);
-                }
-                apm::MavMessage::CAMERA_FEEDBACK(data) => {
-                    let gps = PixhawkTelemetryCoords {
-                        // lat and lon are in degrees * 10^7
-                        // altitude is in meters
-                        latitude: data.lat as f32 / 1e7,
-                        longitude: data.lng as f32 / 1e7,
-                        altitude: data.alt_rel as f32,
-                    };
-
-                    trace!("received camera feedback {:?}", gps);
-                    self.telemetry.write().await.gps = Some(gps);
-                }
-                _ => {}
-            }
-
-            message_broadcaster.send(message).await?;
-
-            while !message_terminal.is_empty() {
-                let message = message_terminal.recv().await?;
-                self.connection.send_default(&message)?;
-            }
-        }
-    }
-
-    pub async fn action(&self, action: PixhawkAction) -> anyhow::Result<()> {
-        match action {
-            _ => todo!("implement pixhawk client actions")
-        }
-    }
-
-    /// Gets a sender that can send messages to the Pixhawk.
-    fn sender(&self) -> Sender<apm::MavMessage> {
-        let (message_sender, _) = &self.message_send_channel;
-        message_sender.clone()
-    }
-
-    /// Gets a receiver that can receive messages from the Pixhawk.
-    fn receiver(&self) -> Receiver<apm::MavMessage> {
-        let (_, message_receiver) = &self.message_recv_channel;
-        message_receiver.clone()
-    }
-
-    async fn wait_for_message<F: Fn(&apm::MavMessage) -> bool>(
+    pub async fn wait_for_message<F: Fn(&apm::MavMessage) -> bool>(
         &self,
         predicate: F,
         timeout: Duration,
     ) -> anyhow::Result<apm::MavMessage> {
         let deadline = Instant::now() + timeout;
-        let receiver = self.receiver().clone();
+        let receiver = &self.message_recv_channel.1;
 
         loop {
             let remaining_time = deadline - Instant::now();
@@ -198,7 +191,7 @@ impl PixhawkClient {
 
     /// Sets a parameter on the Pixhawk and waits for acknowledgement. The
     /// default timeout is 10 seconds.
-    async fn set_param<T: num_traits::NumCast + std::fmt::Debug>(
+    pub async fn set_param<T: num_traits::NumCast + std::fmt::Debug>(
         &self,
         id: &str,
         param_value: T,
@@ -220,10 +213,8 @@ impl PixhawkClient {
                 target_component: 0,
             }));
 
-        let sender = self.sender();
-
         // send message
-        sender.send(message).await?;
+        self.message_send_channel.0.send(message).await?;
 
         trace!("sent request, waiting for ack");
 
@@ -252,7 +243,7 @@ impl PixhawkClient {
 
     /// Sets a parameter on the Pixhawk and waits for acknowledgement. The
     /// default timeout is 10 seconds.
-    async fn send_command(
+    pub async fn send_command(
         &self,
         command: common::MavCmd,
         params: [f32; 7],
@@ -275,10 +266,8 @@ impl PixhawkClient {
             },
         ));
 
-        let sender = self.sender();
-
         // send message
-        sender.send(message).await?;
+        self.message_send_channel.0.send(message).await?;
 
         trace!("sent command, waiting for ack");
 

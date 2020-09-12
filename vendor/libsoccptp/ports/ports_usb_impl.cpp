@@ -15,7 +15,7 @@ ports_usb_impl::ports_usb_impl(int _busn, int _devn)
 :  busn(_busn), devn(_devn), inep(-1), outep(-1), intep(-1),configuration_value(-1),interface_number(-1),alternate_setting(-1),user_callback_func(NULL), user_callback_data(NULL), device(NULL), device_handle(NULL), context(NULL), hotplug_callback_handle(0), target_device(NULL){
     memset(&current_device, 0, sizeof(current_device));
 }
-socc_error ports_usb_impl::open(){
+int ports_usb_impl::open(){
     int ret = SOCC_OK;
     int count;
     libusb_device** devs = NULL;
@@ -103,7 +103,7 @@ socc_error ports_usb_impl::open(){
     return SOCC_OK;
 }
 
-socc_error ports_usb_impl::close(){
+int ports_usb_impl::close(){
 
     pthread_cancel(thread_id);
     pthread_join(thread_id, NULL);
@@ -119,8 +119,8 @@ socc_error ports_usb_impl::close(){
     return SOCC_OK;
 }
 
-socc_error ports_usb_impl::write(void* bytes, unsigned int size){
-    socc_error ret = bulk_write(outep, bytes, size);
+int ports_usb_impl::write(void* bytes, unsigned int size){
+    int ret = bulk_write(outep, bytes, size);
     
     if(ret == LIBUSB_ERROR_TIMEOUT){
         ret = SOCC_ERROR_USB_TIMEOUT;
@@ -242,8 +242,8 @@ int ports_usb_impl::snatch_device_handle(socc_device_handle_info_t& info){
     return SOCC_OK;
 }
 
-socc_error ports_usb_impl::bulk_write(int ep, void* bytes, unsigned int size){
-    socc_error ret = 0;
+int ports_usb_impl::bulk_write(int ep, void* bytes, unsigned int size){
+    int ret = 0;
     int actual = 0;
     do {
         int transferred = 0;
@@ -257,8 +257,8 @@ socc_error ports_usb_impl::bulk_write(int ep, void* bytes, unsigned int size){
     return actual;
 }
 
-socc_error ports_usb_impl::bulk_read(int ep, void* bytes, unsigned int size){
-    socc_error ret = 0;
+int ports_usb_impl::bulk_read(int ep, void* bytes, unsigned int size){
+    int ret = 0;
     int transferred = 0;
     do {
         ret =  libusb_bulk_transfer(device_handle, ep, (unsigned char*)bytes, size, &transferred, 5000);

@@ -1,4 +1,4 @@
-use crate::camera::Camera;
+use crate::{camera::Camera, client::camera::CameraClient};
 use anyhow::Context;
 use smol::lock::Mutex;
 use std::sync::Arc;
@@ -13,7 +13,7 @@ pub async fn serve() -> Result<(), std::io::Error> {
     info!("initializing server");
 
     let state = ServerState {
-        camera: Arc::new(Mutex::new(Camera::new())),
+        camera: CameraClient::new(),
     };
 
     let mut app = tide::with_state(state);

@@ -33,8 +33,8 @@ typedef struct __usb_device_info_t {
 class ports_usb {
 public :
     virtual ~ports_usb() {};
-    virtual socc_error open() = 0;
-    virtual socc_error close() = 0;
+    virtual int open() = 0;
+    virtual int close() = 0;
     virtual int write(void* bytes, unsigned int size) = 0;
     virtual int read(void* bytes, unsigned int size) = 0;
     virtual int read_interrupt(void* bytes, unsigned int size) = 0;

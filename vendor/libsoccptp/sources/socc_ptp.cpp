@@ -28,11 +28,11 @@ socc_ptp::~socc_ptp(){
     }
 }
 
-socc_error socc_ptp::connect(){
+int socc_ptp::connect(){
     return usb->open();
 }
 
-socc_error socc_ptp::disconnect(){
+int socc_ptp::disconnect(){
     return usb->close();
 }
 
@@ -40,15 +40,15 @@ void socc_ptp::set_hotplug_callback(socc_hotplug_callback_func_t callback_func, 
     usb->set_hotplug_callback(callback_func, vp);
 }
 
-socc_error socc_ptp::send(uint16_t code, uint32_t* params, uint8_t nparam, Container& response, void* data, uint32_t size){
+int socc_ptp::send(uint16_t code, uint32_t* params, uint8_t nparam, Container& response, void* data, uint32_t size){
     return ptp->send(code, params, nparam, response, data, size);
 }
 
-socc_error socc_ptp::receive(uint16_t code, uint32_t* params, uint8_t nparam, Container& response, void** data, uint32_t& size){
+int socc_ptp::receive(uint16_t code, uint32_t* params, uint8_t nparam, Container& response, void** data, uint32_t& size){
     return ptp->receive(code, params, nparam, response, data, size);
 }
 
-socc_error socc_ptp::wait_event(Container& container){
+int socc_ptp::wait_event(Container& container){
     return ptp->wait_event(container);
 }
 
