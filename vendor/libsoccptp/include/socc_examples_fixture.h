@@ -68,19 +68,18 @@ public :
     }
     
     /* OpenSession */
-    void OpenSession(uint32_t session_id=1)
+    socc_error OpenSession(uint32_t session_id=1)
     {
         socc_examples_log log(__FUNCTION__,socc_examples_log::SOCC_EXAMPLES_LOG_INFO);
         
-        int ret;
+        socc_error ret;
         uint32_t params[1];
         Container response;
         params[0] = session_id;
         ret = ptp.send(0x1002, params, 1, response, NULL, 0);
 
-        log.assert_socc("ret", 0, ret );
         log.assert_socc("rc", (uint16_t)0x2001, response.code );
-        
+        return ret;
     }
     /* CloseSession */
     void CloseSession()

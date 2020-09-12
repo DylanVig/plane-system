@@ -22,8 +22,8 @@ ports_ptp_impl::~ports_ptp_impl(){
 }
 
 
-int ports_ptp_impl::send(uint16_t code, uint32_t* parameters, uint8_t num, com::sony::imaging::remote::Container& response, void* data, uint32_t size){
-    int rc;
+socc_error ports_ptp_impl::send(uint16_t code, uint32_t* parameters, uint8_t num, com::sony::imaging::remote::Container& response, void* data, uint32_t size){
+    socc_error rc;
     memset(&response, 0, sizeof(response));
     
     if(code == 0x1002){
@@ -53,7 +53,7 @@ int ports_ptp_impl::send(uint16_t code, uint32_t* parameters, uint8_t num, com::
     return SOCC_OK;
 }
 
-int ports_ptp_impl::receive(uint16_t code, uint32_t* parameters, uint8_t num, com::sony::imaging::remote::Container& response, void** data, uint32_t& size){
+socc_error ports_ptp_impl::receive(uint16_t code, uint32_t* parameters, uint8_t num, com::sony::imaging::remote::Container& response, void** data, uint32_t& size){
     int rc;
     memset(&response, 0, sizeof(response));
     size = 0;
@@ -79,7 +79,7 @@ int ports_ptp_impl::receive(uint16_t code, uint32_t* parameters, uint8_t num, co
     return SOCC_OK;
 }
 
-int ports_ptp_impl::wait_event(com::sony::imaging::remote::Container& container){
+socc_error ports_ptp_impl::wait_event(com::sony::imaging::remote::Container& container){
     int rc;
     memset(&container, 0, sizeof(container));
     
@@ -97,7 +97,7 @@ void ports_ptp_impl::dispose_data(void** data){
     *data = NULL;
 }
 
-int ports_ptp_impl::sendreq(uint16_t code, uint32_t* parameters, uint8_t num){
+socc_error ports_ptp_impl::sendreq(uint16_t code, uint32_t* parameters, uint8_t num){
     int ret;
     GenericBulkContainerHeader* header;
     uint32_t* payload;

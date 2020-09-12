@@ -8,6 +8,8 @@ use smol::{
 use smol_timeout::TimeoutExt;
 use std::{sync::Arc, time::Duration, time::Instant};
 
+use crate::scheduler::state::RegionOfInterest;
+
 pub struct PixhawkClient {
     connection: Box<dyn MavConnection<apm::MavMessage>>,
     telemetry: Arc<RwLock<PixhawkTelemetry>>,
@@ -34,6 +36,13 @@ pub struct PixhawkTelemetryAttitude {
     roll: f32,
     pitch: f32,
     yaw: f32,
+}
+
+pub enum PixhawkAction {
+    TakeImage,
+    BeginTrackingMode,
+    BeginFixedMode { roll: f32, pitch: f32, yaw: f32 },
+    AddROI { roi: RegionOfInterest },
 }
 
 impl PixhawkClient {
@@ -87,18 +96,6 @@ impl PixhawkClient {
         Ok(())
     }
 
-    /// Gets a sender that can send messages to the Pixhawk.
-    fn sender(&self) -> Sender<apm::MavMessage> {
-        let (message_sender, _) = &self.message_send_channel;
-        message_sender.clone()
-    }
-
-    /// Gets a receiver that can receive messages from the Pixhawk.
-    fn receiver(&self) -> Receiver<apm::MavMessage> {
-        let (_, message_receiver) = &self.message_recv_channel;
-        message_receiver.clone()
-    }
-
     /// Runs the Pixhawk client. Blocks indefinitely; should be called in its
     /// own task.
     pub async fn run(&self) -> anyhow::Result<()> {
@@ -107,6 +104,8 @@ impl PixhawkClient {
 
         loop {
             let (_, message) = self.connection.recv()?;
+
+            debug!("received message: {:?}", message);
 
             match &message {
                 apm::MavMessage::common(common::MavMessage::GLOBAL_POSITION_INT(data)) => {
@@ -156,6 +155,24 @@ impl PixhawkClient {
         }
     }
 
+    pub async fn action(&self, action: PixhawkAction) -> anyhow::Result<()> {
+        match action {
+            _ => todo!("implement pixhawk client actions")
+        }
+    }
+
+    /// Gets a sender that can send messages to the Pixhawk.
+    fn sender(&self) -> Sender<apm::MavMessage> {
+        let (message_sender, _) = &self.message_send_channel;
+        message_sender.clone()
+    }
+
+    /// Gets a receiver that can receive messages from the Pixhawk.
+    fn receiver(&self) -> Receiver<apm::MavMessage> {
+        let (_, message_receiver) = &self.message_recv_channel;
+        message_receiver.clone()
+    }
+
     async fn wait_for_message<F: Fn(&apm::MavMessage) -> bool>(
         &self,
         predicate: F,
@@ -181,12 +198,14 @@ impl PixhawkClient {
 
     /// Sets a parameter on the Pixhawk and waits for acknowledgement. The
     /// default timeout is 10 seconds.
-    async fn set_param<T: num_traits::NumCast>(
+    async fn set_param<T: num_traits::NumCast + std::fmt::Debug>(
         &self,
         id: &str,
         param_value: T,
         param_type: common::MavParamType,
     ) -> anyhow::Result<T> {
+        trace!("setting param {:?} to {:?}", id, param_value);
+
         let mut param_id: [char; 16] = ['\0'; 16];
         for (index, character) in id.char_indices() {
             param_id[index] = character;
@@ -206,6 +225,8 @@ impl PixhawkClient {
         // send message
         sender.send(message).await?;
 
+        trace!("sent request, waiting for ack");
+
         // wait for ack or timeout
         let ack_message = self
             .wait_for_message(
@@ -221,7 +242,9 @@ impl PixhawkClient {
 
         match ack_message {
             apm::MavMessage::common(common::MavMessage::PARAM_VALUE(data)) => {
-                Ok(num_traits::cast(data.param_value).unwrap())
+                let param_value = num_traits::cast(data.param_value).unwrap();
+                trace!("received ack, current param value is {:?}", param_value);
+                Ok(param_value)
             }
             _ => unreachable!(),
         }
@@ -234,6 +257,8 @@ impl PixhawkClient {
         command: common::MavCmd,
         params: [f32; 7],
     ) -> anyhow::Result<common::MavResult> {
+        trace!("sending command {:?} ({:?})", command, params);
+
         let message = apm::MavMessage::common(common::MavMessage::COMMAND_LONG(
             common::COMMAND_LONG_DATA {
                 command,
@@ -255,6 +280,8 @@ impl PixhawkClient {
         // send message
         sender.send(message).await?;
 
+        trace!("sent command, waiting for ack");
+
         // wait for ack or timeout
         let ack_message = self
             .wait_for_message(
@@ -267,6 +294,8 @@ impl PixhawkClient {
                 Duration::from_secs(10),
             )
             .await?;
+
+        trace!("received ack");
 
         match ack_message {
             apm::MavMessage::common(common::MavMessage::COMMAND_ACK(data)) => match data.result {

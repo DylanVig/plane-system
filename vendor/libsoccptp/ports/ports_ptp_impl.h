@@ -45,9 +45,9 @@ public :
     ports_ptp_impl(int busn, int devn, uint32_t session_id, uint32_t transaction_id, ports_usb* usb);
     ~ports_ptp_impl();
     
-    int send(uint16_t code, uint32_t* parameters, uint8_t num, com::sony::imaging::remote::Container& response, void* data, uint32_t size);
-    int receive(uint16_t code, uint32_t* parameters, uint8_t num, com::sony::imaging::remote::Container& response, void** data, uint32_t& size);
-    int wait_event(com::sony::imaging::remote::Container& container);
+    socc_error send(uint16_t code, uint32_t* parameters, uint8_t num, com::sony::imaging::remote::Container& response, void* data, uint32_t size);
+    socc_error receive(uint16_t code, uint32_t* parameters, uint8_t num, com::sony::imaging::remote::Container& response, void** data, uint32_t& size);
+    socc_error wait_event(com::sony::imaging::remote::Container& container);
     void dispose_data(void** data);
     
 private :
