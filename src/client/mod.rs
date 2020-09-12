@@ -1,43 +1,38 @@
+use std::future::Future;
+
 use smol::channel::{Receiver, Sender};
 
 pub mod camera;
 pub mod gimbal;
 pub mod pixhawk;
 
+#[derive(Debug, Clone)]
 pub struct Channels<Request: Send, Response: Send> {
     request_channel: (Sender<Request>, Receiver<Request>),
     response_channel: (Sender<Response>, Receiver<Response>),
 }
 
-#[async_trait]
-pub trait Interface: Sized + Send + Sync + 'static {
-    type Client;
-    type Request: Send + Sized;
-    type Response: Send + Sync + Sized + 'static;
-
-    fn new_client(&self) -> Self::Client;
-
-    /// Starts a task that will run the Pixhawk.
-    fn run(self) -> smol::Task<anyhow::Result<()>> {
-        smol::spawn(async move {
-            let channels = self.channels();
-            let (message_broadcaster, _) = channels.response_channel;
-            let (_, message_terminal) = channels.request_channel;
-
-            loop {
-                if let Some(message) = self.recv().await? {
-                    message_broadcaster.send(message).await?;
-                }
-
-                if !message_terminal.is_empty() {
-                    let message = message_terminal.recv().await?;
-                    self.send(message).await?;
-                }
-            }
-        })
+impl<Request: Send, Response: Send> Channels<Request, Response> {
+    pub fn new() -> Self {
+        Channels {
+            request_channel: smol::channel::unbounded(),
+            response_channel: smol::channel::unbounded(),
+        }
     }
 
-    fn channels(&self) -> &Channels<Self::Request, Self::Response>;
-    async fn recv(&self) -> anyhow::Result<Option<Self::Response>>;
-    async fn send(&self, request: Self::Request) -> anyhow::Result<()>;
+    pub fn send_request(&self, request: Request) -> impl Future<Output = Result<(), smol::channel::SendError<Request>>> + '_ {
+        self.request_channel.0.send(request)
+    }
+
+    pub fn send_response(&self, response: Response) -> impl Future<Output = Result<(), smol::channel::SendError<Request>>> + '_ {
+        self.response_channel.0.send(response)
+    }
+
+    pub fn recv_response(&self) -> impl Future<Output = Result<Response, smol::channel::RecvError>> + '_ {
+        self.response_channel.1.recv()
+    }
+
+    pub fn recv_response(&self) -> impl Future<Output = Result<Response, smol::channel::RecvError>> + '_ {
+        self.response_channel.1.recv()
+    }
 }

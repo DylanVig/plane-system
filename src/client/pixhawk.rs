@@ -10,17 +10,17 @@ use std::{sync::Arc, time::Duration, time::Instant};
 
 use crate::scheduler::state::RegionOfInterest;
 
+use super::{Interface, Channels};
+
 pub struct PixhawkInterface {
     connection: Box<dyn MavConnection<apm::MavMessage> + Send>,
     telemetry: RwLock<PixhawkTelemetry>,
-    message_send_channel: (Sender<apm::MavMessage>, Receiver<apm::MavMessage>),
-    message_recv_channel: (Sender<apm::MavMessage>, Receiver<apm::MavMessage>),
+    channels: Channels<apm::MavMessage, apm::MavMessage>,
 }
 
 #[derive(Debug, Clone)]
 pub struct PixhawkClient {
-    message_send_channel: (Sender<apm::MavMessage>, Receiver<apm::MavMessage>),
-    message_recv_channel: (Sender<apm::MavMessage>, Receiver<apm::MavMessage>),
+    channels: Channels<apm::MavMessage, apm::MavMessage>,
 }
 
 #[derive(Debug)]
@@ -48,12 +48,6 @@ impl PixhawkInterface {
     /// Connects to the Pixhawk at the given address. Should be formatted as a
     /// Mavlink address, i.e. `tcpin:192.168.4.4`
     pub fn connect(address: &str) -> anyhow::Result<Self> {
-        // channel for distributing messages we received from pixhawk
-        let message_recv_channel = smol::channel::unbounded();
-
-        // channel for sending messages back to the pixhawk
-        let message_send_channel = smol::channel::unbounded();
-
         let connection = mavlink::connect(address)?;
         let telemetry = RwLock::new(PixhawkTelemetry {
             gps: None,
@@ -64,8 +58,7 @@ impl PixhawkInterface {
         let interface = PixhawkInterface {
             connection,
             telemetry,
-            message_send_channel,
-            message_recv_channel,
+            channels: Channels::new()
         };
 
         Ok(interface)
@@ -73,16 +66,15 @@ impl PixhawkInterface {
 
     pub fn new_client(&self) -> PixhawkClient {
         PixhawkClient {
-            message_recv_channel: self.message_recv_channel.clone(),
-            message_send_channel: self.message_send_channel.clone(),
+            channels: self.channels.clone()
         }
     }
 
     /// Starts a task that will run the Pixhawk.
     pub fn run(self) -> smol::Task<anyhow::Result<()>> {
         smol::spawn(async move {
-            let (message_broadcaster, _) = self.message_recv_channel;
-            let (_, message_terminal) = self.message_send_channel;
+            let (message_broadcaster, _) = self.channels.response_channel;
+            let (_, message_terminal) = self.channels.request_channel;
 
             loop {
                 let (_, message) = self.connection.recv()?;
@@ -140,8 +132,6 @@ impl PixhawkInterface {
 }
 
 impl PixhawkClient {
-
-
     pub async fn init(&self) -> anyhow::Result<()> {
         trace!("waiting for heartbeat");
         self.wait_for_message(
@@ -172,7 +162,7 @@ impl PixhawkClient {
         timeout: Duration,
     ) -> anyhow::Result<apm::MavMessage> {
         let deadline = Instant::now() + timeout;
-        let receiver = &self.message_recv_channel.1;
+        let receiver = &self.channels.response_channel.1;
 
         loop {
             let remaining_time = deadline - Instant::now();
@@ -214,7 +204,7 @@ impl PixhawkClient {
             }));
 
         // send message
-        self.message_send_channel.0.send(message).await?;
+        self.channels.request_channel.0.send(message).await?;
 
         trace!("sent request, waiting for ack");
 
@@ -267,7 +257,7 @@ impl PixhawkClient {
         ));
 
         // send message
-        self.message_send_channel.0.send(message).await?;
+        self.channels.request_channel.0.send(message).await?;
 
         trace!("sent command, waiting for ack");
 
