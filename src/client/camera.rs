@@ -8,8 +8,6 @@ pub enum CameraCommand {
     ZoomOut,
 }
 
-pub enum 
-
 pub struct CameraClient {
     camera: Camera,
     cmd_recv_channel: (Sender<CameraCommand>, Receiver<CameraCommand>),

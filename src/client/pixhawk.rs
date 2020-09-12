@@ -79,7 +79,7 @@ impl PixhawkInterface {
     }
 
     /// Starts a task that will run the Pixhawk.
-    pub async fn run(self) -> smol::Task<anyhow::Result<()>> {
+    pub fn run(self) -> smol::Task<anyhow::Result<()>> {
         smol::spawn(async move {
             let (message_broadcaster, _) = self.message_recv_channel;
             let (_, message_terminal) = self.message_send_channel;
