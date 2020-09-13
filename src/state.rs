@@ -1,5 +1,5 @@
 #[derive(Debug, Clone)]
 pub struct GPSLocation {
-  latitude: f32,
-  longitude: f32
+    latitude: f32,
+    longitude: f32,
 }

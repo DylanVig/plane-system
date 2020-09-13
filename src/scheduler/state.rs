@@ -1,5 +1,8 @@
-use std::{path::PathBuf, sync::atomic::{AtomicUsize, Ordering}};
 use crate::state::GPSLocation;
+use std::{
+    path::PathBuf,
+    sync::atomic::{AtomicUsize, Ordering},
+};
 
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
 pub struct RegionOfInterestId(usize);

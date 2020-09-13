@@ -1,4 +1,6 @@
-use crate::{camera::Camera, client::camera::CameraClient};
+use crate::{
+    client::camera::CameraClient, interface::camera::CameraInterface,
+};
 use anyhow::Context;
 use smol::lock::Mutex;
 use std::sync::Arc;
@@ -6,14 +8,16 @@ use tide::{self, Request};
 
 #[derive(Clone)]
 struct ServerState {
-    camera: Arc<Mutex<Camera>>,
+    camera: CameraClient,
 }
 
 pub async fn serve() -> Result<(), std::io::Error> {
     info!("initializing server");
 
+    let camera_interface = Arc::new(CameraInterface::new());
+
     let state = ServerState {
-        camera: CameraClient::new(),
+        camera: camera_interface.create_client(),
     };
 
     let mut app = tide::with_state(state);
@@ -28,36 +32,14 @@ pub async fn serve() -> Result<(), std::io::Error> {
 
     app.at("/connect")
         .get(|req: Request<ServerState>| async move {
-            let camera = req.state().camera.clone();
-
-            if camera.lock().await.is_connected() {
-                Ok("already connected")
-            } else {
-                smol::spawn(async {
-                    if let Err(e) = connect_camera(camera).await {
-                        error!("error while connecting to camera: {:#?}", e);
-                    }
-                })
-                .detach();
-                Ok("working")
-            }
+            todo!();
+            Ok(tide::Response::new(200))
         });
 
     app.at("/disconnect")
         .get(|req: Request<ServerState>| async move {
-            let camera = req.state().camera.clone();
-
-            if !camera.lock().await.is_connected() {
-                Ok("already disconnected")
-            } else {
-                smol::spawn(async {
-                    if let Err(e) = disconnect_camera(camera).await {
-                        error!("error while disconnecting from camera: {:#?}", e);
-                    }
-                })
-                .detach();
-                Ok("working")
-            }
+            todo!();
+            Ok(tide::Response::new(200))
         });
 
     let address = "127.0.0.1:8080";
@@ -68,7 +50,7 @@ pub async fn serve() -> Result<(), std::io::Error> {
     Ok(())
 }
 
-async fn connect_camera(camera: Arc<Mutex<Camera>>) -> anyhow::Result<()> {
+async fn connect_camera(camera: Arc<Mutex<CameraInterface>>) -> anyhow::Result<()> {
     info!("connecting to camera");
     let mut camera = camera.lock().await;
 
@@ -79,7 +61,7 @@ async fn connect_camera(camera: Arc<Mutex<Camera>>) -> anyhow::Result<()> {
     Ok(())
 }
 
-async fn disconnect_camera(camera: Arc<Mutex<Camera>>) -> anyhow::Result<()> {
+async fn disconnect_camera(camera: Arc<Mutex<CameraInterface>>) -> anyhow::Result<()> {
     info!("disconnecting from to camera");
 
     Ok(())

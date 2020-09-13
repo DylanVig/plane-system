@@ -1,17 +1,19 @@
 use smol::channel::{Receiver, Sender};
 
-use crate::camera::Camera;
+use crate::{interface::camera::CameraError};
 
+use super::Channels;
+
+#[derive(Clone, Debug)]
 pub enum CameraCommand {
     TakeImage,
     ZoomIn,
     ZoomOut,
 }
 
+#[derive(Clone, Debug)]
 pub struct CameraClient {
-    camera: Camera,
-    cmd_recv_channel: (Sender<CameraCommand>, Receiver<CameraCommand>),
-    msg_send_channel: (Sender<CameraCommand>, Receiver<CameraCommand>),
+    pub(crate) channels: Channels<CameraCommand, Result<(), CameraError>>,
 }
 
 impl CameraClient {}

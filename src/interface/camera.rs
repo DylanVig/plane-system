@@ -4,6 +4,8 @@ use std::{
     fmt::{Debug, Display},
 };
 
+use crate::client::{camera::CameraClient, camera::CameraCommand, Channels};
+
 #[cxx::bridge]
 mod ffi {
     extern "C" {
@@ -73,9 +75,9 @@ mod ffi {
 unsafe impl Send for ffi::socc_examples_fixture {}
 unsafe impl Send for ffi::socc_ptp {}
 
-#[derive(FromPrimitive, Debug)]
+#[derive(FromPrimitive, Debug, Copy, Clone)]
 #[repr(i32)]
-enum CameraError {
+pub enum CameraError {
     NotSupported = -1,
     InvalidParamter = -2,
 
@@ -106,10 +108,11 @@ impl Error for CameraError {
     }
 }
 
-pub(crate) struct Camera {
+pub struct CameraInterface {
     _ptp: UniquePtr<ffi::socc_ptp>,
     fixture: UniquePtr<ffi::socc_examples_fixture>,
     connected: bool,
+    channels: Channels<CameraCommand, Result<(), CameraError>>,
 }
 
 macro_rules! check_camera_result {
@@ -130,15 +133,16 @@ macro_rules! check_camera_result {
     }};
 }
 
-impl Camera {
-    fn new() -> Self {
+impl CameraInterface {
+    pub fn new() -> Self {
         let mut ptp = unsafe { ffi::make_ptp() };
         let fixture = unsafe { ffi::make_fixture(&mut ptp) };
 
-        Camera {
+        CameraInterface {
             _ptp: ptp,
             fixture,
             connected: false,
+            channels: Channels::new(),
         }
     }
 
@@ -157,7 +161,8 @@ impl Camera {
         check_camera_result!(self.fixture.SDIO_Connect(0x000003, 0x0000DA01, 0x0000DA01));
 
         self.fixture.wait_for_IsEnable_casted(0xD6B1, 0x01, 1000);
-        check_camera_result!(self.fixture
+        check_camera_result!(self
+            .fixture
             .SDIO_SetExtDevicePropValue_str(0xD6B1, "20150801T150000+0900"));
 
         self.fixture.wait_for_IsEnable_casted(0xD6E2, 0x01, 1000);
@@ -174,4 +179,10 @@ impl Camera {
     }
 
     pub fn disconnect(&mut self) {}
+
+    pub fn create_client(&self) -> CameraClient {
+        CameraClient {
+            channels: self.channels.clone(),
+        }
+    }
 }
