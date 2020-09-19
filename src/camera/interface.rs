@@ -4,8 +4,6 @@ use std::{
     fmt::{Debug, Display},
 };
 
-use crate::client::{camera::CameraClient, camera::CameraCommand, Channels};
-
 #[cxx::bridge]
 mod ffi {
     extern "C" {
@@ -112,7 +110,6 @@ pub struct CameraInterface {
     _ptp: UniquePtr<ffi::socc_ptp>,
     fixture: UniquePtr<ffi::socc_examples_fixture>,
     connected: bool,
-    channels: Channels<CameraCommand, Result<(), CameraError>>,
 }
 
 macro_rules! check_camera_result {
@@ -142,7 +139,6 @@ impl CameraInterface {
             _ptp: ptp,
             fixture,
             connected: false,
-            channels: Channels::new(),
         }
     }
 
@@ -179,10 +175,4 @@ impl CameraInterface {
     }
 
     pub fn disconnect(&mut self) {}
-
-    pub fn create_client(&self) -> CameraClient {
-        CameraClient {
-            channels: self.channels.clone(),
-        }
-    }
 }

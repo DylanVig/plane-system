@@ -43,6 +43,60 @@ impl PixhawkClient {
         Ok(())
     }
 
+    pub async fn run(self) {
+        loop {
+            // let (_, message) = self.connection.recv()?;
+
+            // debug!("received message: {:?}", message);
+
+            // match &message {
+            //     apm::MavMessage::common(common::MavMessage::GLOBAL_POSITION_INT(data)) => {
+            //         let gps = PixhawkTelemetryCoords {
+            //             // lat and lon are in degrees * 10^7
+            //             // altitude is in mm
+            //             latitude: data.lat as f32 / 1e7,
+            //             longitude: data.lon as f32 / 1e7,
+            //             altitude: data.relative_alt as f32 / 1e3,
+            //         };
+
+            //         trace!("received global position {:?}", gps);
+            //         self.telemetry.write().await.gps = Some(gps);
+            //     }
+            //     apm::MavMessage::common(common::MavMessage::ATTITUDE(data)) => {
+            //         let attitude = PixhawkTelemetryAttitude {
+            //             // roll, pitch, yaw are in radians/sec
+            //             roll: data.roll as f32,
+            //             pitch: data.pitch as f32,
+            //             yaw: data.yaw as f32,
+            //         };
+
+            //         trace!("received attitude {:?}", attitude);
+            //         self.telemetry.write().await.attitude = Some(attitude);
+            //     }
+            //     apm::MavMessage::CAMERA_FEEDBACK(data) => {
+            //         let gps = PixhawkTelemetryCoords {
+            //             // lat and lon are in degrees * 10^7
+            //             // altitude is in meters
+            //             latitude: data.lat as f32 / 1e7,
+            //             longitude: data.lng as f32 / 1e7,
+            //             altitude: data.alt_rel as f32,
+            //         };
+
+            //         trace!("received camera feedback {:?}", gps);
+            //         self.telemetry.write().await.gps = Some(gps);
+            //     }
+            //     _ => {}
+            // }
+
+            // self.channels.send_response(message).await?;
+
+            // match self.channels.recv_request().await {
+            //   Ok(request) => self.connection.send_default(&request)?,
+            //   Err(_) => {}
+            // }
+        }
+    }
+
     pub async fn wait_for_message<F: Fn(&apm::MavMessage) -> bool>(
         &mut self,
         predicate: F,

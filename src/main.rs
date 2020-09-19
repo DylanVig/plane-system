@@ -7,13 +7,17 @@ extern crate num_derive;
 #[macro_use]
 extern crate async_trait;
 
-mod client;
-mod controller;
+mod camera;
+mod gimbal;
+mod gpio;
+mod image_upload;
+mod pixhawk;
+mod roi_download;
+
+mod state;
 
 fn main() -> anyhow::Result<()> {
     pretty_env_logger::init();
-
-    smol::block_on(server::serve())?;
 
     Ok(())
 }

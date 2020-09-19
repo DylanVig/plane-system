@@ -6,6 +6,8 @@ use std::{
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
 pub struct RegionOfInterestId(usize);
 
+static LAST_ROI_ID: AtomicUsize = AtomicUsize::new(0);
+
 impl RegionOfInterestId {
     pub fn new() -> Self {
         let id = LAST_ROI_ID.fetch_add(1, Ordering::SeqCst);
@@ -13,25 +15,17 @@ impl RegionOfInterestId {
     }
 }
 
-static LAST_ROI_ID: AtomicUsize = AtomicUsize::new(0);
-
 #[derive(Clone, Debug)]
 pub struct RegionOfInterest {
-    latitude: f32,
-    longitude: f32,
+    location: GpsLocation,
     times_captured: u32,
     id: RegionOfInterestId,
 }
 
 impl RegionOfInterest {
-    pub fn new() -> Self {
-        Self::with_coords(0., 0.)
-    }
-
-    pub fn with_coords(latitude: f32, longitude: f32) -> Self {
+    pub fn with_location(location: GpsLocation) -> Self {
         RegionOfInterest {
-            latitude,
-            longitude,
+            location,
             times_captured: 0,
             id: RegionOfInterestId::new(),
         }
@@ -46,9 +40,24 @@ pub enum Mode {
     OffAxis, // TODO figure out logic for off-axis targets
 }
 
+#[derive(Debug, Default, Clone, Copy)]
+pub struct GpsLocation {
+    latitude: f32,
+    longitude: f32,
+}
+
+impl GpsLocation {
+    pub fn new(latitude: f32, longitude: f32) -> Self {
+        GpsLocation {
+            latitude,
+            longitude,
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct Image {
     path: PathBuf,
     mode: Mode,
-    geotag: GPSLocation,
+    geotag: GpsLocation,
 }
