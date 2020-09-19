@@ -2,9 +2,9 @@ use std::rc::Rc;
 
 use mavlink::{self, ardupilotmega as apm};
 use smol::channel::{Receiver, Sender};
-use state::RegionOfInterest;
 
 use crate::client::{camera::CameraClient, pixhawk::PixhawkClient};
+use crate::state::RegionOfInterest;
 
 pub mod state;
 
@@ -23,6 +23,19 @@ pub struct Scheduler {
 
     /// Channel for communicating with the Camera
     camera: Rc<CameraClient>,
+}
+
+impl Scheduler {
+    pub fn new() -> Self {
+        Self::with_rois(Vec<RegionOfInterest>::new())
+    }
+
+    pub fn with_rois(rois: Vec<RegionOfInterest>) {
+        Self {
+            rois: rois,
+            // TODO
+        }
+    }
 }
 
 pub enum SchedulerEvent {

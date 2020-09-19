@@ -1,21 +1,25 @@
+use std::time::{Duration, Instant};
+
 use anyhow::Context;
-use mavlink::{self, ardupilotmega as apm, common, MavConnection};
-use num_traits;
+use smol::net::TcpStream;
 
+use mavlink::{ardupilotmega as apm, common};
 use smol_timeout::TimeoutExt;
-use std::{time::Duration, time::Instant};
 
+use super::interface::PixhawkInterface;
 
-
-use super::{Channels};
-
-#[derive(Debug, Clone)]
 pub struct PixhawkClient {
-    pub(crate) channels: Channels<apm::MavMessage, apm::MavMessage>,
+    interface: PixhawkInterface<TcpStream, TcpStream>,
 }
 
 impl PixhawkClient {
-    pub async fn init(&self) -> anyhow::Result<()> {
+    pub async fn connect() -> anyhow::Result<Self> {
+        let connection = TcpStream::connect("0.0.0.0").await?;
+        let interface = PixhawkInterface::new(connection.clone(), connection.clone());
+        Ok(PixhawkClient { interface })
+    }
+
+    pub async fn init(&mut self) -> anyhow::Result<()> {
         trace!("waiting for heartbeat");
         self.wait_for_message(
             |message| match message {
@@ -40,17 +44,16 @@ impl PixhawkClient {
     }
 
     pub async fn wait_for_message<F: Fn(&apm::MavMessage) -> bool>(
-        &self,
+        &mut self,
         predicate: F,
         timeout: Duration,
     ) -> anyhow::Result<apm::MavMessage> {
         let deadline = Instant::now() + timeout;
-        let receiver = &self.channels.response_channel.1;
 
         loop {
             let remaining_time = deadline - Instant::now();
 
-            let message = receiver.recv().timeout(remaining_time).await;
+            let message = self.interface.recv().timeout(remaining_time).await;
             let message =
                 message.context("Timeout occurred while setting a parameter on the Pixhawk.")?;
             let message = message
@@ -65,7 +68,7 @@ impl PixhawkClient {
     /// Sets a parameter on the Pixhawk and waits for acknowledgement. The
     /// default timeout is 10 seconds.
     pub async fn set_param<T: num_traits::NumCast + std::fmt::Debug>(
-        &self,
+        &mut self,
         id: &str,
         param_value: T,
         param_type: common::MavParamType,
@@ -87,7 +90,7 @@ impl PixhawkClient {
             }));
 
         // send message
-        self.channels.request_channel.0.send(message).await?;
+        self.interface.send(message).await?;
 
         trace!("sent request, waiting for ack");
 
@@ -117,7 +120,7 @@ impl PixhawkClient {
     /// Sets a parameter on the Pixhawk and waits for acknowledgement. The
     /// default timeout is 10 seconds.
     pub async fn send_command(
-        &self,
+        &mut self,
         command: common::MavCmd,
         params: [f32; 7],
     ) -> anyhow::Result<common::MavResult> {
@@ -140,7 +143,7 @@ impl PixhawkClient {
         ));
 
         // send message
-        self.channels.request_channel.0.send(message).await?;
+        self.interface.send(message).await?;
 
         trace!("sent command, waiting for ack");
 
@@ -173,47 +176,47 @@ impl PixhawkClient {
         }
     }
 
-    pub async fn set_param_f32(&self, id: &str, value: f32) -> anyhow::Result<f32> {
+    pub async fn set_param_f32(&mut self, id: &str, value: f32) -> anyhow::Result<f32> {
         self.set_param(id, value, common::MavParamType::MAV_PARAM_TYPE_REAL32)
             .await
     }
 
-    pub async fn set_param_u8(&self, id: &str, value: u8) -> anyhow::Result<u8> {
+    pub async fn set_param_u8(&mut self, id: &str, value: u8) -> anyhow::Result<u8> {
         self.set_param(id, value, common::MavParamType::MAV_PARAM_TYPE_UINT8)
             .await
     }
 
-    pub async fn set_param_i8(&self, id: &str, value: i8) -> anyhow::Result<i8> {
+    pub async fn set_param_i8(&mut self, id: &str, value: i8) -> anyhow::Result<i8> {
         self.set_param(id, value, common::MavParamType::MAV_PARAM_TYPE_INT8)
             .await
     }
 
-    pub async fn set_param_u16(&self, id: &str, value: u16) -> anyhow::Result<u16> {
+    pub async fn set_param_u16(&mut self, id: &str, value: u16) -> anyhow::Result<u16> {
         self.set_param(id, value, common::MavParamType::MAV_PARAM_TYPE_UINT16)
             .await
     }
 
-    pub async fn set_param_i16(&self, id: &str, value: i16) -> anyhow::Result<i16> {
+    pub async fn set_param_i16(&mut self, id: &str, value: i16) -> anyhow::Result<i16> {
         self.set_param(id, value, common::MavParamType::MAV_PARAM_TYPE_INT16)
             .await
     }
 
-    pub async fn set_param_u32(&self, id: &str, value: u32) -> anyhow::Result<u32> {
+    pub async fn set_param_u32(&mut self, id: &str, value: u32) -> anyhow::Result<u32> {
         self.set_param(id, value, common::MavParamType::MAV_PARAM_TYPE_UINT32)
             .await
     }
 
-    pub async fn set_param_i32(&self, id: &str, value: i32) -> anyhow::Result<i32> {
+    pub async fn set_param_i32(&mut self, id: &str, value: i32) -> anyhow::Result<i32> {
         self.set_param(id, value, common::MavParamType::MAV_PARAM_TYPE_INT32)
             .await
     }
 
-    pub async fn set_param_u64(&self, id: &str, value: u64) -> anyhow::Result<u64> {
+    pub async fn set_param_u64(&mut self, id: &str, value: u64) -> anyhow::Result<u64> {
         self.set_param(id, value, common::MavParamType::MAV_PARAM_TYPE_UINT64)
             .await
     }
 
-    pub async fn set_param_i64(&self, id: &str, value: i64) -> anyhow::Result<i64> {
+    pub async fn set_param_i64(&mut self, id: &str, value: i64) -> anyhow::Result<i64> {
         self.set_param(id, value, common::MavParamType::MAV_PARAM_TYPE_INT64)
             .await
     }

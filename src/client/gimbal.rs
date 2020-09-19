@@ -1,6 +1,6 @@
 use crate::state::GPSLocation;
 use smol::channel::{Receiver, Sender};
-pub enum GimbalCommand {
+pub enum GimbalState {
     Fixed,
     Tracking(GPSLocation),
 }

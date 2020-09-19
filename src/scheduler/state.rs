@@ -20,6 +20,7 @@ static LAST_ROI_ID: AtomicUsize = AtomicUsize::new(0);
 pub struct RegionOfInterest {
     latitude: f32,
     longitude: f32,
+    times_captured: u32,
     id: RegionOfInterestId,
 }
 
@@ -32,6 +33,7 @@ impl RegionOfInterest {
         RegionOfInterest {
             latitude,
             longitude,
+            times_captured: 0,
             id: RegionOfInterestId::new(),
         }
     }
@@ -49,6 +51,5 @@ pub enum Mode {
 pub struct Image {
     path: PathBuf,
     mode: Mode,
-    rois: Vec<RegionOfInterest>,
     geotag: GPSLocation,
 }

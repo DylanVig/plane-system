@@ -8,10 +8,7 @@ extern crate num_derive;
 extern crate async_trait;
 
 mod client;
-mod interface;
-mod scheduler;
-mod server;
-mod state;
+mod controller;
 
 fn main() -> anyhow::Result<()> {
     pretty_env_logger::init();
