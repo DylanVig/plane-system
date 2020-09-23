@@ -1,24 +1,30 @@
-use std::time::{Duration, Instant};
+use std::{sync::atomic::AtomicU8, sync::atomic::Ordering, time::{Duration, Instant}};
 
 use anyhow::Context;
-use smol::net::TcpStream;
+use futures::{AsyncRead, AsyncWrite};
+use smol::net::{AsyncToSocketAddrs, TcpStream};
 
-use mavlink::{ardupilotmega as apm, common};
+use mavlink::{MavHeader, ardupilotmega as apm, common};
 use smol_timeout::TimeoutExt;
 
-use super::interface::PixhawkInterface;
+use super::{mavlink_async::read_v2_msg, mavlink_async::write_v2_msg};
 
-pub struct PixhawkClient {
-    interface: PixhawkInterface<TcpStream, TcpStream>,
+pub struct PixhawkClient<S: AsyncRead + AsyncWrite + Send + Unpin> {
+    stream: S,
+    sequence: AtomicU8,
 }
 
-impl PixhawkClient {
-    pub async fn connect() -> anyhow::Result<Self> {
-        let connection = TcpStream::connect("0.0.0.0").await?;
-        let interface = PixhawkInterface::new(connection.clone(), connection.clone());
-        Ok(PixhawkClient { interface })
+impl PixhawkClient<TcpStream> {
+    pub async fn connect<A: AsyncToSocketAddrs>(addr: A) -> anyhow::Result<Self> {
+        let stream = TcpStream::connect(addr).await?;
+        Ok(PixhawkClient {
+            stream,
+            sequence: AtomicU8::default(),
+        })
     }
+}
 
+impl<S: AsyncRead + AsyncWrite + Send + Unpin> PixhawkClient<S> {
     pub async fn init(&mut self) -> anyhow::Result<()> {
         trace!("waiting for heartbeat");
         self.wait_for_message(
@@ -43,58 +49,27 @@ impl PixhawkClient {
         Ok(())
     }
 
-    pub async fn run(self) {
-        loop {
-            // let (_, message) = self.connection.recv()?;
+    pub async fn send(&mut self, message: apm::MavMessage) -> anyhow::Result<()> {
+        let sequence = self.sequence.fetch_add(1, Ordering::SeqCst);
 
-            // debug!("received message: {:?}", message);
+        let header = MavHeader {
+            sequence,
+            system_id: 0,
+            component_id: 0,
+        };
 
-            // match &message {
-            //     apm::MavMessage::common(common::MavMessage::GLOBAL_POSITION_INT(data)) => {
-            //         let gps = PixhawkTelemetryCoords {
-            //             // lat and lon are in degrees * 10^7
-            //             // altitude is in mm
-            //             latitude: data.lat as f32 / 1e7,
-            //             longitude: data.lon as f32 / 1e7,
-            //             altitude: data.relative_alt as f32 / 1e3,
-            //         };
+        write_v2_msg(&mut self.stream, header, &message).await?;
 
-            //         trace!("received global position {:?}", gps);
-            //         self.telemetry.write().await.gps = Some(gps);
-            //     }
-            //     apm::MavMessage::common(common::MavMessage::ATTITUDE(data)) => {
-            //         let attitude = PixhawkTelemetryAttitude {
-            //             // roll, pitch, yaw are in radians/sec
-            //             roll: data.roll as f32,
-            //             pitch: data.pitch as f32,
-            //             yaw: data.yaw as f32,
-            //         };
+        Ok(())
+    }
 
-            //         trace!("received attitude {:?}", attitude);
-            //         self.telemetry.write().await.attitude = Some(attitude);
-            //     }
-            //     apm::MavMessage::CAMERA_FEEDBACK(data) => {
-            //         let gps = PixhawkTelemetryCoords {
-            //             // lat and lon are in degrees * 10^7
-            //             // altitude is in meters
-            //             latitude: data.lat as f32 / 1e7,
-            //             longitude: data.lng as f32 / 1e7,
-            //             altitude: data.alt_rel as f32,
-            //         };
+    /// Starts a task that will run the Pixhawk.
+    pub async fn recv(&mut self) -> anyhow::Result<apm::MavMessage> {
+        let (_, message) = read_v2_msg(&mut self.stream).await?;
 
-            //         trace!("received camera feedback {:?}", gps);
-            //         self.telemetry.write().await.gps = Some(gps);
-            //     }
-            //     _ => {}
-            // }
+        debug!("received message: {:?}", message);
 
-            // self.channels.send_response(message).await?;
-
-            // match self.channels.recv_request().await {
-            //   Ok(request) => self.connection.send_default(&request)?,
-            //   Err(_) => {}
-            // }
-        }
+        Ok(message)
     }
 
     pub async fn wait_for_message<F: Fn(&apm::MavMessage) -> bool>(
@@ -107,7 +82,7 @@ impl PixhawkClient {
         loop {
             let remaining_time = deadline - Instant::now();
 
-            let message = self.interface.recv().timeout(remaining_time).await;
+            let message = self.recv().timeout(remaining_time).await;
             let message =
                 message.context("Timeout occurred while setting a parameter on the Pixhawk.")?;
             let message = message
@@ -144,7 +119,7 @@ impl PixhawkClient {
             }));
 
         // send message
-        self.interface.send(message).await?;
+        self.send(message).await?;
 
         trace!("sent request, waiting for ack");
 
@@ -197,7 +172,7 @@ impl PixhawkClient {
         ));
 
         // send message
-        self.interface.send(message).await?;
+        self.send(message).await?;
 
         trace!("sent command, waiting for ack");
 
