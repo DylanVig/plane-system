@@ -1,20 +1,28 @@
-#[derive(Debug)]
-pub struct PixhawkTelemetry {
-    gps: Option<PixhawkTelemetryCoords>,
-    attitude: Option<PixhawkTelemetryAttitude>,
-    geotag: Option<PixhawkTelemetryCoords>,
+use std::time::SystemTime;
+
+use crate::state::{Attitude, Coords3D};
+
+#[derive(Default, Debug, Clone)]
+pub struct Telemetry {
+    pub coords: Option<Coords3D>,
+    pub attitude: Option<Attitude>,
 }
 
-#[derive(Debug)]
-pub struct PixhawkTelemetryCoords {
-    latitude: f32,
-    longitude: f32,
-    altitude: f32,
-}
-
-#[derive(Debug)]
-pub struct PixhawkTelemetryAttitude {
-    roll: f32,
-    pitch: f32,
-    yaw: f32,
+#[derive(Debug, Clone)]
+pub enum PixhawkMessage {
+    Image {
+        time: SystemTime,
+        foc_len: f32,
+        img_idx: u16,
+        cam_idx: u8,
+        flags: mavlink::ardupilotmega::CameraFeedbackFlags,
+        coords: Coords3D,
+        attitude: Attitude,
+    },
+    Gps {
+        coords: Coords3D,
+    },
+    Orientation {
+        attitude: Attitude,
+    },
 }

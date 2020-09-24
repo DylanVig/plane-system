@@ -1,17 +1,29 @@
-use std::{sync::atomic::AtomicU8, sync::atomic::Ordering, time::{Duration, Instant}};
+use std::{
+    f32::consts::PI,
+    sync::atomic::AtomicU8,
+    sync::atomic::Ordering,
+    time::{Duration, Instant, SystemTime},
+};
 
 use anyhow::Context;
 use futures::{AsyncRead, AsyncWrite};
-use smol::net::{AsyncToSocketAddrs, TcpStream};
+use smol::{
+    channel::Receiver,
+    channel::Sender,
+    net::{AsyncToSocketAddrs, TcpStream},
+};
 
-use mavlink::{MavHeader, ardupilotmega as apm, common};
+use mavlink::{ardupilotmega as apm, common, MavHeader};
 use smol_timeout::TimeoutExt;
 
-use super::{mavlink_async::read_v2_msg, mavlink_async::write_v2_msg};
+use crate::state::{Attitude, Coords3D};
+
+use super::{mavlink_async::read_v2_msg, mavlink_async::write_v2_msg, state::PixhawkMessage};
 
 pub struct PixhawkClient<S: AsyncRead + AsyncWrite + Send + Unpin> {
     stream: S,
     sequence: AtomicU8,
+    channel: (Sender<PixhawkMessage>, Receiver<PixhawkMessage>),
 }
 
 impl PixhawkClient<TcpStream> {
@@ -20,6 +32,7 @@ impl PixhawkClient<TcpStream> {
         Ok(PixhawkClient {
             stream,
             sequence: AtomicU8::default(),
+            channel: smol::channel::unbounded(),
         })
     }
 }
@@ -49,6 +62,7 @@ impl<S: AsyncRead + AsyncWrite + Send + Unpin> PixhawkClient<S> {
         Ok(())
     }
 
+    /// Sends a message to the Pixhawk.
     pub async fn send(&mut self, message: apm::MavMessage) -> anyhow::Result<()> {
         let sequence = self.sequence.fetch_add(1, Ordering::SeqCst);
 
@@ -63,13 +77,66 @@ impl<S: AsyncRead + AsyncWrite + Send + Unpin> PixhawkClient<S> {
         Ok(())
     }
 
-    /// Starts a task that will run the Pixhawk.
+    /// Waits for a message from the Pixhawk, reacts to it, and returns it.
     pub async fn recv(&mut self) -> anyhow::Result<apm::MavMessage> {
         let (_, message) = read_v2_msg(&mut self.stream).await?;
 
         debug!("received message: {:?}", message);
 
+        self.handle(&message).await?;
+
         Ok(message)
+    }
+
+    /// Reacts to a message received from the Pixhawk.
+    async fn handle(&self, message: &apm::MavMessage) -> anyhow::Result<()> {
+        match message {
+            apm::MavMessage::common(common::MavMessage::GLOBAL_POSITION_INT(data)) => {
+                self.channel
+                    .0
+                    .send(PixhawkMessage::Gps {
+                        coords: Coords3D::new(
+                            data.lat as f32 / 1e7,
+                            data.lon as f32 / 1e7,
+                            data.alt as f32 / 1e3,
+                        ),
+                    })
+                    .await?;
+            }
+            apm::MavMessage::common(common::MavMessage::ATTITUDE(data)) => {
+                self.channel
+                    .0
+                    .send(PixhawkMessage::Orientation {
+                        attitude: Attitude::new(
+                            data.roll * 180. / PI,
+                            data.pitch * 180. / PI,
+                            data.yaw * 180. / PI,
+                        ),
+                    })
+                    .await?;
+            }
+            apm::MavMessage::CAMERA_FEEDBACK(data) => {
+                self.channel
+                    .0
+                    .send(PixhawkMessage::Image {
+                        foc_len: data.foc_len,
+                        img_idx: data.img_idx,
+                        cam_idx: data.cam_idx,
+                        flags: data.flags,
+                        time: SystemTime::UNIX_EPOCH + Duration::from_micros(data.time_usec),
+                        attitude: Attitude::new(data.roll, data.pitch, data.yaw),
+                        coords: Coords3D::new(
+                            data.lat as f32 / 1e7,
+                            data.lng as f32 / 1e7,
+                            data.alt_msl,
+                        ),
+                    })
+                    .await?;
+            }
+            _ => {}
+        }
+
+        Ok(())
     }
 
     pub async fn wait_for_message<F: Fn(&apm::MavMessage) -> bool>(
@@ -83,10 +150,10 @@ impl<S: AsyncRead + AsyncWrite + Send + Unpin> PixhawkClient<S> {
             let remaining_time = deadline - Instant::now();
 
             let message = self.recv().timeout(remaining_time).await;
-            let message =
-                message.context("Timeout occurred while setting a parameter on the Pixhawk.")?;
             let message = message
-                .context("The Pixhawk client closed while setting a parameter on the Pixhawk.")?;
+                .context("Timeout occurred while waiting for a message from the Pixhawk.")?;
+            let message =
+                message.context("Error occurred while reading a message from the Pixhawk.")?;
 
             if predicate(&message) {
                 return Ok(message);
