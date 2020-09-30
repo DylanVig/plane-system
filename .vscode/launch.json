@@ -20,8 +20,9 @@
         }
       },
       "env": {
-        "RUST_LOG": "plane_system=debug",
-        "RUST_LOG_STYLE": "always"
+        "RUST_LOG": "plane_system=trace",
+        "RUST_LOG_STYLE": "always",
+        "RUST_BACKTRACE": "1"
       },
       "args": [],
       "cwd": "${workspaceFolder}"
@@ -44,6 +45,17 @@
       },
       "args": [],
       "cwd": "${workspaceFolder}"
+    },
+    {
+      "name": "Python: Current File",
+      "type": "python",
+      "request": "launch",
+      "program": "${file}",
+      "console": "integratedTerminal",
+      "justMyCode": false,
+      "env": {
+        "MAVLINK20": "1"
+      }
     }
   ]
 }

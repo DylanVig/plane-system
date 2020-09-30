@@ -34,7 +34,7 @@ pub async fn read_v2_msg<M: Message, R: AsyncRead + Unpin>(
 
         let payload_len = header[0] as usize;
         let incompat_flags = header[1];
-        let compat_flags = header[2];
+        // let compat_flags = header[2];
         let seq = header[3];
         let sysid = header[4];
         let compid = header[5];

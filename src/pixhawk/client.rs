@@ -1,55 +1,66 @@
-use std::{
-    f32::consts::PI,
-    sync::atomic::AtomicU8,
-    sync::atomic::Ordering,
-    time::{Duration, Instant, SystemTime},
-};
+use std::{f32::consts::PI, io::Read, io::Write, net::SocketAddr, sync::atomic::AtomicU8, sync::atomic::Ordering, time::{Duration, Instant, SystemTime}};
 
 use anyhow::Context;
-use futures::{AsyncRead, AsyncWrite};
+use bytes::{Buf, BytesMut};
+use futures::{AsyncRead, AsyncWrite, StreamExt};
 use smol::{
     channel::Receiver,
     channel::Sender,
-    net::{AsyncToSocketAddrs, TcpStream},
+    io::AsyncReadExt,
+    io::AsyncWriteExt,
+    net::{AsyncToSocketAddrs, TcpStream, UdpSocket},
 };
 
-use mavlink::{ardupilotmega as apm, common, MavHeader};
+use mavlink::{
+    ardupilotmega as apm, common, error::MessageReadError, error::ParserError, MavHeader,
+    MAV_STX_V2,
+};
 use smol_timeout::TimeoutExt;
 
 use crate::state::{Attitude, Coords3D};
 
 use super::{mavlink_async::read_v2_msg, mavlink_async::write_v2_msg, state::PixhawkMessage};
 
-pub struct PixhawkClient<S: AsyncRead + AsyncWrite + Send + Unpin> {
-    stream: S,
+pub struct PixhawkClient {
+    sock: std::net::TcpStream,
+    buf: BytesMut,
     sequence: AtomicU8,
     channel: (Sender<PixhawkMessage>, Receiver<PixhawkMessage>),
 }
 
-impl PixhawkClient<TcpStream> {
+impl PixhawkClient {
     pub async fn connect<A: AsyncToSocketAddrs>(addr: A) -> anyhow::Result<Self> {
-        let stream = TcpStream::connect(addr).await?;
+        let sock = std::net::TcpStream::connect(":::5763")?;
+
+        // let sock = UdpSocket::bind(":::14551")
+        //     .await
+        //     .context("failed to bind udp socket")?;
+
+        // sock.connect(":::14552")
+        //     .await
+        //     .context("failed to connect to pixhawk")?;
+
         Ok(PixhawkClient {
-            stream,
+            sock,
+            buf: BytesMut::with_capacity(1024),
             sequence: AtomicU8::default(),
             channel: smol::channel::unbounded(),
         })
     }
-}
 
-impl<S: AsyncRead + AsyncWrite + Send + Unpin> PixhawkClient<S> {
     pub async fn init(&mut self) -> anyhow::Result<()> {
-        trace!("waiting for heartbeat");
+        info!("waiting for heartbeat");
         self.wait_for_message(
             |message| match message {
                 apm::MavMessage::common(common::MavMessage::HEARTBEAT(_)) => true,
                 _ => false,
             },
-            Duration::from_secs(10),
+            Duration::from_secs(100),
         )
         .await?;
-        trace!("received heartbeat");
-        trace!("setting parameters");
+        info!("received heartbeat");
+        info!("setting parameters");
+        self.ping().await?;
         self.set_param_f32("CAM_DURATION", 10.0).await?;
         self.set_param_u8("CAM_FEEDBACK_PIN", 54).await?;
         self.set_param_u8("CAM_FEEDBACK_POL", 1).await?;
@@ -66,26 +77,102 @@ impl<S: AsyncRead + AsyncWrite + Send + Unpin> PixhawkClient<S> {
     pub async fn send(&mut self, message: apm::MavMessage) -> anyhow::Result<()> {
         let sequence = self.sequence.fetch_add(1, Ordering::SeqCst);
 
+        debug!("sending message: {:?}", &message);
+
         let header = MavHeader {
             sequence,
             system_id: 0,
             component_id: 0,
         };
 
-        write_v2_msg(&mut self.stream, header, &message).await?;
+        let mut buf = BytesMut::with_capacity(512);
+        buf.resize(512, 0);
+
+        mavlink::write_v2_msg(&mut buf.as_mut(), header, &message)?;
+
+        self.sock.write(buf.as_ref())?;
+        // self.sock.send_to(buf.as_ref(), ":::14552").await?;
 
         Ok(())
     }
 
     /// Waits for a message from the Pixhawk, reacts to it, and returns it.
     pub async fn recv(&mut self) -> anyhow::Result<apm::MavMessage> {
-        let (_, message) = read_v2_msg(&mut self.stream).await?;
+        let mut chunk = vec![0; 1024];
 
-        debug!("received message: {:?}", message);
+        loop {
+            trace!("buf is {:?} bytes long", self.buf.len());
 
-        self.handle(&message).await?;
+            let magic_position = self.buf.iter().position(|&b| b == 0xFE);
+            let magic_position = match magic_position {
+                // we need at least two bytes after the magic in the buffer
+                Some(magic_position) if magic_position + 2 < self.buf.len() => magic_position,
+                res => {
+                    trace!("requesting more bytes, magic too close to end ({:?})", res);
 
-        Ok(message)
+                    let n = self.sock.read(&mut chunk[..])?;
+                    self.buf.extend(&chunk[..n]);
+                    trace!("read {:?} bytes", n);
+                    continue;
+                }
+            };
+
+            trace!(
+                "found magic at position {:?} in buf length {:?}",
+                magic_position,
+                self.buf.len()
+            );
+
+            let payload_len = self.buf[magic_position + 1];
+            let incompat_flags = self.buf[magic_position + 2];
+
+            // 0x01 = MAVLINK_IFLAG_SIGNED
+            let msg_signed = (incompat_flags & 0x01) == 0x01;
+
+            let msg_body_size = if msg_signed {
+                // 1 byte magic + 1 byte payload size + 1 byte flags + 7 byte header + 2 byte crc + 13 byte signature = 25 bytes
+                payload_len as usize + 25
+            } else {
+                // 1 byte magic + 1 byte payload size + 1 byte flags + 7 byte header + 2 byte crc = 12 bytes
+                payload_len as usize + 12
+            };
+
+            trace!("need {:?} bytes", msg_body_size);
+
+            if magic_position + msg_body_size >= self.buf.len() {
+                trace!("requesting more bytes");
+
+                let mut chunk = vec![0; 1024];
+                let n = self.sock.read(&mut chunk[..])?;
+                self.buf.extend(&chunk[..n]);
+                continue;
+            }
+
+            let msg_content = &self.buf[magic_position..magic_position + msg_body_size];
+            trace!("parsing message: {:?}", msg_content);
+
+            // if we get a bad checksum, just drop the message and try again
+            let msg = match mavlink::read_v1_msg(&mut &msg_content[..]) {
+                Ok((_, msg)) => {
+                    let skip = magic_position + msg_body_size;
+                    trace!("parsed message, success, skipping {:?} bytes", skip);
+                    self.buf.advance(skip);
+                    msg
+                }
+                Err(MessageReadError::Parse(ParserError::InvalidChecksum { expected, actual })) => {
+                    trace!("parsed message, bad checksum (expected {:04X} actual {:04X}), skipping {:?} bytes", expected, actual, magic_position + 1);
+                    self.buf.advance(magic_position + 1);
+                    continue;
+                }
+                Err(err) => return Err(err).context("error while parsing message"),
+            };
+
+            trace!("received message: {:?}", msg);
+
+            self.handle(&msg).await?;
+
+            return Ok(msg);
+        }
     }
 
     /// Reacts to a message received from the Pixhawk.
@@ -161,6 +248,36 @@ impl<S: AsyncRead + AsyncWrite + Send + Unpin> PixhawkClient<S> {
         }
     }
 
+    pub async fn ping(&mut self) -> anyhow::Result<()> {
+        debug!("pinging SITL");
+
+        let message = apm::MavMessage::common(common::MavMessage::PING(common::PING_DATA {
+            time_usec: SystemTime::now()
+                .duration_since(SystemTime::UNIX_EPOCH)
+                .unwrap()
+                .as_millis() as u64,
+            seq: 0,
+            target_system: 0,
+            target_component: 0,
+        }));
+
+        self.send(message).await?;
+
+        self.wait_for_message(
+            |message| match message {
+                apm::MavMessage::common(common::MavMessage::PING(data)) => {
+                    debug!("received ping back");
+                    true
+                }
+                _ => false,
+            },
+            Duration::from_secs(10),
+        )
+        .await?;
+
+        Ok(())
+    }
+
     /// Sets a parameter on the Pixhawk and waits for acknowledgement. The
     /// default timeout is 10 seconds.
     pub async fn set_param<T: num_traits::NumCast + std::fmt::Debug>(
@@ -169,7 +286,7 @@ impl<S: AsyncRead + AsyncWrite + Send + Unpin> PixhawkClient<S> {
         param_value: T,
         param_type: common::MavParamType,
     ) -> anyhow::Result<T> {
-        trace!("setting param {:?} to {:?}", id, param_value);
+        debug!("setting param {:?} to {:?}", id, param_value);
 
         let mut param_id: [char; 16] = ['\0'; 16];
         for (index, character) in id.char_indices() {
@@ -188,7 +305,7 @@ impl<S: AsyncRead + AsyncWrite + Send + Unpin> PixhawkClient<S> {
         // send message
         self.send(message).await?;
 
-        trace!("sent request, waiting for ack");
+        debug!("sent request, waiting for ack");
 
         // wait for ack or timeout
         let ack_message = self
@@ -201,12 +318,13 @@ impl<S: AsyncRead + AsyncWrite + Send + Unpin> PixhawkClient<S> {
                 },
                 Duration::from_secs(10),
             )
-            .await?;
+            .await
+            .context("Error occurred while waiting for ack after setting parameter")?;
 
         match ack_message {
             apm::MavMessage::common(common::MavMessage::PARAM_VALUE(data)) => {
                 let param_value = num_traits::cast(data.param_value).unwrap();
-                trace!("received ack, current param value is {:?}", param_value);
+                debug!("received ack, current param value is {:?}", param_value);
                 Ok(param_value)
             }
             _ => unreachable!(),
@@ -220,7 +338,7 @@ impl<S: AsyncRead + AsyncWrite + Send + Unpin> PixhawkClient<S> {
         command: common::MavCmd,
         params: [f32; 7],
     ) -> anyhow::Result<common::MavResult> {
-        trace!("sending command {:?} ({:?})", command, params);
+        debug!("sending command {:?} ({:?})", command, params);
 
         let message = apm::MavMessage::common(common::MavMessage::COMMAND_LONG(
             common::COMMAND_LONG_DATA {
@@ -241,7 +359,7 @@ impl<S: AsyncRead + AsyncWrite + Send + Unpin> PixhawkClient<S> {
         // send message
         self.send(message).await?;
 
-        trace!("sent command, waiting for ack");
+        debug!("sent command, waiting for ack");
 
         // wait for ack or timeout
         let ack_message = self
@@ -256,7 +374,7 @@ impl<S: AsyncRead + AsyncWrite + Send + Unpin> PixhawkClient<S> {
             )
             .await?;
 
-        trace!("received ack");
+        debug!("received ack");
 
         match ack_message {
             apm::MavMessage::common(common::MavMessage::COMMAND_ACK(data)) => match data.result {
