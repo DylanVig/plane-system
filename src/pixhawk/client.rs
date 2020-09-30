@@ -1,8 +1,5 @@
 use std::{
     f32::consts::PI,
-    io::Read,
-    io::Write,
-    net::SocketAddr,
     sync::atomic::AtomicU8,
     sync::atomic::Ordering,
     time::{Duration, Instant, SystemTime},
@@ -10,24 +7,22 @@ use std::{
 
 use anyhow::Context;
 use bytes::{Buf, BytesMut};
-use futures::{AsyncRead, AsyncWrite, StreamExt};
 use smol::{
     channel::Receiver,
     channel::Sender,
     io::AsyncReadExt,
     io::AsyncWriteExt,
-    net::{AsyncToSocketAddrs, TcpStream, UdpSocket},
+    net::{AsyncToSocketAddrs, TcpStream},
 };
 
 use mavlink::{
     ardupilotmega as apm, common, error::MessageReadError, error::ParserError, MavHeader,
-    MAV_STX_V2,
 };
 use smol_timeout::TimeoutExt;
 
 use crate::state::{Attitude, Coords3D};
 
-use super::{mavlink_async::read_v2_msg, mavlink_async::write_v2_msg, state::PixhawkMessage};
+use super::state::PixhawkMessage;
 
 pub struct PixhawkClient {
     sock: TcpStream,
@@ -38,7 +33,9 @@ pub struct PixhawkClient {
 
 impl PixhawkClient {
     pub async fn connect<A: AsyncToSocketAddrs>(addr: A) -> anyhow::Result<Self> {
-        let sock = TcpStream::connect(":::5763").await?;
+        let sock = TcpStream::connect(addr)
+            .await
+            .context("failed to connect to pixhawk")?;
 
         Ok(PixhawkClient {
             sock,
@@ -57,7 +54,8 @@ impl PixhawkClient {
             },
             Duration::from_secs(100),
         )
-        .await?;
+        .await
+        .context("waiting for heartbeat")?;
 
         info!("received heartbeat");
         info!("setting parameters");

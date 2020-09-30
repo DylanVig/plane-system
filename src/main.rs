@@ -6,8 +6,6 @@ extern crate log;
 extern crate anyhow;
 #[macro_use]
 extern crate num_derive;
-#[macro_use]
-extern crate async_trait;
 
 mod camera;
 mod gimbal;
@@ -28,7 +26,10 @@ fn main() -> anyhow::Result<()> {
 
         async move {
             info!("connecting to pixhawk");
-            let mut client = pixhawk::client::PixhawkClient::connect(":::14551").await?;
+
+            // pixhawk telemetry should be exposed on localhost:5763 for SITL
+            // TODO: add case for when it's not the SITL
+            let mut client = pixhawk::client::PixhawkClient::connect(":::5763").await?;
 
             info!("initializing pixhawk");
             client.init().await?;
