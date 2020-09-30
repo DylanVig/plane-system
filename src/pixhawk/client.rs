@@ -1,4 +1,12 @@
-use std::{f32::consts::PI, io::Read, io::Write, net::SocketAddr, sync::atomic::AtomicU8, sync::atomic::Ordering, time::{Duration, Instant, SystemTime}};
+use std::{
+    f32::consts::PI,
+    io::Read,
+    io::Write,
+    net::SocketAddr,
+    sync::atomic::AtomicU8,
+    sync::atomic::Ordering,
+    time::{Duration, Instant, SystemTime},
+};
 
 use anyhow::Context;
 use bytes::{Buf, BytesMut};
@@ -22,7 +30,7 @@ use crate::state::{Attitude, Coords3D};
 use super::{mavlink_async::read_v2_msg, mavlink_async::write_v2_msg, state::PixhawkMessage};
 
 pub struct PixhawkClient {
-    sock: std::net::TcpStream,
+    sock: TcpStream,
     buf: BytesMut,
     sequence: AtomicU8,
     channel: (Sender<PixhawkMessage>, Receiver<PixhawkMessage>),
@@ -30,15 +38,7 @@ pub struct PixhawkClient {
 
 impl PixhawkClient {
     pub async fn connect<A: AsyncToSocketAddrs>(addr: A) -> anyhow::Result<Self> {
-        let sock = std::net::TcpStream::connect(":::5763")?;
-
-        // let sock = UdpSocket::bind(":::14551")
-        //     .await
-        //     .context("failed to bind udp socket")?;
-
-        // sock.connect(":::14552")
-        //     .await
-        //     .context("failed to connect to pixhawk")?;
+        let sock = TcpStream::connect(":::5763").await?;
 
         Ok(PixhawkClient {
             sock,
@@ -58,9 +58,10 @@ impl PixhawkClient {
             Duration::from_secs(100),
         )
         .await?;
+
         info!("received heartbeat");
         info!("setting parameters");
-        self.ping().await?;
+
         self.set_param_f32("CAM_DURATION", 10.0).await?;
         self.set_param_u8("CAM_FEEDBACK_PIN", 54).await?;
         self.set_param_u8("CAM_FEEDBACK_POL", 1).await?;
@@ -70,6 +71,8 @@ impl PixhawkClient {
         )
         .await?;
 
+        info!("finished initialization");
+
         Ok(())
     }
 
@@ -77,44 +80,46 @@ impl PixhawkClient {
     pub async fn send(&mut self, message: apm::MavMessage) -> anyhow::Result<()> {
         let sequence = self.sequence.fetch_add(1, Ordering::SeqCst);
 
-        debug!("sending message: {:?}", &message);
+        trace!("sending message: {:?}", &message);
 
         let header = MavHeader {
             sequence,
-            system_id: 0,
-            component_id: 0,
+            system_id: 1,
+            component_id: 1,
         };
 
-        let mut buf = BytesMut::with_capacity(512);
-        buf.resize(512, 0);
+        let mut buf = Vec::with_capacity(1024);
 
-        mavlink::write_v2_msg(&mut buf.as_mut(), header, &message)?;
+        mavlink::write_v1_msg(&mut buf, header, &message)?;
 
-        self.sock.write(buf.as_ref())?;
-        // self.sock.send_to(buf.as_ref(), ":::14552").await?;
+        self.sock.write(buf.as_ref()).await?;
 
         Ok(())
     }
 
     /// Waits for a message from the Pixhawk, reacts to it, and returns it.
     pub async fn recv(&mut self) -> anyhow::Result<apm::MavMessage> {
-        let mut chunk = vec![0; 1024];
-
         loop {
+            let mut chunk = vec![0; 1024];
+
             trace!("buf is {:?} bytes long", self.buf.len());
 
-            let magic_position = self.buf.iter().position(|&b| b == 0xFE);
-            let magic_position = match magic_position {
-                // we need at least two bytes after the magic in the buffer
-                Some(magic_position) if magic_position + 2 < self.buf.len() => magic_position,
-                res => {
-                    trace!("requesting more bytes, magic too close to end ({:?})", res);
+            let magic_position = loop {
+                let magic_position = self.buf.iter().position(|&b| b == 0xFE);
 
-                    let n = self.sock.read(&mut chunk[..])?;
-                    self.buf.extend(&chunk[..n]);
-                    trace!("read {:?} bytes", n);
-                    continue;
-                }
+                match magic_position {
+                    // we need at least two bytes after the magic in the buffer
+                    Some(magic_position) if magic_position + 2 < self.buf.len() => {
+                        break magic_position
+                    }
+                    res => {
+                        trace!("requesting more bytes, magic too close to end ({:?})", res);
+
+                        let n = self.sock.read(&mut chunk[..]).await?;
+                        self.buf.extend(&chunk[..n]);
+                        trace!("read {:?} bytes", n);
+                    }
+                };
             };
 
             trace!(
@@ -124,44 +129,32 @@ impl PixhawkClient {
             );
 
             let payload_len = self.buf[magic_position + 1];
-            let incompat_flags = self.buf[magic_position + 2];
 
-            // 0x01 = MAVLINK_IFLAG_SIGNED
-            let msg_signed = (incompat_flags & 0x01) == 0x01;
-
-            let msg_body_size = if msg_signed {
-                // 1 byte magic + 1 byte payload size + 1 byte flags + 7 byte header + 2 byte crc + 13 byte signature = 25 bytes
-                payload_len as usize + 25
-            } else {
-                // 1 byte magic + 1 byte payload size + 1 byte flags + 7 byte header + 2 byte crc = 12 bytes
-                payload_len as usize + 12
-            };
+            // in v1: 1 byte magic + 1 byte payload + 4 byte header + 2 byte checksum
+            let msg_body_size = payload_len as usize + 8;
 
             trace!("need {:?} bytes", msg_body_size);
 
-            if magic_position + msg_body_size >= self.buf.len() {
-                trace!("requesting more bytes");
+            while magic_position + msg_body_size >= self.buf.len() {
+                trace!("requesting more bytes, buffer insufficient");
 
                 let mut chunk = vec![0; 1024];
-                let n = self.sock.read(&mut chunk[..])?;
+                let n = self.sock.read(&mut chunk[..]).await?;
                 self.buf.extend(&chunk[..n]);
-                continue;
             }
 
             let msg_content = &self.buf[magic_position..magic_position + msg_body_size];
-            trace!("parsing message: {:?}", msg_content);
 
             // if we get a bad checksum, just drop the message and try again
             let msg = match mavlink::read_v1_msg(&mut &msg_content[..]) {
-                Ok((_, msg)) => {
+                Ok((header, msg)) => {
                     let skip = magic_position + msg_body_size;
                     trace!("parsed message, success, skipping {:?} bytes", skip);
                     self.buf.advance(skip);
                     msg
                 }
-                Err(MessageReadError::Parse(ParserError::InvalidChecksum { expected, actual })) => {
-                    trace!("parsed message, bad checksum (expected {:04X} actual {:04X}), skipping {:?} bytes", expected, actual, magic_position + 1);
-                    self.buf.advance(magic_position + 1);
+                Err(MessageReadError::Parse(ParserError::InvalidChecksum { .. })) => {
+                    trace!("got invalid checksum, dropping message");
                     continue;
                 }
                 Err(err) => return Err(err).context("error while parsing message"),
@@ -249,7 +242,7 @@ impl PixhawkClient {
     }
 
     pub async fn ping(&mut self) -> anyhow::Result<()> {
-        debug!("pinging SITL");
+        debug!("pinging pixhawk");
 
         let message = apm::MavMessage::common(common::MavMessage::PING(common::PING_DATA {
             time_usec: SystemTime::now()
