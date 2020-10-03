@@ -17,7 +17,6 @@ use tokio::{
 use mavlink::{
     ardupilotmega as apm, common, error::MessageReadError, error::ParserError, MavHeader,
 };
-use smol_timeout::TimeoutExt;
 
 use crate::state::{Attitude, Coords3D};
 
@@ -223,7 +222,7 @@ impl PixhawkClient {
         loop {
             let remaining_time = deadline - Instant::now();
 
-            let message = self.recv().timeout(remaining_time).await;
+            let message = tokio::time::timeout(remaining_time, self.recv()).await;
             let message = message
                 .context("Timeout occurred while waiting for a message from the Pixhawk.")?;
             let message =
