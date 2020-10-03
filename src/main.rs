@@ -16,12 +16,13 @@ mod roi_download;
 
 mod state;
 
-fn main() -> anyhow::Result<()> {
+#[tokio::main]
+async fn main() -> anyhow::Result<()> {
     pretty_env_logger::init();
 
     let loop_continue = Arc::new(AtomicBool::new(true));
 
-    let pixhawk_task = smol::spawn({
+    let pixhawk_task = tokio::spawn({
         let loop_continue = loop_continue.clone();
 
         async move {
@@ -43,7 +44,7 @@ fn main() -> anyhow::Result<()> {
         }
     });
 
-    smol::block_on(pixhawk_task)?;
+    let _ = pixhawk_task.await?;
 
     Ok(())
 }

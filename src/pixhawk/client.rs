@@ -7,18 +7,16 @@ use std::{
 
 use anyhow::Context;
 use bytes::{Buf, BytesMut};
-use smol::{
-    channel::Receiver,
-    channel::Sender,
+use tokio::{
+    sync::broadcast,
     io::AsyncReadExt,
     io::AsyncWriteExt,
-    net::{AsyncToSocketAddrs, TcpStream},
+    net::{ToSocketAddrs, TcpStream},
 };
 
 use mavlink::{
     ardupilotmega as apm, common, error::MessageReadError, error::ParserError, MavHeader,
 };
-use smol_timeout::TimeoutExt;
 
 use crate::state::{Attitude, Coords3D};
 
@@ -28,11 +26,11 @@ pub struct PixhawkClient {
     sock: TcpStream,
     buf: BytesMut,
     sequence: AtomicU8,
-    channel: (Sender<PixhawkMessage>, Receiver<PixhawkMessage>),
+    channel: (broadcast::Sender<PixhawkMessage>, broadcast::Receiver<PixhawkMessage>)
 }
 
 impl PixhawkClient {
-    pub async fn connect<A: AsyncToSocketAddrs>(addr: A) -> anyhow::Result<Self> {
+    pub async fn connect<A: ToSocketAddrs>(addr: A) -> anyhow::Result<Self> {
         let sock = TcpStream::connect(addr)
             .await
             .context("failed to connect to pixhawk")?;
@@ -41,7 +39,7 @@ impl PixhawkClient {
             sock,
             buf: BytesMut::with_capacity(1024),
             sequence: AtomicU8::default(),
-            channel: smol::channel::unbounded(),
+            channel: broadcast::channel(1024),
         })
     }
 
@@ -178,8 +176,7 @@ impl PixhawkClient {
                             data.lon as f32 / 1e7,
                             data.alt as f32 / 1e3,
                         ),
-                    })
-                    .await?;
+                    }).unwrap();
             }
             apm::MavMessage::common(common::MavMessage::ATTITUDE(data)) => {
                 self.channel
@@ -190,8 +187,7 @@ impl PixhawkClient {
                             data.pitch * 180. / PI,
                             data.yaw * 180. / PI,
                         ),
-                    })
-                    .await?;
+                    }).unwrap();
             }
             apm::MavMessage::CAMERA_FEEDBACK(data) => {
                 self.channel
@@ -208,8 +204,7 @@ impl PixhawkClient {
                             data.lng as f32 / 1e7,
                             data.alt_msl,
                         ),
-                    })
-                    .await?;
+                    }).unwrap();
             }
             _ => {}
         }
@@ -227,7 +222,7 @@ impl PixhawkClient {
         loop {
             let remaining_time = deadline - Instant::now();
 
-            let message = self.recv().timeout(remaining_time).await;
+            let message = tokio::time::timeout(remaining_time, self.recv()).await;
             let message = message
                 .context("Timeout occurred while waiting for a message from the Pixhawk.")?;
             let message =
