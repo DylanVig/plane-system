@@ -1,9 +1,9 @@
 use std::rc::Rc;
 
 use mavlink::{self, ardupilotmega as apm};
-use smol::channel::{Receiver, Sender};
+use tokio::{sync::broadcast}
 
-use crate::client::{camera::CameraClient, pixhawk::PixhawkClient};
+use crate::client::{camera::CameraClient, pixhawk::PixhawkMessage};
 use crate::state::RegionOfInterest;
 
 pub mod state;
@@ -18,11 +18,11 @@ pub struct Scheduler {
     /// over increasing ground coverage.
     rois: Vec<RegionOfInterest>,
 
-    /// Channel for communicating with the Pixhawk.
-    pixhawk: Rc<PixhawkClient>,
+    /// Channel for receiving from the pixhawk client
+    pixhawk_rx: broadcast::Receiver<PixhawkMessage>,
 
     /// Channel for communicating with the Camera
-    camera: Rc<CameraClient>,
+    // camera: Rc<CameraClient>,
 }
 
 impl Scheduler {
