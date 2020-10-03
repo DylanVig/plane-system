@@ -1,5 +1,5 @@
 fn main() {
-    cxx_build::bridge("src/camera/client.rs")
+    cxx_build::bridge("src/camera/interface.rs")
         .include("vendor/libsoccptp/include")
         .include("vendor/libsoccptp/ports")
         .file("vendor/libsoccptp/ports/ports_usb_impl.cpp")
