@@ -106,7 +106,7 @@ impl Error for CameraError {
     }
 }
 
-pub struct CameraInterface {
+pub struct CameraClient {
     _ptp: UniquePtr<ffi::socc_ptp>,
     fixture: UniquePtr<ffi::socc_examples_fixture>,
     connected: bool,
@@ -130,12 +130,12 @@ macro_rules! check_camera_result {
     }};
 }
 
-impl CameraInterface {
+impl CameraClient {
     pub fn new() -> Self {
         let mut ptp = unsafe { ffi::make_ptp() };
         let fixture = unsafe { ffi::make_fixture(&mut ptp) };
 
-        CameraInterface {
+        CameraClient {
             _ptp: ptp,
             fixture,
             connected: false,
