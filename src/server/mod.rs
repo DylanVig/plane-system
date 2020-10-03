@@ -54,7 +54,7 @@ async fn connect_camera(camera: Arc<Mutex<CameraInterface>>) -> anyhow::Result<(
     info!("connecting to camera");
     let mut camera = camera.lock().await;
 
-    camera.connect().context("failed to connect to camera")?;
+    camera.connect().await.context("failed to connect to camera")?;
 
     info!("connected to camera");
 

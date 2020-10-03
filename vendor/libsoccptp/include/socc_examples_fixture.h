@@ -301,6 +301,11 @@ public:
         return ret;
     }
 
+    int SDIO_ControlDevice_u16(uint16_t code, uint16_t value)
+    {
+        return SDIO_ControlDevice(code, value);
+    }
+
     template <typename T>
     int SDIO_SetExtDevicePropValue(uint16_t code, T value)
     {
