@@ -2,23 +2,27 @@ use std::{
     f32::consts::PI,
     sync::atomic::AtomicU8,
     sync::atomic::Ordering,
+    sync::Arc,
     time::{Duration, Instant, SystemTime},
 };
 
 use anyhow::Context;
 use bytes::{Buf, BytesMut};
 use tokio::{
-    sync::broadcast,
     io::AsyncReadExt,
     io::AsyncWriteExt,
-    net::{ToSocketAddrs, TcpStream},
+    net::{TcpStream, ToSocketAddrs},
+    sync::broadcast,
 };
 
 use mavlink::{
     ardupilotmega as apm, common, error::MessageReadError, error::ParserError, MavHeader,
 };
 
-use crate::state::{Attitude, Coords3D};
+use crate::{
+    state::{Attitude, Coords3D},
+    Channels,
+};
 
 use super::state::PixhawkMessage;
 
@@ -26,11 +30,14 @@ pub struct PixhawkClient {
     sock: TcpStream,
     buf: BytesMut,
     sequence: AtomicU8,
-    channel: (broadcast::Sender<PixhawkMessage>, broadcast::Receiver<PixhawkMessage>)
+    channels: Arc<Channels>,
 }
 
 impl PixhawkClient {
-    pub async fn connect<A: ToSocketAddrs>(addr: A) -> anyhow::Result<Self> {
+    pub async fn connect<A: ToSocketAddrs>(
+        channels: Arc<Channels>,
+        addr: A,
+    ) -> anyhow::Result<Self> {
         let sock = TcpStream::connect(addr)
             .await
             .context("failed to connect to pixhawk")?;
@@ -39,7 +46,7 @@ impl PixhawkClient {
             sock,
             buf: BytesMut::with_capacity(1024),
             sequence: AtomicU8::default(),
-            channel: broadcast::channel(1024),
+            channels,
         })
     }
 
@@ -164,34 +171,52 @@ impl PixhawkClient {
         }
     }
 
+    pub async fn run(&mut self) -> anyhow::Result<()> {
+        info!("initializing pixhawk");
+        self.init().await?;
+
+        let mut interrupt_recv = self.channels.interrupt.subscribe();
+
+        loop {
+            let msg = self.recv().await?;
+            trace!("received message: {:?}", msg);
+
+            if let Ok(()) = interrupt_recv.try_recv() {
+                break;
+            }
+        }
+
+        Ok(())
+    }
+
     /// Reacts to a message received from the Pixhawk.
     async fn handle(&self, message: &apm::MavMessage) -> anyhow::Result<()> {
         match message {
             apm::MavMessage::common(common::MavMessage::GLOBAL_POSITION_INT(data)) => {
-                self.channel
-                    .0
+                let _ = self.channels
+                    .pixhawk
                     .send(PixhawkMessage::Gps {
                         coords: Coords3D::new(
                             data.lat as f32 / 1e7,
                             data.lon as f32 / 1e7,
                             data.alt as f32 / 1e3,
                         ),
-                    }).unwrap();
+                    });
             }
             apm::MavMessage::common(common::MavMessage::ATTITUDE(data)) => {
-                self.channel
-                    .0
+                let _ = self.channels
+                    .pixhawk
                     .send(PixhawkMessage::Orientation {
                         attitude: Attitude::new(
                             data.roll * 180. / PI,
                             data.pitch * 180. / PI,
                             data.yaw * 180. / PI,
                         ),
-                    }).unwrap();
+                    });
             }
             apm::MavMessage::CAMERA_FEEDBACK(data) => {
-                self.channel
-                    .0
+                let _ = self.channels
+                    .pixhawk
                     .send(PixhawkMessage::Image {
                         foc_len: data.foc_len,
                         img_idx: data.img_idx,
@@ -204,7 +229,7 @@ impl PixhawkClient {
                             data.lng as f32 / 1e7,
                             data.alt_msl,
                         ),
-                    }).unwrap();
+                    });
             }
             _ => {}
         }

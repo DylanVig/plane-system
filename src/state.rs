@@ -3,7 +3,9 @@ use std::{
     sync::atomic::{AtomicUsize, Ordering},
 };
 
-#[derive(Copy, Clone, Eq, PartialEq, Debug)]
+use serde::{Deserialize, Serialize};
+
+#[derive(Copy, Clone, Eq, PartialEq, Debug, Serialize, Deserialize)]
 pub struct RegionOfInterestId(usize);
 
 static LAST_ROI_ID: AtomicUsize = AtomicUsize::new(0);
@@ -15,21 +17,33 @@ impl RegionOfInterestId {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct RegionOfInterest {
-    location: Coords2D,
-    times_captured: u32,
     id: RegionOfInterestId,
+    location: Coords2D,
+    kind: RegionOfInterestKind,
+
+    #[serde(default)]
+    times_captured: u32,
 }
 
 impl RegionOfInterest {
-    pub fn with_location(location: Coords2D) -> Self {
+    pub fn with_location_and_kind(location: Coords2D, kind: RegionOfInterestKind) -> Self {
         RegionOfInterest {
             location,
             times_captured: 0,
             id: RegionOfInterestId::new(),
+            kind,
         }
     }
+}
+
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum RegionOfInterestKind {
+    Normal,
+    OffAxis,
+    EmergentTarget,
 }
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
@@ -40,7 +54,7 @@ pub enum Mode {
     OffAxis, // TODO figure out logic for off-axis targets
 }
 
-#[derive(Debug, Default, Clone, Copy)]
+#[derive(Debug, Default, Clone, Copy, Serialize, Deserialize)]
 pub struct Coords2D {
     /// Latitude in degrees
     pub latitude: f32,

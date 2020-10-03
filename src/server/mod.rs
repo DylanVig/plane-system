@@ -1,15 +1,34 @@
 use anyhow::Context;
+use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tide::{self, Request};
 
+use crate::state::RegionOfInterest;
+
 #[derive(Clone)]
-struct ServerState {
+struct ServerState {}
+
+enum ServerMessage {
+    AddROIs(Vec<RegionOfInterest>),
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+struct AddROIs {
+    pub rois: Vec<RegionOfInterest>,
+    pub client_type: ClientType,
+}
+
+#[derive(Serialize, Deserialize, Debug, Copy, Clone, Eq, PartialEq)]
+#[serde(rename_all = "lowercase")]
+enum ClientType {
+    MDLC,
+    ADLC,
 }
 
 pub async fn serve() -> Result<(), std::io::Error> {
     info!("initializing server");
 
-    let state = ServerState { };
+    let state = ServerState {};
 
     let mut app = tide::with_state(state);
 
@@ -33,9 +52,14 @@ pub async fn serve() -> Result<(), std::io::Error> {
             Ok(tide::Response::new(200))
         });
 
-    app.at("/api")
-        .get(|req: Request<ServerState>| async move {
-            todo!();
+    let mut api = app.at("/api");
+
+    api.at("/add-roi")
+        .post(|mut req: Request<ServerState>| async move {
+            let body: AddROIs = req.body_json().await?;
+
+            debug!("received ROIs: {:?}", &body);
+
             Ok(tide::Response::new(200))
         });
 
