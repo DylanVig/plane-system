@@ -26,14 +26,14 @@ pub struct Scheduler {
 }
 
 impl Scheduler {
-    pub fn new() -> Self {
+    pub fn new(channels: Arc<Channels>) -> Self {
         Self::with_rois(Vec<RegionOfInterest>::new())
     }
 
-    pub fn with_rois(rois: Vec<RegionOfInterest>) {
+    pub fn with_rois(rois: Vec<RegionOfInterest>, channels: Arc<Channels>) {
         Self {
             rois: rois,
-            // TODO
+            pixhawk_rx: channels.pixhawk.subscribe(),
         }
     }
 }

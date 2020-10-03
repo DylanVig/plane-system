@@ -79,10 +79,6 @@ impl PixhawkClient {
         Ok(())
     }
 
-    pub async fn subscribe(&self) -> broadcast::Receiver<PixhawkMessage> {
-        self.channel.0.subscribe()
-    }
-
     /// Sends a message to the Pixhawk.
     pub async fn send(&mut self, message: apm::MavMessage) -> anyhow::Result<()> {
         let sequence = self.sequence.fetch_add(1, Ordering::SeqCst);
