@@ -8,7 +8,6 @@ edition = "2018"
 
 [dependencies]
 cxx = "0.4.6"
-tide = "0.13.0"
 pretty_env_logger = "0.4.0"
 log = "0.4.11"
 anyhow = "1.0.32"
@@ -20,6 +19,8 @@ futures = "0.3.5"
 bytes = "0.5.6"
 tokio = { version = "0.2", features = ["full"] }
 serde = "1.0.116"
+ctrlc = "3.1.6"
+warp = "0.2.5"
 
 [build-dependencies]
 cxx-build = "0.4.6"

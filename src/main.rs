@@ -1,7 +1,8 @@
 use std::{sync::atomic::AtomicBool, sync::atomic::Ordering, sync::Arc};
 
+use ctrlc;
 use pixhawk::{client::PixhawkClient, state::PixhawkMessage};
-use tokio::sync::broadcast;
+use tokio::{spawn, sync::broadcast};
 
 #[macro_use]
 extern crate log;
@@ -41,6 +42,15 @@ async fn main() -> anyhow::Result<()> {
         pixhawk: pixhawk_sender,
     });
 
+    ctrlc::set_handler({
+        let channels = channels.clone();
+
+        move || {
+            let _ = channels.interrupt.send(());
+        }
+    })
+    .expect("could not set ctrl+c handler");
+
     let pixhawk_task = async {
         info!("connecting to pixhawk");
 
@@ -54,9 +64,13 @@ async fn main() -> anyhow::Result<()> {
 
     let mut pixhawk_client = pixhawk_task.await?;
 
-    let pixhawk_task = pixhawk_client.run();
+    let pixhawk_task = spawn(async move { pixhawk_client.run().await });
+    let server_task = spawn(async { server::serve().await });
 
-    let _ = pixhawk_task.await?;
+    let (pixhawk_result, server_result) = futures::future::join(pixhawk_task, server_task).await;
+
+    pixhawk_result??;
+    server_result??;
 
     Ok(())
 }
