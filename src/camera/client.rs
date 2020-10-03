@@ -2,6 +2,7 @@ use cxx::UniquePtr;
 use std::{
     error::Error,
     fmt::{Debug, Display},
+    time::Duration,
 };
 
 #[cxx::bridge]
@@ -44,11 +45,7 @@ mod ffi {
             code: u16,
             data: &str,
         ) -> i32;
-        fn SDIO_ControlDevice_u16(
-            self: &mut socc_examples_fixture,
-            code: u16,
-            value: u16,
-        ) -> i32;
+        fn SDIO_ControlDevice_u16(self: &mut socc_examples_fixture, code: u16, value: u16) -> i32;
 
         fn wait_for_InitiatorVersion(
             self: &mut socc_examples_fixture,
@@ -151,51 +148,50 @@ impl CameraClient {
         self.connected
     }
 
-    pub async fn connect(&mut self) -> anyhow::Result<()> {
-        smol::unblock(|| {
-            check_camera_result!(self.fixture.connect());
+    pub fn connect(&mut self) -> anyhow::Result<()> {
+        check_camera_result!(self.fixture.connect());
 
-            check_camera_result!(self.fixture.OpenSession(1));
+        check_camera_result!(self.fixture.OpenSession(1));
 
-            check_camera_result!(self.fixture.SDIO_Connect(0x000001, 0x0000DA01, 0x0000DA01));
-            check_camera_result!(self.fixture.SDIO_Connect(0x000002, 0x0000DA01, 0x0000DA01));
-            check_camera_result!(self.fixture.wait_for_InitiatorVersion(0x00C8, 1000));
-            check_camera_result!(self.fixture.SDIO_Connect(0x000003, 0x0000DA01, 0x0000DA01));
+        check_camera_result!(self.fixture.SDIO_Connect(0x000001, 0x0000DA01, 0x0000DA01));
+        check_camera_result!(self.fixture.SDIO_Connect(0x000002, 0x0000DA01, 0x0000DA01));
+        check_camera_result!(self.fixture.wait_for_InitiatorVersion(0x00C8, 1000));
+        check_camera_result!(self.fixture.SDIO_Connect(0x000003, 0x0000DA01, 0x0000DA01));
 
-            self.fixture.wait_for_IsEnable_casted(0xD6B1, 0x01, 1000);
-            check_camera_result!(self
-                .fixture
-                .SDIO_SetExtDevicePropValue_str(0xD6B1, "20150801T150000+0900"));
+        self.fixture.wait_for_IsEnable_casted(0xD6B1, 0x01, 1000);
+        check_camera_result!(self
+            .fixture
+            .SDIO_SetExtDevicePropValue_str(0xD6B1, "20150801T150000+0900"));
 
-            self.fixture.wait_for_IsEnable_casted(0xD6E2, 0x01, 1000);
-            self.fixture.SDIO_SetExtDevicePropValue_u8(0xD6E2, 0x02);
-            self.fixture.wait_for_CurrentValue(0xD6E2, 0x02, 1000);
+        self.fixture.wait_for_IsEnable_casted(0xD6E2, 0x01, 1000);
+        self.fixture.SDIO_SetExtDevicePropValue_u8(0xD6E2, 0x02);
+        self.fixture.wait_for_CurrentValue(0xD6E2, 0x02, 1000);
 
-            self.fixture.SDIO_SetExtDevicePropValue_u16(0xD6CF, 0x0001);
-            self.fixture.wait_for_CurrentValue(0xD6CF, 0x0001, 1000);
+        self.fixture.SDIO_SetExtDevicePropValue_u16(0xD6CF, 0x0001);
+        self.fixture.wait_for_CurrentValue(0xD6CF, 0x0001, 1000);
 
-            self.fixture.wait_for_CurrentValue(0xD6DE, 0x01, 1000);
-            self.connected = true;
+        self.fixture.wait_for_CurrentValue(0xD6DE, 0x01, 1000);
+        self.connected = true;
 
-            Ok(())
-        })
-        .await?
+        Ok(())
     }
 
-    pub async fn take_photo(&mut self) -> anyhow::Result<()> {
+    pub fn take_photo(&mut self) -> anyhow::Result<()> {
         /* SDIO_ControlDevice, s1 down */
-        check_camera_result!(self.fixture.SDIO_ControlDevice(0xD61D, (uint16_t)0x0002));
+        check_camera_result!(self.fixture.SDIO_ControlDevice_u16(0xD61D, 0x0002));
 
         /* SDIO_ControlDevice, s2 down */
-        check_camera_result!(self.fixture.SDIO_ControlDevice(0xD617, (uint16_t)0x0002));
-        check_camera_result!(self.fixture.milisleep(100));
+        check_camera_result!(self.fixture.SDIO_ControlDevice_u16(0xD617, 0x0002));
+        std::thread::sleep(Duration::from_millis(100));
 
         /* SDIO_ControlDevice, s2 up */
-        check_camera_result!(self.fixture.SDIO_ControlDevice(0xD617, (uint16_t)0x0001));
-        check_camera_result!(self.fixture.milisleep(100));
+        check_camera_result!(self.fixture.SDIO_ControlDevice_u16(0xD617, 0x0001));
+        std::thread::sleep(Duration::from_millis(100));
 
         /* SDIO_ControlDevice, s1 down */
-        check_camera_result!(self.fixture.SDIO_ControlDevice(0xD61D, (uint16_t)0x0001));
+        check_camera_result!(self.fixture.SDIO_ControlDevice_u16(0xD61D, 0x0001));
+
+        Ok(())
     }
 
     pub fn disconnect(&mut self) {}
