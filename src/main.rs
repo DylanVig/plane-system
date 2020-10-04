@@ -2,6 +2,7 @@ use std::{sync::atomic::AtomicBool, sync::atomic::Ordering, sync::Arc};
 
 use ctrlc;
 use pixhawk::{client::PixhawkClient, state::PixhawkMessage};
+use scheduler::Scheduler;
 use tokio::{spawn, sync::broadcast};
 
 #[macro_use]
@@ -17,6 +18,7 @@ mod gpio;
 mod image_upload;
 mod pixhawk;
 mod server;
+mod scheduler;
 
 mod state;
 
@@ -44,8 +46,9 @@ async fn main() -> anyhow::Result<()> {
 
     ctrlc::set_handler({
         let channels = channels.clone();
-
+        
         move || {
+            info!("received interrupt, shutting down");
             let _ = channels.interrupt.send(());
         }
     })
@@ -62,15 +65,30 @@ async fn main() -> anyhow::Result<()> {
         anyhow::Result::<_>::Ok(pixhawk_client)
     };
 
+    let scheduler_task = async {
+        info!("spawning the scheduler");
+
+        let scheduler = Scheduler::new(channels.clone());
+
+        anyhow::Result::<_>::Ok(scheduler)
+    };
+
     let mut pixhawk_client = pixhawk_task.await?;
+    let mut scheduler = scheduler_task.await?;
 
     let pixhawk_task = spawn(async move { pixhawk_client.run().await });
-    let server_task = spawn(async { server::serve().await });
+    let server_task = spawn(async move { server::serve(channels.clone()).await });
+    let scheduler_task = spawn(async move { scheduler.run().await });
 
-    let (pixhawk_result, server_result) = futures::future::join(pixhawk_task, server_task).await;
+    let futures = vec![pixhawk_task, server_task, scheduler_task];
 
-    pixhawk_result??;
-    server_result??;
+    let results = futures::future::join_all(futures).await;
+    // let (pixhawk_result, server_result) = futures::future::join(pixhawk_task, server_task).await;
+
+    let _ = results.into_iter().map( |res| res?);
+
+    // pixhawk_result??;
+    // server_result??;
 
     Ok(())
 }

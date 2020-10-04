@@ -1,12 +1,13 @@
-use std::rc::Rc;
+use std::sync::Arc;
 
 use mavlink::{self, ardupilotmega as apm};
-use tokio::{sync::broadcast}
+use tokio::{sync::broadcast};
 
-use crate::client::{camera::CameraClient, pixhawk::PixhawkMessage};
-use crate::state::RegionOfInterest;
-
-pub mod state;
+use crate::{
+    state::RegionOfInterest,
+    Channels,
+    pixhawk::state::PixhawkMessage,
+};
 
 /// Controls whether the plane is taking pictures of the ground (first-pass),
 /// taking pictures of ROIs (second-pass), or doing nothing. Coordinates sending
@@ -19,22 +20,45 @@ pub struct Scheduler {
     rois: Vec<RegionOfInterest>,
 
     /// Channel for receiving from the pixhawk client
-    pixhawk_rx: broadcast::Receiver<PixhawkMessage>,
-
-    /// Channel for communicating with the Camera
-    // camera: Rc<CameraClient>,
+    channels: Arc<Channels>,
 }
 
 impl Scheduler {
     pub fn new(channels: Arc<Channels>) -> Self {
-        Self::with_rois(Vec<RegionOfInterest>::new())
+        Self::with_rois(Vec::<RegionOfInterest>::new(), channels)
     }
 
-    pub fn with_rois(rois: Vec<RegionOfInterest>, channels: Arc<Channels>) {
+    pub fn with_rois(rois: Vec<RegionOfInterest>, channels: Arc<Channels>) -> Self {
         Self {
-            rois: rois,
-            pixhawk_rx: channels.pixhawk.subscribe(),
+            rois,
+            channels,
         }
+    }
+
+    pub async fn run(&self) -> anyhow::Result<()> {
+        let mut pixhawk_recv = self.channels.pixhawk.subscribe();
+        let mut interrupt_recv = self.channels.interrupt.subscribe();
+        loop {
+            if let Ok(message) = pixhawk_recv.try_recv() {
+                match message {
+                    PixhawkMessage::Image {
+                        time,
+                        foc_len,
+                        img_idx,
+                        cam_idx,
+                        flags,
+                        coords,
+                        attitude,
+                    } => (),
+                    PixhawkMessage::Gps { coords: Coords3D } => (),
+                    PixhawkMessage::Orientation { attitude: Attitude } => (),
+                }
+            }
+            if let Ok(()) = interrupt_recv.try_recv() { break; }
+
+            tokio::time::delay_for(std::time::Duration::from_millis(10)).await;
+        }
+        Ok(())
     }
 }
 

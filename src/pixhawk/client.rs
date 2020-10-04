@@ -182,7 +182,7 @@ impl PixhawkClient {
             trace!("received message: {:?}", msg);
 
             if let Ok(()) = interrupt_recv.try_recv() {
-                info!("received interrupt, shutting down");
+                debug!("Pixhawk got signal to break");
                 break;
             }
         }
