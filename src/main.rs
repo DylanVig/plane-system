@@ -1,4 +1,4 @@
-use std::{sync::atomic::AtomicBool, sync::atomic::Ordering, sync::Arc};
+use std::sync::Arc;
 
 use ctrlc;
 use pixhawk::{client::PixhawkClient, state::PixhawkMessage};
@@ -74,7 +74,7 @@ async fn main() -> anyhow::Result<()> {
     };
 
     let mut pixhawk_client = pixhawk_task.await?;
-    let mut scheduler = scheduler_task.await?;
+    let scheduler = scheduler_task.await?;
 
     let pixhawk_task = spawn(async move { pixhawk_client.run().await });
     let server_task = spawn(async move { server::serve(channels.clone()).await });

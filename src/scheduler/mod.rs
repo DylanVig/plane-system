@@ -1,8 +1,5 @@
 use std::sync::Arc;
 
-use mavlink::{self, ardupilotmega as apm};
-use tokio::{sync::broadcast};
-
 use crate::{
     state::RegionOfInterest,
     Channels,
