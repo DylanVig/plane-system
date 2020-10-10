@@ -51,18 +51,13 @@ async fn main() -> anyhow::Result<()> {
     })
     .expect("could not set ctrl+c handler");
 
-    let pixhawk_task = async {
-        info!("connecting to pixhawk");
+    info!("connecting to pixhawk");
 
-        // pixhawk telemetry should be exposed on localhost:5763 for SITL
-        // TODO: add case for when it's not the SITL
+    // pixhawk telemetry should be exposed on localhost:5763 for SITL
+    // TODO: add case for when it's not the SITL
 
-        let pixhawk_client = PixhawkClient::connect(channels.clone(), ":::5763").await?;
+    let pixhawk_client = PixhawkClient::connect(channels.clone(), ":::5763").await?;
 
-        anyhow::Result::<_>::Ok(pixhawk_client)
-    };
-
-    let mut pixhawk_client = pixhawk_task.await?;
 
     let pixhawk_task = spawn(async move { pixhawk_client.run().await });
     let server_task = spawn(async { server::serve().await });
