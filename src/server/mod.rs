@@ -1,9 +1,10 @@
 use serde::{Deserialize, Serialize};
-use std::sync::Arc;
+use std::{convert::Infallible, sync::Arc};
+use tokio::sync::RwLock;
 use warp::{self, Filter};
 
 use crate::Channels;
-use crate::state::RegionOfInterest;
+use crate::{pixhawk::state::PixhawkMessage, pixhawk::state::Telemetry, state::RegionOfInterest};
 
 #[derive(Clone)]
 struct ServerState {}
@@ -28,7 +29,9 @@ enum ClientType {
 pub async fn serve(channels: Arc<Channels>) -> anyhow::Result<()> {
     info!("initializing server");
 
-    let add_roi = warp::path!("api" / "add-roi")
+    let pixhawk_telem = Arc::new(RwLock::new(<Telemetry as Default>::default()));
+
+    let route_roi = warp::path!("api" / "roi")
         .and(warp::post())
         .and(warp::body::json())
         .map(move |body: AddROIs| {
@@ -36,16 +39,55 @@ pub async fn serve(channels: Arc<Channels>) -> anyhow::Result<()> {
             warp::reply()
         });
 
+    let route_telem = warp::path!("api" / "telemetry").and(warp::get()).and_then({
+        let pixhawk_telem = pixhawk_telem.clone();
+        move || {
+            let pixhawk_telem = pixhawk_telem.clone();
+            async move {
+                let telem = pixhawk_telem.read().await.clone();
+                Result::<_, Infallible>::Ok(warp::reply::json(&telem))
+            }
+        }
+    });
+
+    let api = route_roi.or(route_telem);
+
     let address = ([127, 0, 0, 1], 8080);
     info!("initialized server");
     info!("listening at {:?}", address);
-    
+
     let mut interrupt_recv = channels.interrupt.subscribe();
-    let (_, server) = warp::serve(add_roi).bind_with_graceful_shutdown(address, async move {
+    let (_, server) = warp::serve(api).bind_with_graceful_shutdown(address, async move {
         interrupt_recv.recv().await.unwrap();
     });
 
-    tokio::spawn(server);
+    let server_task = tokio::spawn(server);
+
+    let mut interrupt_recv = channels.interrupt.subscribe();
+    let mut pixhawk_recv = channels.pixhawk.subscribe();
+    let channel_task = tokio::spawn(async move {
+        loop {
+            let pixhawk_msg = pixhawk_recv.recv().await.unwrap();
+            match pixhawk_msg {
+                PixhawkMessage::Gps { coords } => {
+                    pixhawk_telem.write().await.coords = Some(coords);
+                }
+                PixhawkMessage::Orientation { attitude } => {
+                    pixhawk_telem.write().await.attitude = Some(attitude);
+                }
+                _ => {}
+            }
+
+            if let Ok(()) = interrupt_recv.try_recv() {
+                break;
+            }
+        }
+    });
+
+    let results = futures::future::join(server_task, channel_task).await;
+
+    results.0?;
+    results.1?;
 
     Ok(())
 }

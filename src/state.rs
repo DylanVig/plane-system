@@ -46,7 +46,7 @@ pub enum RegionOfInterestKind {
     EmergentTarget,
 }
 
-#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub enum Mode {
     Idle,
     Fixed,
@@ -82,7 +82,7 @@ impl From<Coords3D> for Coords2D {
     }
 }
 
-#[derive(Default, Debug, Clone, Copy)]
+#[derive(Default, Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct Coords3D {
     /// Latitude in degrees
     pub latitude: f32,
@@ -104,7 +104,7 @@ impl Coords3D {
     }
 }
 
-#[derive(Default, Debug, Clone, Copy)]
+#[derive(Default, Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct Attitude {
     /// Roll in degrees
     pub roll: f32,
@@ -122,7 +122,7 @@ impl Attitude {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Image {
     path: PathBuf,
     mode: Mode,
