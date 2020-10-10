@@ -21,6 +21,7 @@ tokio = { version = "0.2", features = ["full"] }
 serde = "1.0.116"
 ctrlc = "3.1.6"
 warp = "0.2.5"
+serde_millis = "0.1.1"
 
 [build-dependencies]
 cxx-build = "0.4.6"
