@@ -122,6 +122,27 @@ impl Attitude {
     }
 }
 
+#[derive(Default, Debug, Clone, Copy)]
+pub struct Telemetry {
+    pub plane_attitude: Attitude,
+    pub gimbal_attitude: Attitude,
+    pub position: Coords3D,
+}
+
+impl Telemetry {
+    pub fn set_plane_attitude(&mut self, plane_attitude: Attitude) {
+        self.plane_attitude = plane_attitude
+    }
+
+    pub fn set_gimbal_attitude(&mut self, gimbal_attitude: Attitude) {
+        self.gimbal_attitude = gimbal_attitude
+    }
+
+    pub fn set_position(&mut self, position: Coords3D) {
+        self.position = position
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct Image {
     path: PathBuf,

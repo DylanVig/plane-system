@@ -1,8 +1,10 @@
 use std::sync::Arc;
 
+use state::Telemetry;
 use ctrlc;
 use pixhawk::{client::PixhawkClient, state::PixhawkMessage};
 use scheduler::Scheduler;
+use telemetry::TelemetryState;
 use tokio::{spawn, sync::broadcast};
 
 #[macro_use]
@@ -18,6 +20,7 @@ mod gpio;
 mod image_upload;
 mod pixhawk;
 mod scheduler;
+mod telemetry;
 mod server;
 
 mod state;
@@ -29,6 +32,9 @@ pub struct Channels {
 
     /// Channel for broadcasting updates to the state of the Pixhawk.
     pixhawk: broadcast::Sender<PixhawkMessage>,
+
+    /// Channel for broadcasting telemetry information gathered from the gimbal and pixhawk
+    telemetry: broadcast::Sender<Telemetry>,
     // camera: Option<broadcast::Receiver<CameraMessage>>,
 }
 
@@ -38,10 +44,12 @@ async fn main() -> anyhow::Result<()> {
 
     let (interrupt_sender, _) = broadcast::channel(1);
     let (pixhawk_sender, _) = broadcast::channel(1024);
+    let (telemetry_sender, _) = broadcast::channel(1024);
 
     let channels: Arc<Channels> = Arc::new(Channels {
         interrupt: interrupt_sender,
         pixhawk: pixhawk_sender,
+        telemetry: telemetry_sender,
     });
 
     ctrlc::set_handler({
@@ -65,11 +73,15 @@ async fn main() -> anyhow::Result<()> {
 
     let scheduler = Scheduler::new(channels.clone());
 
+    let mut telemetry = TelemetryState::new(channels.clone());
+
     let pixhawk_task = spawn(async move { pixhawk_client.run().await });
     let server_task = spawn(async move { server::serve(channels.clone()).await });
     let scheduler_task = spawn(async move { scheduler.run().await });
+    let telemetry_task = spawn(async move { telemetry.run().await });
+    let telemetry_publisher = spawn(async move { telemetry.publisher().await });
 
-    let futures = vec![pixhawk_task, server_task, scheduler_task];
+    let futures = vec![pixhawk_task, server_task, scheduler_task, telemetry_task];
     let results = futures::future::join_all(futures).await;
 
     let final_result: Result<_, _> = results.into_iter().collect();

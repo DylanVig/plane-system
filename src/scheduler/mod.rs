@@ -36,6 +36,7 @@ impl Scheduler {
     }
 
     pub async fn run(&self) -> anyhow::Result<()> {
+        let mut telemetry_recv = self.channels.telemetry.subscribe();
         let mut pixhawk_recv = self.channels.pixhawk.subscribe();
         let mut interrupt_recv = self.channels.interrupt.subscribe();
         loop {
@@ -50,9 +51,12 @@ impl Scheduler {
                         coords,
                         attitude,
                     } => (),
-                    PixhawkMessage::Gps { coords: Coords3D } => (),
-                    PixhawkMessage::Orientation { attitude: Attitude } => (),
+                    _ => (),
                 }
+            }
+
+            if let Ok(Ok(telemetry)) = timeout(Duration::from_millis(10), telemetry_recv.recv()).await {
+                debug!("{:?}", telemetry);
             }
 
 
