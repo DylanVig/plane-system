@@ -1,7 +1,8 @@
-use std::{sync::atomic::AtomicBool, sync::atomic::Ordering, sync::Arc};
+use std::sync::Arc;
 
 use ctrlc;
 use pixhawk::{client::PixhawkClient, state::PixhawkMessage};
+use scheduler::Scheduler;
 use tokio::{spawn, sync::broadcast};
 
 #[macro_use]
@@ -16,6 +17,7 @@ mod gimbal;
 mod gpio;
 mod image_upload;
 mod pixhawk;
+mod scheduler;
 mod server;
 
 mod state;
@@ -46,6 +48,7 @@ async fn main() -> anyhow::Result<()> {
         let channels = channels.clone();
 
         move || {
+            info!("received interrupt, shutting down");
             let _ = channels.interrupt.send(());
         }
     })
@@ -56,16 +59,19 @@ async fn main() -> anyhow::Result<()> {
     // pixhawk telemetry should be exposed on localhost:5763 for SITL
     // TODO: add case for when it's not the SITL
 
-    let pixhawk_client = PixhawkClient::connect(channels.clone(), ":::5763").await?;
+    let mut pixhawk_client = PixhawkClient::connect(channels.clone(), ":::5763").await?;
 
+    info!("initializing scheduler");
+
+    let scheduler = Scheduler::new(channels.clone());
 
     let pixhawk_task = spawn(async move { pixhawk_client.run().await });
-    let server_task = spawn(async { server::serve().await });
+    let server_task = spawn(async move { server::serve(channels.clone()).await });
+    let scheduler_task = spawn(async move { scheduler.run().await });
 
-    let (pixhawk_result, server_result) = futures::future::join(pixhawk_task, server_task).await;
+    let futures = vec![pixhawk_task, server_task, scheduler_task];
+    let results = futures::future::join_all(futures).await;
 
-    pixhawk_result??;
-    server_result??;
-
-    Ok(())
+    let final_result: Result<_, _> = results.into_iter().collect();
+    final_result?
 }

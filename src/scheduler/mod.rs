@@ -1,12 +1,13 @@
-use std::rc::Rc;
-
-use mavlink::{self, ardupilotmega as apm};
-use smol::channel::{Receiver, Sender};
-
-use crate::client::{camera::CameraClient, pixhawk::PixhawkClient};
-use crate::state::RegionOfInterest;
-
-pub mod state;
+use std::{
+    sync::Arc,
+    time::Duration,
+};
+use tokio::time::timeout;
+use crate::{
+    state::RegionOfInterest,
+    Channels,
+    pixhawk::state::PixhawkMessage,
+};
 
 /// Controls whether the plane is taking pictures of the ground (first-pass),
 /// taking pictures of ROIs (second-pass), or doing nothing. Coordinates sending
@@ -18,23 +19,46 @@ pub struct Scheduler {
     /// over increasing ground coverage.
     rois: Vec<RegionOfInterest>,
 
-    /// Channel for communicating with the Pixhawk.
-    pixhawk: Rc<PixhawkClient>,
-
-    /// Channel for communicating with the Camera
-    camera: Rc<CameraClient>,
+    /// Channel for receiving from the pixhawk client
+    channels: Arc<Channels>,
 }
 
 impl Scheduler {
-    pub fn new() -> Self {
-        Self::with_rois(Vec<RegionOfInterest>::new())
+    pub fn new(channels: Arc<Channels>) -> Self {
+        Self::with_rois(Vec::new(), channels)
     }
 
-    pub fn with_rois(rois: Vec<RegionOfInterest>) {
+    pub fn with_rois(rois: Vec<RegionOfInterest>, channels: Arc<Channels>) -> Self {
         Self {
-            rois: rois,
-            // TODO
+            rois,
+            channels,
         }
+    }
+
+    pub async fn run(&self) -> anyhow::Result<()> {
+        let mut pixhawk_recv = self.channels.pixhawk.subscribe();
+        let mut interrupt_recv = self.channels.interrupt.subscribe();
+        loop {
+            if let Ok(message) = timeout(Duration::from_millis(10), pixhawk_recv.recv()).await {
+                match message? {
+                    PixhawkMessage::Image {
+                        time,
+                        foc_len,
+                        img_idx,
+                        cam_idx,
+                        flags,
+                        coords,
+                        attitude,
+                    } => (),
+                    PixhawkMessage::Gps { coords: Coords3D } => (),
+                    PixhawkMessage::Orientation { attitude: Attitude } => (),
+                }
+            }
+
+
+            if let Ok(_) = timeout(Duration::from_millis(10), interrupt_recv.recv()).await { break; }
+        }
+        Ok(())
     }
 }
 
