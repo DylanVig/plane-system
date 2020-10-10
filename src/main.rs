@@ -81,14 +81,8 @@ async fn main() -> anyhow::Result<()> {
     let scheduler_task = spawn(async move { scheduler.run().await });
 
     let futures = vec![pixhawk_task, server_task, scheduler_task];
-
     let results = futures::future::join_all(futures).await;
-    // let (pixhawk_result, server_result) = futures::future::join(pixhawk_task, server_task).await;
 
-    let _ = results.into_iter().map( |res| res?);
-
-    // pixhawk_result??;
-    // server_result??;
-
-    Ok(())
+    let final_result: Result<_, _> = results.into_iter().collect();
+    final_result?
 }

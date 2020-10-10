@@ -1,5 +1,8 @@
-use std::sync::Arc;
-
+use std::{
+    sync::Arc,
+    time::Duration,
+};
+use tokio::time::timeout;
 use crate::{
     state::RegionOfInterest,
     Channels,
@@ -22,7 +25,7 @@ pub struct Scheduler {
 
 impl Scheduler {
     pub fn new(channels: Arc<Channels>) -> Self {
-        Self::with_rois(Vec::<RegionOfInterest>::new(), channels)
+        Self::with_rois(Vec::new(), channels)
     }
 
     pub fn with_rois(rois: Vec<RegionOfInterest>, channels: Arc<Channels>) -> Self {
@@ -36,8 +39,8 @@ impl Scheduler {
         let mut pixhawk_recv = self.channels.pixhawk.subscribe();
         let mut interrupt_recv = self.channels.interrupt.subscribe();
         loop {
-            if let Ok(message) = pixhawk_recv.try_recv() {
-                match message {
+            if let Ok(message) = timeout(Duration::from_millis(10), pixhawk_recv.recv()).await {
+                match message? {
                     PixhawkMessage::Image {
                         time,
                         foc_len,
@@ -51,9 +54,9 @@ impl Scheduler {
                     PixhawkMessage::Orientation { attitude: Attitude } => (),
                 }
             }
-            if let Ok(()) = interrupt_recv.try_recv() { break; }
 
-            tokio::time::delay_for(std::time::Duration::from_millis(10)).await;
+
+            if let Ok(_) = timeout(Duration::from_millis(10), interrupt_recv.recv()).await { break; }
         }
         Ok(())
     }
