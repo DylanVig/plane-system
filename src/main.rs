@@ -59,11 +59,11 @@ async fn main() -> anyhow::Result<()> {
     // pixhawk telemetry should be exposed on localhost:5763 for SITL
     // TODO: add case for when it's not the SITL
 
-    let pixhawk_client = PixhawkClient::connect(channels.clone(), ":::5763").await?;
+    let mut pixhawk_client = PixhawkClient::connect(channels.clone(), ":::5763").await?;
 
-    info!("initializing");
+    info!("initializing scheduler");
 
-    let scheduler = Scheduler::new(channels.clone());
+    let mut scheduler = Scheduler::new(channels.clone());
 
     let pixhawk_task = spawn(async move { pixhawk_client.run().await });
     let server_task = spawn(async move { server::serve(channels.clone()).await });
@@ -72,12 +72,8 @@ async fn main() -> anyhow::Result<()> {
     let futures = vec![pixhawk_task, server_task, scheduler_task];
 
     let results = futures::future::join_all(futures).await;
-    // let (pixhawk_result, server_result) = futures::future::join(pixhawk_task, server_task).await;
 
     let _ = results.into_iter().map(|res| res?);
-
-    // pixhawk_result??;
-    // server_result??;
 
     Ok(())
 }
