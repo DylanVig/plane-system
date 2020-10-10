@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use std::{convert::Infallible, sync::Arc};
+use std::{convert::Infallible, sync::Arc, time::SystemTime};
 use tokio::sync::RwLock;
 use warp::{self, Filter};
 
@@ -58,6 +58,7 @@ pub async fn serve(channels: Arc<Channels>) -> anyhow::Result<()> {
 
     let mut interrupt_recv = channels.interrupt.subscribe();
     let (_, server) = warp::serve(api).bind_with_graceful_shutdown(address, async move {
+        debug!("server recv interrupt");
         interrupt_recv.recv().await.unwrap();
     });
 
@@ -68,17 +69,22 @@ pub async fn serve(channels: Arc<Channels>) -> anyhow::Result<()> {
     let channel_task = tokio::spawn(async move {
         loop {
             let pixhawk_msg = pixhawk_recv.recv().await.unwrap();
+            let mut pixhawk_telem = pixhawk_telem.write().await;
+            
             match pixhawk_msg {
                 PixhawkMessage::Gps { coords } => {
-                    pixhawk_telem.write().await.coords = Some(coords);
+                    pixhawk_telem.coords = Some(coords);
+                    pixhawk_telem.coords_timestamp = Some(SystemTime::now());
                 }
                 PixhawkMessage::Orientation { attitude } => {
-                    pixhawk_telem.write().await.attitude = Some(attitude);
+                    pixhawk_telem.attitude = Some(attitude);
+                    pixhawk_telem.attitude_timestamp = Some(SystemTime::now());
                 }
                 _ => {}
             }
 
             if let Ok(()) = interrupt_recv.try_recv() {
+                debug!("pixhawk recv interrupt");
                 break;
             }
         }

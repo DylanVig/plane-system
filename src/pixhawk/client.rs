@@ -158,6 +158,8 @@ impl PixhawkClient {
                 }
                 Err(MessageReadError::Parse(ParserError::InvalidChecksum { .. })) => {
                     trace!("got invalid checksum, dropping message");
+                    let skip = magic_position + 1;
+                    self.buf.advance(skip);
                     continue;
                 }
                 Err(err) => return Err(err).context("error while parsing message"),
