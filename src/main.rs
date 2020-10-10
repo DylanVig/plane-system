@@ -17,8 +17,8 @@ mod gimbal;
 mod gpio;
 mod image_upload;
 mod pixhawk;
-mod server;
 mod scheduler;
+mod server;
 
 mod state;
 
@@ -46,7 +46,7 @@ async fn main() -> anyhow::Result<()> {
 
     ctrlc::set_handler({
         let channels = channels.clone();
-        
+
         move || {
             info!("received interrupt, shutting down");
             let _ = channels.interrupt.send(());
@@ -54,27 +54,16 @@ async fn main() -> anyhow::Result<()> {
     })
     .expect("could not set ctrl+c handler");
 
-    let pixhawk_task = async {
-        info!("connecting to pixhawk");
+    info!("connecting to pixhawk");
 
-        // pixhawk telemetry should be exposed on localhost:5763 for SITL
-        // TODO: add case for when it's not the SITL
+    // pixhawk telemetry should be exposed on localhost:5763 for SITL
+    // TODO: add case for when it's not the SITL
 
-        let pixhawk_client = PixhawkClient::connect(channels.clone(), ":::5763").await?;
+    let pixhawk_client = PixhawkClient::connect(channels.clone(), ":::5763").await?;
 
-        anyhow::Result::<_>::Ok(pixhawk_client)
-    };
+    info!("initializing");
 
-    let scheduler_task = async {
-        info!("spawning the scheduler");
-
-        let scheduler = Scheduler::new(channels.clone());
-
-        anyhow::Result::<_>::Ok(scheduler)
-    };
-
-    let mut pixhawk_client = pixhawk_task.await?;
-    let scheduler = scheduler_task.await?;
+    let scheduler = Scheduler::new(channels.clone());
 
     let pixhawk_task = spawn(async move { pixhawk_client.run().await });
     let server_task = spawn(async move { server::serve(channels.clone()).await });
@@ -85,7 +74,7 @@ async fn main() -> anyhow::Result<()> {
     let results = futures::future::join_all(futures).await;
     // let (pixhawk_result, server_result) = futures::future::join(pixhawk_task, server_task).await;
 
-    let _ = results.into_iter().map( |res| res?);
+    let _ = results.into_iter().map(|res| res?);
 
     // pixhawk_result??;
     // server_result??;
