@@ -55,10 +55,6 @@ impl Scheduler {
                 }
             }
 
-            if let Ok(Ok(telemetry)) = timeout(Duration::from_millis(50), telemetry_recv.recv()).await {
-                debug!("{:?}", telemetry);
-            }
-
             let telemetry = Channels::realtime_recv(&mut telemetry_recv).await;
             debug!("{:?}", telemetry);
 
