@@ -10,48 +10,98 @@ use std::time::Duration;
 use tokio::time::{timeout, delay_for};
 use tokio::spawn;
 
-pub struct TelemetryState {
-    telemetry: Arc<Mutex<Telemetry>>,
+// Noteworthy that this isn't a RwLock because we have at most one reader at any given moment
+type TelemetryState = Arc<Mutex<Telemetry>>;
+
+struct TelemetryCollector {
+    telemetry_state: TelemetryState,
     channels: Arc<Channels>,
 }
 
-impl TelemetryState {
-    pub fn new(channels: Arc<Channels>) -> Self {
+struct TelemetryPublisher {
+    telemetry_state: TelemetryState,
+    channels: Arc<Channels>,
+}
+
+pub struct TelemetryStream {
+    telemetry_state: TelemetryState,
+    channels: Arc<Channels>,
+}
+
+impl TelemetryCollector {
+    fn new(telemetry_state: TelemetryState, channels: Arc<Channels>) -> Self {
         Self {
-            telemetry: Arc::new(Mutex::new(Telemetry::default())),
-            channels: channels.clone(),/
+            telemetry_state,
+            channels,
+        }
+    }
+
+    async fn run(&self) -> anyhow::Result<()> {
+        let mut pixhawk_recv = self.channels.pixhawk.subscribe();
+        let mut interrupt_recv = self.channels.interrupt.subscribe();
+        loop {
+            // TODO: if there are many messages we want the most recent one
+            if let Ok(message) = timeout(Duration::from_millis(1), pixhawk_recv.recv()).await {
+                match message? {
+                    PixhawkMessage::Gps { coords } => self.telemetry_state.lock().unwrap().set_position(coords),
+                    PixhawkMessage::Orientation { attitude } => self.telemetry_state.lock().unwrap().set_plane_attitude(attitude),
+                    _ => {}
+                }
+            }
+            if let Ok(_) = interrupt_recv.try_recv() { break; }
+        }
+        Ok(())
+    }
+}
+
+impl TelemetryPublisher {
+    fn new(telemetry_state: TelemetryState, channels: Arc<Channels>) -> Self {
+        Self {
+            telemetry_state,
+            channels,
+        }
+    }
+
+    async fn run(&self) -> anyhow::Result<()> {
+        let telemetry_sender = self.channels.telemetry.clone();
+        let mut interrupt_recv = self.channels.interrupt.subscribe();
+        loop {
+            let telemetry = self.telemetry_state.lock().unwrap().clone();
+            telemetry_sender.send(telemetry).unwrap();
+            
+            if let Ok(_) = interrupt_recv.try_recv() { break; }
+            delay_for(Duration::from_millis(5)).await;
+        }
+        Ok(())
+    }
+}
+
+impl TelemetryStream {
+    pub fn new(channels: Arc<Channels>) -> Self {
+        let telemetry_state = Arc::new(Mutex::new(Telemetry::default()));
+
+        Self {
+            telemetry_state,
+            channels: channels,
         }
     }
 
     pub async fn run(&mut self) -> anyhow::Result<()> {
-        let mut pixhawk_recv = self.channels.pixhawk.subscribe();
-        let mut interrupt_recv = self.channels.interrupt.subscribe();
-        let telemetry = self.telemetry.clone();
+        let collector = TelemetryCollector::new(self.telemetry_state.clone(), self.channels.clone());
+        let publisher = TelemetryPublisher::new(self.telemetry_state.clone(), self.channels.clone());
 
-        let telemetry_publisher = spawn(async move { self.publisher().await });
-        
-        loop {
-            if let Ok(message) = timeout(Duration::from_millis(5), pixhawk_recv.recv()).await {
-                match message? {
-                    PixhawkMessage::Gps { coords } => telemetry.lock().unwrap().set_position(coords),
-                    PixhawkMessage::Orientation { attitude } => telemetry.lock().unwrap().set_plane_attitude(attitude),
-                    _ => {}
-                }
-            }
-            // let _ = self.channels.telemetry.send(self.telemetry.lock().unwrap().clone());
+        let collector_task = spawn(async move {
+            collector.run().await.unwrap();
+        });
 
-            if let Ok(_) = timeout(Duration::from_millis(5), interrupt_recv.recv()).await { break; }
-        }
-        Ok(())
-    }
+        let publisher_task = spawn(async move {
+            publisher.run().await.unwrap();
+        });
 
-    pub async fn publisher(&self) -> anyhow::Result<()> {
-        let mut interrupt_recv = self.channels.interrupt.subscribe();
-        loop {
-            let _ = self.channels.telemetry.send(self.telemetry.lock().unwrap().clone());
-            if let Ok(_) = interrupt_recv.try_recv() { break; }
-            delay_for(Duration::from_millis(10)).await;
-        }
+        let (collector_result, publisher_result) = futures::future::join(collector_task, publisher_task).await;
+
+        collector_result?;
+        publisher_result?;
         Ok(())
     }
 }

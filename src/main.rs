@@ -4,7 +4,7 @@ use state::Telemetry;
 use ctrlc;
 use pixhawk::{client::PixhawkClient, state::PixhawkMessage};
 use scheduler::Scheduler;
-use telemetry::TelemetryState;
+use telemetry::TelemetryStream;
 use tokio::{spawn, sync::broadcast};
 
 #[macro_use]
@@ -43,6 +43,12 @@ async fn main() -> anyhow::Result<()> {
     pretty_env_logger::init();
 
     let (interrupt_sender, _) = broadcast::channel(1);
+
+    // TODO:
+    // pixhawk_sender and telemetry_sender need capacity of 1 because overflow semantics of
+    // broadcast channels will drop the oldest channel and fill it with the new one. We need
+    // to handle RecvError::Lagged in this case but this allows us to only consume the most 
+    // up-to-date data.
     let (pixhawk_sender, _) = broadcast::channel(1024);
     let (telemetry_sender, _) = broadcast::channel(1024);
 
@@ -73,13 +79,12 @@ async fn main() -> anyhow::Result<()> {
 
     let scheduler = Scheduler::new(channels.clone());
 
-    let mut telemetry = TelemetryState::new(channels.clone());
+    let mut telemetry = TelemetryStream::new(channels.clone());
 
     let pixhawk_task = spawn(async move { pixhawk_client.run().await });
     let server_task = spawn(async move { server::serve(channels.clone()).await });
     let scheduler_task = spawn(async move { scheduler.run().await });
     let telemetry_task = spawn(async move { telemetry.run().await });
-    let telemetry_publisher = spawn(async move { telemetry.publisher().await });
 
     let futures = vec![pixhawk_task, server_task, scheduler_task, telemetry_task];
     let results = futures::future::join_all(futures).await;

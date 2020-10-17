@@ -55,7 +55,7 @@ impl Scheduler {
                 }
             }
 
-            if let Ok(Ok(telemetry)) = timeout(Duration::from_millis(10), telemetry_recv.recv()).await {
+            if let Ok(Ok(telemetry)) = timeout(Duration::from_millis(50), telemetry_recv.recv()).await {
                 debug!("{:?}", telemetry);
             }
 
