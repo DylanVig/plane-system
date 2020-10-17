@@ -1,8 +1,10 @@
 use std::sync::Arc;
 
+use anyhow::Context;
 use ctrlc;
 use pixhawk::{client::PixhawkClient, state::PixhawkMessage};
 use scheduler::Scheduler;
+use structopt::StructOpt;
 use tokio::{spawn, sync::broadcast};
 
 #[macro_use]
@@ -20,8 +22,8 @@ mod pixhawk;
 mod scheduler;
 mod server;
 
+mod cli;
 mod state;
-// mod config;
 
 #[derive(Debug)]
 pub struct Channels {
@@ -36,6 +38,19 @@ pub struct Channels {
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     pretty_env_logger::init();
+
+    let main_args: cli::args::MainArgs = cli::args::MainArgs::from_args();
+    let config = if let Some(config_path) = main_args.config {
+        debug!("reading config from {:?}", &config_path);
+        cli::config::PlaneSystemConfig::read_from_path(config_path)
+    } else {
+        debug!("reading config from default location");
+        cli::config::PlaneSystemConfig::read()
+    };
+
+    let config = config.context("failed to read config file")?;
+
+    info!("pixhawk port: {}", config.pixhawk.port);
 
     let (interrupt_sender, _) = broadcast::channel(1);
     let (pixhawk_sender, _) = broadcast::channel(1024);
