@@ -5,7 +5,7 @@ use ctrlc;
 use pixhawk::{client::PixhawkClient, state::PixhawkMessage};
 use scheduler::Scheduler;
 use structopt::StructOpt;
-use tokio::{spawn, sync::broadcast};
+use tokio::{spawn, sync::broadcast, task::spawn_blocking};
 
 #[macro_use]
 extern crate log;
@@ -32,7 +32,24 @@ pub struct Channels {
 
     /// Channel for broadcasting updates to the state of the Pixhawk.
     pixhawk: broadcast::Sender<PixhawkMessage>,
+
+    /// Channel for broadcasting commands the user enters via the REPL
+    cli: broadcast::Sender<PixhawkMessage>,
     // camera: Option<broadcast::Receiver<CameraMessage>>,
+}
+
+impl Channels {
+    pub fn new() -> Self {
+        let (interrupt_sender, _) = broadcast::channel(1);
+        let (pixhawk_sender, _) = broadcast::channel(1024);
+        let (cli_sender, _) = broadcast::channel(1024);
+
+        Channels {
+            interrupt: interrupt_sender,
+            pixhawk: pixhawk_sender,
+            cli: cli_sender,
+        }
+    }
 }
 
 #[tokio::main]
@@ -50,13 +67,7 @@ async fn main() -> anyhow::Result<()> {
 
     let config = config.context("failed to read config file")?;
 
-    let (interrupt_sender, _) = broadcast::channel(1);
-    let (pixhawk_sender, _) = broadcast::channel(1024);
-
-    let channels: Arc<Channels> = Arc::new(Channels {
-        interrupt: interrupt_sender,
-        pixhawk: pixhawk_sender,
-    });
+    let channels: Arc<Channels> = Arc::new(Channels::new());
 
     ctrlc::set_handler({
         let channels = channels.clone();
@@ -87,12 +98,18 @@ async fn main() -> anyhow::Result<()> {
         .context("invalid server address")?;
 
     let pixhawk_task = spawn(async move { pixhawk_client.run().await });
-    let server_task = spawn(async move { server::serve(channels.clone(), server_address).await });
     let scheduler_task = spawn(async move { scheduler.run().await });
+    let server_task = spawn({
+        let channels = channels.clone();
+        server::serve(channels, server_address)
+    });
+    let cli_task = spawn_blocking({
+        let channels = channels.clone();
+        move || cli::repl::run(channels)
+    });
 
-    let futures = vec![pixhawk_task, server_task, scheduler_task];
-    let results = futures::future::join_all(futures).await;
-
-    let final_result: Result<_, _> = results.into_iter().collect();
-    final_result?
+    // wait for any of these tasks to end
+    let futures = vec![pixhawk_task, server_task, scheduler_task, cli_task];
+    let (result, _, _) = futures::future::select_all(futures).await;
+    result?
 }

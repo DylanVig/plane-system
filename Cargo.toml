@@ -23,7 +23,9 @@ ctrlc = "3.1.6"
 warp = "0.2.5"
 serde_millis = "0.1.1"
 structopt = "0.3"
+clap = "2"
 config = "0.10.1"
+rustyline = "6.3.0"
 
 [build-dependencies]
 cxx-build = "0.5"
