@@ -8,6 +8,7 @@ use std::sync::{Arc, Mutex};
 
 use std::time::Duration;
 use tokio::time::{timeout, delay_for};
+use tokio::sync::broadcast::*;
 use tokio::spawn;
 
 // Noteworthy that this isn't a RwLock because we have at most one reader at any given moment
@@ -40,9 +41,8 @@ impl TelemetryCollector {
         let mut pixhawk_recv = self.channels.pixhawk.subscribe();
         let mut interrupt_recv = self.channels.interrupt.subscribe();
         loop {
-            // TODO: if there are many messages we want the most recent one
-            if let Ok(message) = timeout(Duration::from_millis(1), pixhawk_recv.recv()).await {
-                match message? {
+            if let Ok(message) = timeout(Duration::from_millis(1), Channels::realtime_recv(&mut pixhawk_recv)).await {
+                match message {
                     PixhawkMessage::Gps { coords } => self.telemetry_state.lock().unwrap().set_position(coords),
                     PixhawkMessage::Orientation { attitude } => self.telemetry_state.lock().unwrap().set_plane_attitude(attitude),
                     _ => {}
@@ -66,9 +66,11 @@ impl TelemetryPublisher {
         let telemetry_sender = self.channels.telemetry.clone();
         let mut interrupt_recv = self.channels.interrupt.subscribe();
         loop {
-            let telemetry = self.telemetry_state.lock().unwrap().clone();
-            telemetry_sender.send(telemetry).unwrap();
-            
+            if let Ok(telemetry) = self.telemetry_state.lock() {
+                if let Err(_) = telemetry_sender.send(telemetry.clone()) {
+                    break;
+                }
+            }
             if let Ok(_) = interrupt_recv.try_recv() { break; }
             delay_for(Duration::from_millis(5)).await;
         }

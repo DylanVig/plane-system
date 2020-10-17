@@ -38,19 +38,32 @@ pub struct Channels {
     // camera: Option<broadcast::Receiver<CameraMessage>>,
 }
 
+impl Channels {
+    /// realtime_recv provides an abstraction to ignore receiver lag errors when we have
+    /// channels with capacity 1 and want the most recent message to overwrite the previous
+    /// message
+    pub async fn realtime_recv<T: Clone>(receiver: &mut broadcast::Receiver<T>) -> T {
+        loop {
+            match receiver.recv().await {
+                Ok(message) => return message,
+                Err(_) => continue,
+            }
+        }
+    }
+}
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     pretty_env_logger::init();
 
     let (interrupt_sender, _) = broadcast::channel(1);
 
-    // TODO:
     // pixhawk_sender and telemetry_sender need capacity of 1 because overflow semantics of
     // broadcast channels will drop the oldest channel and fill it with the new one. We need
     // to handle RecvError::Lagged in this case but this allows us to only consume the most 
     // up-to-date data.
-    let (pixhawk_sender, _) = broadcast::channel(1024);
-    let (telemetry_sender, _) = broadcast::channel(1024);
+    let (pixhawk_sender, _) = broadcast::channel(1);
+    let (telemetry_sender, _) = broadcast::channel(1);
 
     let channels: Arc<Channels> = Arc::new(Channels {
         interrupt: interrupt_sender,

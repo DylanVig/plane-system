@@ -40,8 +40,8 @@ impl Scheduler {
         let mut pixhawk_recv = self.channels.pixhawk.subscribe();
         let mut interrupt_recv = self.channels.interrupt.subscribe();
         loop {
-            if let Ok(message) = timeout(Duration::from_millis(10), pixhawk_recv.recv()).await {
-                match message? {
+            if let Ok(Ok(message)) = timeout(Duration::from_millis(10), pixhawk_recv.recv()).await {
+                match message {
                     PixhawkMessage::Image {
                         time,
                         foc_len,
@@ -59,6 +59,8 @@ impl Scheduler {
                 debug!("{:?}", telemetry);
             }
 
+            let telemetry = Channels::realtime_recv(&mut telemetry_recv).await;
+            debug!("{:?}", telemetry);
 
             if let Ok(_) = timeout(Duration::from_millis(10), interrupt_recv.recv()).await { break; }
         }
