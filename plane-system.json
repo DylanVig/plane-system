@@ -1,0 +1,8 @@
+{
+  "pixhawk": {
+    "address": "[::]:5763"
+  },
+  "server": {
+    "address": "[::]:8080"
+  }
+}

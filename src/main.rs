@@ -5,7 +5,9 @@ use ctrlc;
 use pixhawk::{client::PixhawkClient, state::PixhawkMessage};
 use scheduler::Scheduler;
 use telemetry::TelemetryStream;
-use tokio::{spawn, sync::broadcast};
+use anyhow::Context;
+use structopt::StructOpt;
+use tokio::{spawn, sync::broadcast, task::spawn_blocking};
 
 #[macro_use]
 extern crate log;
@@ -23,6 +25,7 @@ mod scheduler;
 mod telemetry;
 mod server;
 
+mod cli;
 mod state;
 
 #[derive(Debug)]
@@ -35,10 +38,26 @@ pub struct Channels {
 
     /// Channel for broadcasting telemetry information gathered from the gimbal and pixhawk
     telemetry: broadcast::Sender<Telemetry>,
+    /// Channel for broadcasting commands the user enters via the REPL
+    cli: broadcast::Sender<PixhawkMessage>,
     // camera: Option<broadcast::Receiver<CameraMessage>>,
 }
 
 impl Channels {
+    pub fn new() -> Self {
+        let (interrupt_sender, _) = broadcast::channel(1);
+        let (telemetry_sender, _) = broadcast::channel(1);
+        let (pixhawk_sender, _) = broadcast::channel(1);
+        let (cli_sender, _) = broadcast::channel(1024);
+
+        Channels {
+            interrupt: interrupt_sender,
+            pixhawk: pixhawk_sender,
+            telemetry: telemetry_sender,
+            cli: cli_sender,
+        }
+    }
+
     /// realtime_recv provides an abstraction to ignore receiver lag errors when we have
     /// channels with capacity 1 and want the most recent message to overwrite the previous
     /// message
@@ -56,20 +75,18 @@ impl Channels {
 async fn main() -> anyhow::Result<()> {
     pretty_env_logger::init();
 
-    let (interrupt_sender, _) = broadcast::channel(1);
+    let main_args: cli::args::MainArgs = cli::args::MainArgs::from_args();
+    let config = if let Some(config_path) = main_args.config {
+        debug!("reading config from {:?}", &config_path);
+        cli::config::PlaneSystemConfig::read_from_path(config_path)
+    } else {
+        debug!("reading config from default location");
+        cli::config::PlaneSystemConfig::read()
+    };
 
-    // pixhawk_sender and telemetry_sender need capacity of 1 because overflow semantics of
-    // broadcast channels will drop the oldest channel and fill it with the new one. We need
-    // to handle RecvError::Lagged in this case but this allows us to only consume the most 
-    // up-to-date data.
-    let (pixhawk_sender, _) = broadcast::channel(1);
-    let (telemetry_sender, _) = broadcast::channel(1);
+    let config = config.context("failed to read config file")?;
 
-    let channels: Arc<Channels> = Arc::new(Channels {
-        interrupt: interrupt_sender,
-        pixhawk: pixhawk_sender,
-        telemetry: telemetry_sender,
-    });
+    let channels: Arc<Channels> = Arc::new(Channels::new());
 
     ctrlc::set_handler({
         let channels = channels.clone();
@@ -81,27 +98,41 @@ async fn main() -> anyhow::Result<()> {
     })
     .expect("could not set ctrl+c handler");
 
-    info!("connecting to pixhawk");
+    info!("connecting to pixhawk at {}", &config.pixhawk.address);
 
     // pixhawk telemetry should be exposed on localhost:5763 for SITL
     // TODO: add case for when it's not the SITL
 
-    let mut pixhawk_client = PixhawkClient::connect(channels.clone(), ":::5763").await?;
+    let mut pixhawk_client =
+        PixhawkClient::connect(channels.clone(), config.pixhawk.address).await?;
 
     info!("initializing scheduler");
-
     let scheduler = Scheduler::new(channels.clone());
 
+    info!("initializing telemetry stream");
     let mut telemetry = TelemetryStream::new(channels.clone());
 
+    info!("initializing server");
+    let server_address = config
+        .server
+        .address
+        .parse()
+        .context("invalid server address")?;
+
     let pixhawk_task = spawn(async move { pixhawk_client.run().await });
-    let server_task = spawn(async move { server::serve(channels.clone()).await });
     let scheduler_task = spawn(async move { scheduler.run().await });
     let telemetry_task = spawn(async move { telemetry.run().await });
+    let server_task = spawn({
+        let channels = channels.clone();
+        server::serve(channels, server_address)
+    });
+    let cli_task = spawn_blocking({
+        let channels = channels.clone();
+        move || cli::repl::run(channels)
+    });
 
-    let futures = vec![pixhawk_task, server_task, scheduler_task, telemetry_task];
-    let results = futures::future::join_all(futures).await;
-
-    let final_result: Result<_, _> = results.into_iter().collect();
-    final_result?
+    // wait for any of these tasks to end
+    let futures = vec![pixhawk_task, scheduler_task, telemetry_task, server_task, cli_task];
+    let (result, _, _) = futures::future::select_all(futures).await;
+    result?
 }

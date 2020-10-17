@@ -1,11 +1,19 @@
 use std::time::SystemTime;
 
 use crate::state::{Attitude, Coords3D};
+use serde::{Serialize, Deserialize};
 
-#[derive(Default, Debug, Clone)]
+#[derive(Default, Debug, Clone, Serialize, Deserialize)]
 pub struct Telemetry {
     pub coords: Option<Coords3D>,
+    
+    #[serde(with = "serde_millis")]
+    pub coords_timestamp: Option<SystemTime>,
+
     pub attitude: Option<Attitude>,
+
+    #[serde(with = "serde_millis")]
+    pub attitude_timestamp: Option<SystemTime>,
 }
 
 #[derive(Debug, Clone)]
