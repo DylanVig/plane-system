@@ -1,5 +1,8 @@
 {
   "pixhawk": {
-    "port": 14550
+    "address": "[::]:5763"
+  },
+  "server": {
+    "address": "[::]:8080"
   }
 }

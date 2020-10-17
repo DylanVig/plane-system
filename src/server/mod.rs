@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use std::{convert::Infallible, sync::Arc, time::SystemTime};
+use std::{convert::Infallible, net::SocketAddr, sync::Arc, time::SystemTime};
 use tokio::sync::RwLock;
 use warp::{self, Filter};
 
@@ -26,7 +26,7 @@ enum ClientType {
     ADLC,
 }
 
-pub async fn serve(channels: Arc<Channels>) -> anyhow::Result<()> {
+pub async fn serve(channels: Arc<Channels>, address: SocketAddr) -> anyhow::Result<()> {
     info!("initializing server");
 
     let pixhawk_telem = Arc::new(RwLock::new(<Telemetry as Default>::default()));
@@ -52,7 +52,6 @@ pub async fn serve(channels: Arc<Channels>) -> anyhow::Result<()> {
 
     let api = route_roi.or(route_telem);
 
-    let address = ([127, 0, 0, 1], 8080);
     info!("initialized server");
     info!("listening at {:?}", address);
 

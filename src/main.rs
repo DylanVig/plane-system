@@ -50,8 +50,6 @@ async fn main() -> anyhow::Result<()> {
 
     let config = config.context("failed to read config file")?;
 
-    info!("pixhawk port: {}", config.pixhawk.port);
-
     let (interrupt_sender, _) = broadcast::channel(1);
     let (pixhawk_sender, _) = broadcast::channel(1024);
 
@@ -70,19 +68,26 @@ async fn main() -> anyhow::Result<()> {
     })
     .expect("could not set ctrl+c handler");
 
-    info!("connecting to pixhawk");
+    info!("connecting to pixhawk at {}", &config.pixhawk.address);
 
     // pixhawk telemetry should be exposed on localhost:5763 for SITL
     // TODO: add case for when it's not the SITL
 
-    let mut pixhawk_client = PixhawkClient::connect(channels.clone(), ":::5763").await?;
+    let mut pixhawk_client =
+        PixhawkClient::connect(channels.clone(), config.pixhawk.address).await?;
 
     info!("initializing scheduler");
-
     let scheduler = Scheduler::new(channels.clone());
 
+    info!("initializing server");
+    let server_address = config
+        .server
+        .address
+        .parse()
+        .context("invalid server address")?;
+
     let pixhawk_task = spawn(async move { pixhawk_client.run().await });
-    let server_task = spawn(async move { server::serve(channels.clone()).await });
+    let server_task = spawn(async move { server::serve(channels.clone(), server_address).await });
     let scheduler_task = spawn(async move { scheduler.run().await });
 
     let futures = vec![pixhawk_task, server_task, scheduler_task];

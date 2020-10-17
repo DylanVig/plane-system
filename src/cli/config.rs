@@ -5,12 +5,18 @@ use serde::Deserialize;
 
 #[derive(Debug, Deserialize)]
 pub struct PixhawkConfig {
-    pub port: u16,
+    pub address: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ServerConfig {
+    pub address: String,
 }
 
 #[derive(Debug, Deserialize)]
 pub struct PlaneSystemConfig {
     pub pixhawk: PixhawkConfig,
+    pub server: ServerConfig,
 }
 
 impl PlaneSystemConfig {
