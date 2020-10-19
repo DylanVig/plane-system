@@ -129,20 +129,6 @@ pub struct Telemetry {
     pub position: Coords3D,
 }
 
-impl Telemetry {
-    pub fn set_plane_attitude(&mut self, plane_attitude: Attitude) {
-        self.plane_attitude = plane_attitude
-    }
-
-    pub fn set_gimbal_attitude(&mut self, gimbal_attitude: Attitude) {
-        self.gimbal_attitude = gimbal_attitude
-    }
-
-    pub fn set_position(&mut self, position: Coords3D) {
-        self.position = position
-    }
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Image {
     path: PathBuf,
