@@ -107,7 +107,7 @@ async fn main() -> anyhow::Result<()> {
         PixhawkClient::connect(channels.clone(), config.pixhawk.address).await?;
 
     info!("initializing scheduler");
-    let scheduler = Scheduler::new(channels.clone());
+    let mut scheduler = Scheduler::new(channels.clone());
 
     info!("initializing telemetry stream");
     let mut telemetry = TelemetryStream::new(channels.clone());

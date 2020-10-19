@@ -17,7 +17,7 @@ impl RegionOfInterestId {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Copy, Clone, Debug, Serialize, Deserialize)]
 pub struct RegionOfInterest {
     id: RegionOfInterestId,
     location: Coords2D,
