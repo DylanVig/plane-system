@@ -1,9 +1,11 @@
 use std::sync::Arc;
 
-use anyhow::Context;
+use state::Telemetry;
 use ctrlc;
 use pixhawk::{client::PixhawkClient, state::PixhawkMessage};
 use scheduler::Scheduler;
+use telemetry::TelemetryStream;
+use anyhow::Context;
 use structopt::StructOpt;
 use tokio::{spawn, sync::broadcast, task::spawn_blocking};
 
@@ -20,6 +22,7 @@ mod gpio;
 mod image_upload;
 mod pixhawk;
 mod scheduler;
+mod telemetry;
 mod server;
 
 mod cli;
@@ -33,6 +36,8 @@ pub struct Channels {
     /// Channel for broadcasting updates to the state of the Pixhawk.
     pixhawk: broadcast::Sender<PixhawkMessage>,
 
+    /// Channel for broadcasting telemetry information gathered from the gimbal and pixhawk
+    telemetry: broadcast::Sender<Telemetry>,
     /// Channel for broadcasting commands the user enters via the REPL
     cli: broadcast::Sender<PixhawkMessage>,
     // camera: Option<broadcast::Receiver<CameraMessage>>,
@@ -41,13 +46,27 @@ pub struct Channels {
 impl Channels {
     pub fn new() -> Self {
         let (interrupt_sender, _) = broadcast::channel(1);
-        let (pixhawk_sender, _) = broadcast::channel(1024);
+        let (telemetry_sender, _) = broadcast::channel(1);
+        let (pixhawk_sender, _) = broadcast::channel(1);
         let (cli_sender, _) = broadcast::channel(1024);
 
         Channels {
             interrupt: interrupt_sender,
             pixhawk: pixhawk_sender,
+            telemetry: telemetry_sender,
             cli: cli_sender,
+        }
+    }
+
+    /// realtime_recv provides an abstraction to ignore receiver lag errors when we have
+    /// channels with capacity 1 and want the most recent message to overwrite the previous
+    /// message
+    pub async fn realtime_recv<T: Clone>(receiver: &mut broadcast::Receiver<T>) -> T {
+        loop {
+            match receiver.recv().await {
+                Ok(message) => return message,
+                Err(_) => continue,
+            }
         }
     }
 }
@@ -90,6 +109,9 @@ async fn main() -> anyhow::Result<()> {
     info!("initializing scheduler");
     let scheduler = Scheduler::new(channels.clone());
 
+    info!("initializing telemetry stream");
+    let mut telemetry = TelemetryStream::new(channels.clone());
+
     info!("initializing server");
     let server_address = config
         .server
@@ -99,6 +121,7 @@ async fn main() -> anyhow::Result<()> {
 
     let pixhawk_task = spawn(async move { pixhawk_client.run().await });
     let scheduler_task = spawn(async move { scheduler.run().await });
+    let telemetry_task = spawn(async move { telemetry.run().await });
     let server_task = spawn({
         let channels = channels.clone();
         server::serve(channels, server_address)
@@ -109,7 +132,7 @@ async fn main() -> anyhow::Result<()> {
     });
 
     // wait for any of these tasks to end
-    let futures = vec![pixhawk_task, server_task, scheduler_task, cli_task];
+    let futures = vec![pixhawk_task, scheduler_task, telemetry_task, server_task, cli_task];
     let (result, _, _) = futures::future::select_all(futures).await;
     result?
 }

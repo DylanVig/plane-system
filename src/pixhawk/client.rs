@@ -31,6 +31,7 @@ pub struct PixhawkClient {
     buf: BytesMut,
     sequence: AtomicU8,
     channels: Arc<Channels>,
+    interrupt: broadcast::Receiver<()>,
 }
 
 impl PixhawkClient {
@@ -42,11 +43,14 @@ impl PixhawkClient {
             .await
             .context("failed to connect to pixhawk")?;
 
+        let interrupt = channels.interrupt.subscribe();
+
         Ok(PixhawkClient {
             sock,
             buf: BytesMut::with_capacity(1024),
             sequence: AtomicU8::default(),
             channels,
+            interrupt,
         })
     }
 
@@ -177,13 +181,11 @@ impl PixhawkClient {
         info!("initializing pixhawk");
         self.init().await?;
 
-        let mut interrupt_recv = self.channels.interrupt.subscribe();
-
         loop {
             let msg = self.recv().await?;
             trace!("received message: {:?}", msg);
 
-            if let Ok(()) = interrupt_recv.try_recv() {
+            if let Ok(()) =  self.interrupt.try_recv() {
                 info!("received interrupt, shutting down");
                 break;
             }
