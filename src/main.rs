@@ -59,18 +59,6 @@ impl Channels {
             cli: cli_sender,
         }
     }
-
-    /// realtime_recv provides an abstraction to ignore receiver lag errors when we have
-    /// channels with capacity 1 and want the most recent message to overwrite the previous
-    /// message
-    pub async fn realtime_recv<T: Clone>(receiver: &mut broadcast::Receiver<T>) -> T {
-        loop {
-            match receiver.recv().await {
-                Ok(message) => return message,
-                Err(_) => continue,
-            }
-        }
-    }
 }
 
 #[tokio::main]
