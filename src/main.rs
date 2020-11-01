@@ -49,7 +49,7 @@ impl Channels {
     pub fn new() -> Self {
         let (interrupt_sender, _) = broadcast::channel(1);
         let (telemetry_sender, _) = broadcast::channel(1);
-        let (pixhawk_sender, _) = broadcast::channel(1);
+        let (pixhawk_sender, _) = broadcast::channel(64);
         let (cli_sender, _) = broadcast::channel(1024);
 
         Channels {
