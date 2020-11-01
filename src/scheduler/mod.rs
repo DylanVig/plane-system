@@ -1,10 +1,11 @@
-use std::sync::Arc;
-use crate::Channels;
+use crate::scheduler::backend::*;
+use crate::{pixhawk::state::PixhawkMessage, state::RegionOfInterest, util::ReceiverExt, Channels};
+use anyhow::Context;
+use std::{sync::Arc, time::Duration};
+use tokio::time::timeout;
 
 mod backend;
 mod state;
-
-use crate::scheduler::backend::*;
 
 /// Controls whether the plane is taking pictures of the ground (first-pass),
 /// taking pictures of ROIs (second-pass), or doing nothing. Coordinates sending
@@ -42,6 +43,7 @@ impl Scheduler {
             }
             if let Ok(_) = interrupt_recv.try_recv() { break; }
         }
+        
         Ok(())
     }
 }

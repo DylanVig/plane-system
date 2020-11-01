@@ -15,6 +15,8 @@ extern crate log;
 extern crate anyhow;
 #[macro_use]
 extern crate num_derive;
+#[macro_use]
+extern crate async_trait;
 
 mod camera;
 mod gimbal;
@@ -24,7 +26,7 @@ mod pixhawk;
 mod scheduler;
 mod telemetry;
 mod server;
-
+mod util;
 mod cli;
 mod state;
 
@@ -47,7 +49,7 @@ impl Channels {
     pub fn new() -> Self {
         let (interrupt_sender, _) = broadcast::channel(1);
         let (telemetry_sender, _) = broadcast::channel(1);
-        let (pixhawk_sender, _) = broadcast::channel(1);
+        let (pixhawk_sender, _) = broadcast::channel(64);
         let (cli_sender, _) = broadcast::channel(1024);
 
         Channels {
@@ -108,6 +110,9 @@ async fn main() -> anyhow::Result<()> {
 
     info!("initializing scheduler");
     let mut scheduler = Scheduler::new(channels.clone());
+
+    info!("initializing telemetry stream");
+    let mut telemetry = TelemetryStream::new(channels.clone());
 
     info!("initializing telemetry stream");
     let mut telemetry = TelemetryStream::new(channels.clone());

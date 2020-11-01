@@ -5,7 +5,7 @@
 - Install [Rust 1.46.0 or higher](https://rustup.rs/)
 - Install `libusb`
   - Arch/Manjaro: `pacman -S libusb`
-  - Ubuntu/Debian: `apt install libusb-dev`
+  - Ubuntu/Debian: `apt install libusb-1.0-0-dev`
 - `cargo build`
 
 ## how to run
