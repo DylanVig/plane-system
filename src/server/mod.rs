@@ -1,10 +1,11 @@
+use anyhow::Context;
 use serde::{Deserialize, Serialize};
 use std::{convert::Infallible, net::SocketAddr, sync::Arc, time::SystemTime};
 use tokio::sync::RwLock;
 use warp::{self, Filter};
 
-use crate::Channels;
 use crate::{pixhawk::state::PixhawkMessage, pixhawk::state::Telemetry, state::RegionOfInterest};
+use crate::{util::ReceiverExt, Channels};
 
 #[derive(Clone)]
 struct ServerState {}
@@ -67,9 +68,13 @@ pub async fn serve(channels: Arc<Channels>, address: SocketAddr) -> anyhow::Resu
     let mut pixhawk_recv = channels.pixhawk.subscribe();
     let channel_task = tokio::spawn(async move {
         loop {
-            let pixhawk_msg = pixhawk_recv.recv().await.unwrap();
+            let pixhawk_msg = pixhawk_recv
+                .recv_skip()
+                .await
+                .context("pixhawk stream closed")?;
+
             let mut pixhawk_telem = pixhawk_telem.write().await;
-            
+
             match pixhawk_msg {
                 PixhawkMessage::Gps { coords } => {
                     pixhawk_telem.coords = Some(coords);
@@ -87,6 +92,8 @@ pub async fn serve(channels: Arc<Channels>, address: SocketAddr) -> anyhow::Resu
                 break;
             }
         }
+
+        anyhow::Result::<()>::Ok(())
     });
 
     let results = futures::future::join(server_task, channel_task).await;

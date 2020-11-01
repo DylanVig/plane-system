@@ -1,13 +1,7 @@
-use std::{
-    sync::Arc,
-    time::Duration,
-};
+use crate::{pixhawk::state::PixhawkMessage, state::RegionOfInterest, util::ReceiverExt, Channels};
+use anyhow::Context;
+use std::{sync::Arc, time::Duration};
 use tokio::time::timeout;
-use crate::{
-    state::RegionOfInterest,
-    Channels,
-    pixhawk::state::PixhawkMessage,
-};
 
 /// Controls whether the plane is taking pictures of the ground (first-pass),
 /// taking pictures of ROIs (second-pass), or doing nothing. Coordinates sending
@@ -29,10 +23,7 @@ impl Scheduler {
     }
 
     pub fn with_rois(rois: Vec<RegionOfInterest>, channels: Arc<Channels>) -> Self {
-        Self {
-            rois,
-            channels,
-        }
+        Self { rois, channels }
     }
 
     pub async fn run(&self) -> anyhow::Result<()> {
@@ -55,11 +46,18 @@ impl Scheduler {
                 }
             }
 
-            let telemetry = Channels::realtime_recv(&mut telemetry_recv).await;
+            let telemetry = telemetry_recv
+                .recv_skip()
+                .await
+                .context("telemetry stream closed")?;
+
             debug!("{:?}", telemetry);
 
-            if let Ok(_) = timeout(Duration::from_millis(10), interrupt_recv.recv()).await { break; }
+            if let Ok(_) = timeout(Duration::from_millis(10), interrupt_recv.recv()).await {
+                break;
+            }
         }
+        
         Ok(())
     }
 }
