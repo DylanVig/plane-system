@@ -83,6 +83,38 @@ pub enum SonyDevicePropertyCode {
     Zoom = 0xD6C9,
 }
 
+#[repr(u16)]
+#[derive(ToPrimitive, FromPrimitive, Debug, Copy, Clone, Eq, PartialEq)]
+pub enum SonyDeviceControlCode {
+    AELock = 0xD61E,
+    AFLock = 0xD63B,
+    CameraSettingReset = 0xD6D9,
+    ExposureCompensation = 0xD6C3,
+    FNumber = 0xD6C5,
+    FocusFarForContinuous = 0xD6A4,
+    FocusFarForOneShot = 0xD6A2,
+    FocusMagnification = 0xD6A5,
+    FocusNearForContinuous = 0xD6A3,
+    FocusNearForOneShot = 0xD6A1,
+    IntervalStillRecording = 0xD630,
+    ISO = 0xD6F2,
+    MediaFormat = 0xD61C,
+    MovieRecording = 0xD60F,
+    PowerOff = 0xD637,
+    RequestForUpdate = 0xD612,
+    RequestForUpdateForLens = 0xD625,
+    S1Button = 0xD61D,
+    S2Button = 0xD617,
+    ShutterSpeed = 0xD6EA,
+    SystemInit = 0xD6DA,
+    ZoomControlAbsolute = 0xD60E,
+    ZoomControlTele = 0xD63C,
+    ZoomControlTeleOneShot = 0xD614,
+    ZoomControlWide = 0xD63E,
+    ZoomControlWideOneShot = 0xD613,
+}
+
+
 pub struct CameraInterface {
     camera: ptp::PtpCamera<rusb::GlobalContext>,
 }
