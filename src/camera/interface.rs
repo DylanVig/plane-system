@@ -1,9 +1,6 @@
 use anyhow::Context;
-use num_traits::ToPrimitive;
-use std::{
-    fmt::Debug,
-    time::Duration,
-};
+use num_traits::{FromPrimitive, ToPrimitive};
+use std::{fmt::Debug, time::Duration};
 
 use ptp::PtpRead;
 use std::io::Cursor;
@@ -32,6 +29,58 @@ impl Into<ptp::CommandCode> for SonyCommandCode {
     fn into(self) -> ptp::CommandCode {
         ptp::CommandCode::Other(self.to_u16().unwrap())
     }
+}
+
+#[repr(u16)]
+#[derive(ToPrimitive, FromPrimitive, Debug, Copy, Clone, Eq, PartialEq)]
+pub enum SonyDevicePropertyCode {
+    AELock = 0xD6E8,
+    AspectRatio = 0xD6B3,
+    BatteryLevel = 0xD6F1,
+    BatteryRemain = 0xD6E7,
+    BiaxialAB = 0xD6E3,
+    BiaxialGM = 0xD6EF,
+    CaptureCount = 0xD633,
+    Caution = 0xD6BA,
+    ColorTemperature = 0xD6F0,
+    Compression = 0xD6B9,
+    DateTime = 0xD6B1,
+    DriveMode = 0xD6B0,
+    ExposureCompensation = 0xD6C3,
+    ExposureMode = 0xD6CC,
+    FNumber = 0xD6C5,
+    FocusIndication = 0xD6EC,
+    FocusMagnificationLevel = 0xD6A7,
+    FocusMagnificationPosition = 0xD6A8,
+    FocusMagnificationState = 0xD6A6,
+    FocusMode = 0xD6CB,
+    ImageSize = 0xD6B7,
+    IntervalStillRecordingState = 0xD632,
+    IntervalTime = 0xD631,
+    ISO = 0xD6F2,
+    LensStatus = 0xD6A9,
+    LensUpdateState = 0xD624,
+    LiveViewResolution = 0xD6AA,
+    LiveViewStatus = 0xD6DE,
+    LocationInfo = 0xD6C0,
+    MediaFormatState = 0xD6C7,
+    MovieFormat = 0xD6BD,
+    MovieQuality = 0xD6BC,
+    MovieRecording = 0xD6CD,
+    MovieSteady = 0xD6D1,
+    NotifyFocus = 0xD6AF,
+    OperatingMode = 0xD6E2,
+    SaveMedia = 0xD6CF,
+    ShootingFileInfo = 0xD6C6,
+    ShutterSpeed = 0xD6EA,
+    StillSteadyMode = 0xD6D0,
+    StorageInfo = 0xD6BB,
+    WhiteBalance = 0xD6B8,
+    WhiteBalanceInit = 0xD6DF,
+    ZoomInfo = 0xD6BF,
+    ZoomMagnificationInfo = 0xD63A,
+    ZoomAbsolutePosition = 0xD6BE,
+    Zoom = 0xD6C9,
 }
 
 pub struct CameraInterface {
@@ -98,6 +147,14 @@ impl CameraInterface {
                     let mut ext_device_info = Cursor::new(ext_device_info);
 
                     let sdi_ext_version = PtpRead::read_ptp_u16(&mut ext_device_info)?;
+                    let sdi_device_props = PtpRead::read_ptp_u16_vec(&mut ext_device_info)?;
+
+                    let sdi_device_props = sdi_device_props
+                        .into_iter()
+                        .map(<SonyDevicePropertyCode as FromPrimitive>::from_u16)
+                        .collect::<Vec<_>>();
+
+                    debug!("got device props: {:?}", sdi_device_props);
 
                     break Ok(sdi_ext_version);
                 }
