@@ -68,7 +68,7 @@ async fn main() -> anyhow::Result<()> {
     // TEST CODE
     {
         debug!("initializing camera");
-        let mut camera = camera::interface::CameraInterface2::new()?;
+        let mut camera = camera::interface::CameraInterface::new()?;
         debug!("opening connection to camera");
         camera.connect()?;
 

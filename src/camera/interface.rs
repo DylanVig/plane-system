@@ -34,11 +34,11 @@ impl Into<ptp::CommandCode> for SonyCommandCode {
     }
 }
 
-pub struct CameraInterface2 {
+pub struct CameraInterface {
     camera: ptp::PtpCamera<rusb::GlobalContext>,
 }
 
-impl CameraInterface2 {
+impl CameraInterface {
     pub fn timeout(&self) -> Option<Duration> {
         Some(Duration::from_secs(5))
     }
@@ -47,7 +47,7 @@ impl CameraInterface2 {
         let handle = rusb::open_device_with_vid_pid(SONY_USB_VID, SONY_USB_PID)
             .context("could not open Sony R10C usb device")?;
 
-        Ok(CameraInterface2 {
+        Ok(CameraInterface {
             camera: ptp::PtpCamera::new(handle).context("could not initialize Sony R10C")?,
         })
     }
@@ -103,6 +103,7 @@ impl CameraInterface2 {
                 }
                 Err(err) => {
                     if retries < 1000 {
+                        retries += 1;
                         continue;
                     } else {
                         break Err(err);
