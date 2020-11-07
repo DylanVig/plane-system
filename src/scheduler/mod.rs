@@ -28,9 +28,13 @@ impl Scheduler {
     pub async fn run(&mut self) -> anyhow::Result<()> {
         let mut telemetry_recv = self.channels.telemetry.subscribe();
         let mut interrupt_recv = self.channels.interrupt.subscribe();
-        let mut counter = 0;
+        let mut counter: u8 = 0;
         loop {
-            let telemetry = Channels::realtime_recv(&mut telemetry_recv).await;
+            let telemetry = telemetry_recv
+                .recv_skip()
+                .await
+                .context("telemetry channel closed")?;
+            
             self.backend.update_telemetry(telemetry);
             if let Some(capture_request) = self.backend.get_capture_request() {
                 debug!("Got a capture request: {:?}", capture_request);
