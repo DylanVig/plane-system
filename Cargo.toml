@@ -15,6 +15,7 @@ mavlink = { features = ["ardupilotmega", "uavionix", "icarous"], git = "https://
 num-traits = "0.2"
 num-derive = "0.3"
 simplebgc = { git = "https://github.com/laptou/simplebgc-rs" }
+ptp = { git = "https://github.com/CUAir/rust-ptp" }
 futures = "0.3.5"
 bytes = "0.6"
 tokio = { version = "0.2", features = ["full"] }

@@ -5,42 +5,6 @@ use std::{
     time::Duration,
 };
 
-#[repr(u32)]
-pub enum PtpResponseCode {
-    Undefined = 0x2000,
-    Ok,
-    GeneralError,
-    SessionNotOpen,
-    InvalidTransactionId,
-    OperationNotSupported,
-    ParameterNotSupported,
-    IncompleteTransfer,
-    InvalidStorageId,
-    InvalidObjectHandle,
-    DevicePropNotSupported,
-    InvalidObjectFormatCode,
-    StoreFull,
-    ObjectWriteProtected,
-    StoreReadOnly,
-    AccessDenied,
-    NoThumbnailPresent,
-    SelfTestFailed,
-    PartialDeletion,
-    StoreNotAvailable,
-    SpecificationByFormatUnsupported,
-    NoValidObjectInfo,
-    UnknownVendorCode,
-    CaptureAlreadyTerminated,
-    DeviceBusy,
-    InvalidParentObject,
-    InvalidDevicePropFormat,
-    InvalidDevicePropValue,
-    InvalidParameter,
-    SessionAlreadyOpen,
-    TransactionCancelled,
-    SpecificationOfDestinationUnsupported,
-}
-
 #[cxx::bridge]
 mod ffi {
 
