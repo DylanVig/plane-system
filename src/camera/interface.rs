@@ -1,4 +1,6 @@
+use anyhow::Context;
 use cxx::UniquePtr;
+use num_traits::ToPrimitive;
 use std::{
     error::Error,
     fmt::{Debug, Display},
@@ -18,7 +20,7 @@ mod ffi {
         type SDIDevicePropInfoDataset;
 
         fn make_ptp() -> UniquePtr<socc_ptp>;
-        fn make_fixture(ptp: &mut socc_ptp) -> i32;
+        fn make_fixture(ptp: &mut socc_ptp) -> UniquePtr<socc_examples_fixture>;
 
         fn connect(self: &mut socc_examples_fixture) -> i32;
         fn disconnect(self: &mut socc_examples_fixture) -> i32;
@@ -216,6 +218,68 @@ impl CameraInterface {
 
         check_camera_result!(self.fixture.disconnect());
         self.connected = false;
+
+        Ok(())
+    }
+}
+
+/// Sony's USB vendor ID
+const SONY_USB_VID: u16 = 0x054C;
+/// Sony R10C camera's product ID
+const SONY_USB_PID: u16 = 0x0A79;
+/// Sony's PTP extension vendor ID
+const SONY_PTP_VID: u16 = 0x0011;
+
+#[repr(u16)]
+#[derive(ToPrimitive, FromPrimitive, Copy, Clone, Eq, PartialEq, Debug)]
+pub enum SonyCommandCode {
+    SdioConnect = 0x96FE,
+    SdioGetExtDeviceInfo = 0x96FD,
+    SdioSetExtDevicePropValue = 0x96FA,
+    SdioControlDevice = 0x96F8,
+    SdioGetAllExtDevicePropInfo = 0x96F6,
+    SdioSendUpdateFile = 0x96F5,
+    SdioGetExtLensInfo = 0x96F4,
+    SdioExtDeviceDeleteObject = 0x96F1,
+}
+
+impl Into<ptp::CommandCode> for SonyCommandCode {
+    fn into(self) -> ptp::CommandCode {
+        ptp::CommandCode::Other(self.to_u16().unwrap())
+    }
+}
+
+pub struct CameraInterface2 {
+    camera: ptp::PtpCamera<rusb::GlobalContext>,
+}
+
+impl CameraInterface2 {
+    pub fn timeout(&self) -> Option<Duration> {
+        Some(Duration::from_secs(5))
+    }
+
+    pub fn new() -> anyhow::Result<Self> {
+        let handle = rusb::open_device_with_vid_pid(SONY_USB_VID, SONY_USB_PID)
+            .context("could not find Sony R10C usb device")?;
+
+        Ok(CameraInterface2 {
+            camera: ptp::PtpCamera::new(handle).context("could not initialize Sony R10C")?,
+        })
+    }
+
+    pub fn connect(&mut self) -> anyhow::Result<()> {
+        self.camera.open_session(self.timeout())?;
+
+        let phase_type = 1;
+        let key_code = 0x0000DA01;
+        let params = [phase_type, key_code, key_code];
+
+        self.camera.command(
+            SonyCommandCode::SdioConnect.into(),
+            &params,
+            None,
+            self.timeout(),
+        )?;
 
         Ok(())
     }

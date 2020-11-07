@@ -28,6 +28,7 @@ clap = "2"
 config = "0.10.1"
 rustyline = "6.3.0"
 async-trait = "0.1.41"
+rusb = "0.6"
 
 [build-dependencies]
 cxx-build = "0.5"
