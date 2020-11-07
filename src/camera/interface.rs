@@ -5,8 +5,45 @@ use std::{
     time::Duration,
 };
 
+#[repr(u32)]
+pub enum PtpResponseCode {
+    Undefined = 0x2000,
+    Ok,
+    GeneralError,
+    SessionNotOpen,
+    InvalidTransactionId,
+    OperationNotSupported,
+    ParameterNotSupported,
+    IncompleteTransfer,
+    InvalidStorageId,
+    InvalidObjectHandle,
+    DevicePropNotSupported,
+    InvalidObjectFormatCode,
+    StoreFull,
+    ObjectWriteProtected,
+    StoreReadOnly,
+    AccessDenied,
+    NoThumbnailPresent,
+    SelfTestFailed,
+    PartialDeletion,
+    StoreNotAvailable,
+    SpecificationByFormatUnsupported,
+    NoValidObjectInfo,
+    UnknownVendorCode,
+    CaptureAlreadyTerminated,
+    DeviceBusy,
+    InvalidParentObject,
+    InvalidDevicePropFormat,
+    InvalidDevicePropValue,
+    InvalidParameter,
+    SessionAlreadyOpen,
+    TransactionCancelled,
+    SpecificationOfDestinationUnsupported,
+}
+
 #[cxx::bridge]
 mod ffi {
+
     extern "C" {
         include!("socc_types.h");
         include!("socc_examples_fixture.h");
@@ -14,53 +51,68 @@ mod ffi {
         type socc_examples_fixture;
         type socc_ptp;
         type socc_error;
+        type SDIDevicePropInfoDataset;
 
         fn make_ptp() -> UniquePtr<socc_ptp>;
-        fn make_fixture(ptp: &mut socc_ptp) -> UniquePtr<socc_examples_fixture>;
+        fn make_fixture(ptp: &mut socc_ptp) -> i32;
 
         fn connect(self: &mut socc_examples_fixture) -> i32;
         fn disconnect(self: &mut socc_examples_fixture) -> i32;
 
-        fn OpenSession(self: &mut socc_examples_fixture, session_id: u32) -> i32;
-        fn CloseSession(self: &mut socc_examples_fixture) -> ();
+        #[cxx_name = "OpenSession"]
+        fn open_session(self: &mut socc_examples_fixture, session_id: u32) -> i32;
+        #[cxx_name = "CloseSession"]
+        fn close_session(self: &mut socc_examples_fixture) -> ();
 
-        fn SDIO_Connect(
+        #[cxx_name = "SDIO_Connect"]
+        fn sdio_connect(
             self: &mut socc_examples_fixture,
             phase_type: u32,
             keycode1: u32,
             keycode2: u32,
         ) -> i32;
-        fn SDIO_SetExtDevicePropValue_u8(
+
+        #[cxx_name = "SDIO_SetExtDevicePropValue"]
+        fn sdio_set_ext_device_prop_value_u8(
             self: &mut socc_examples_fixture,
             code: u16,
             data: u8,
         ) -> i32;
-        fn SDIO_SetExtDevicePropValue_u16(
+        #[cxx_name = "SDIO_SetExtDevicePropValue"]
+        fn sdio_set_ext_device_prop_value_u16(
             self: &mut socc_examples_fixture,
             code: u16,
             data: u16,
         ) -> i32;
-        fn SDIO_SetExtDevicePropValue_str(
+        #[cxx_name = "SDIO_SetExtDevicePropValue_str"]
+        fn sdio_set_ext_device_prop_value_str(
             self: &mut socc_examples_fixture,
             code: u16,
             data: &str,
         ) -> i32;
-        fn SDIO_ControlDevice_u16(self: &mut socc_examples_fixture, code: u16, value: u16) -> i32;
 
-        fn wait_for_InitiatorVersion(
+        #[cxx_name = "SDIO_ControlDevice"]
+        fn sdio_control_device_u16(self: &mut socc_examples_fixture, code: u16, value: u16) -> i32;
+
+        #[cxx_name = "wait_for_InitiatorVersion"]
+        fn wait_for_initiator_version(
             self: &mut socc_examples_fixture,
             expect: u16,
             retry_count: i32,
         ) -> i32;
+
         /// Actually returns `*const SDIDevicePropInfoDataset` but raw pointers
         /// are not supported by cxx yet
-        fn wait_for_IsEnable_casted(
+        #[cxx_name = "wait_for_IsEnable_usize"]
+        fn wait_for_enable(
             self: &mut socc_examples_fixture,
             code: u16,
             expect: u16,
             retry_count: i32,
         ) -> usize;
-        fn wait_for_CurrentValue(
+
+        #[cxx_name = "wait_for_CurrentValue"]
+        fn wait_for_current_value(
             self: &mut socc_examples_fixture,
             code: u16,
             expect: u16,
@@ -151,26 +203,27 @@ impl CameraInterface {
     pub fn connect(&mut self) -> anyhow::Result<()> {
         check_camera_result!(self.fixture.connect());
 
-        check_camera_result!(self.fixture.OpenSession(1));
+        check_camera_result!(self.fixture.open_session(1));
 
-        check_camera_result!(self.fixture.SDIO_Connect(0x000001, 0x0000DA01, 0x0000DA01));
-        check_camera_result!(self.fixture.SDIO_Connect(0x000002, 0x0000DA01, 0x0000DA01));
-        check_camera_result!(self.fixture.wait_for_InitiatorVersion(0x00C8, 1000));
-        check_camera_result!(self.fixture.SDIO_Connect(0x000003, 0x0000DA01, 0x0000DA01));
+        check_camera_result!(self.fixture.sdio_connect(0x000001, 0x0000DA01, 0x0000DA01));
+        check_camera_result!(self.fixture.sdio_connect(0x000002, 0x0000DA01, 0x0000DA01));
+        check_camera_result!(self.fixture.wait_for_initiator_version(0x00C8, 1000));
+        check_camera_result!(self.fixture.sdio_connect(0x000003, 0x0000DA01, 0x0000DA01));
 
-        self.fixture.wait_for_IsEnable_casted(0xD6B1, 0x01, 1000);
+        self.fixture.wait_for_enable(0xD6B1, 0x01, 1000);
         check_camera_result!(self
             .fixture
-            .SDIO_SetExtDevicePropValue_str(0xD6B1, "20150801T150000+0900"));
+            .sdio_set_ext_device_prop_value_str(0xD6B1, "20150801T150000+0900"));
 
-        self.fixture.wait_for_IsEnable_casted(0xD6E2, 0x01, 1000);
-        self.fixture.SDIO_SetExtDevicePropValue_u8(0xD6E2, 0x02);
-        self.fixture.wait_for_CurrentValue(0xD6E2, 0x02, 1000);
+        self.fixture.wait_for_enable(0xD6E2, 0x01, 1000);
+        self.fixture.sdio_set_ext_device_prop_value_u8(0xD6E2, 0x02);
+        self.fixture.wait_for_current_value(0xD6E2, 0x02, 1000);
 
-        self.fixture.SDIO_SetExtDevicePropValue_u16(0xD6CF, 0x0001);
-        self.fixture.wait_for_CurrentValue(0xD6CF, 0x0001, 1000);
+        self.fixture
+            .sdio_set_ext_device_prop_value_u16(0xD6CF, 0x0001);
+        self.fixture.wait_for_current_value(0xD6CF, 0x0001, 1000);
 
-        self.fixture.wait_for_CurrentValue(0xD6DE, 0x01, 1000);
+        self.fixture.wait_for_current_value(0xD6DE, 0x01, 1000);
         self.connected = true;
 
         Ok(())
@@ -178,24 +231,25 @@ impl CameraInterface {
 
     pub fn take_photo(&mut self) -> anyhow::Result<()> {
         /* SDIO_ControlDevice, s1 down */
-        check_camera_result!(self.fixture.SDIO_ControlDevice_u16(0xD61D, 0x0002));
+        check_camera_result!(self.fixture.sdio_control_device_u16(0xD61D, 0x0002));
 
         /* SDIO_ControlDevice, s2 down */
-        check_camera_result!(self.fixture.SDIO_ControlDevice_u16(0xD617, 0x0002));
+        check_camera_result!(self.fixture.sdio_control_device_u16(0xD617, 0x0002));
         std::thread::sleep(Duration::from_millis(100));
 
         /* SDIO_ControlDevice, s2 up */
-        check_camera_result!(self.fixture.SDIO_ControlDevice_u16(0xD617, 0x0001));
+        check_camera_result!(self.fixture.sdio_control_device_u16(0xD617, 0x0001));
         std::thread::sleep(Duration::from_millis(100));
 
         /* SDIO_ControlDevice, s1 down */
-        check_camera_result!(self.fixture.SDIO_ControlDevice_u16(0xD61D, 0x0001));
+        check_camera_result!(self.fixture.sdio_control_device_u16(0xD61D, 0x0001));
 
         Ok(())
     }
 
     pub fn disconnect(&mut self) -> anyhow::Result<()> {
-        self.fixture.CloseSession();
+        self.fixture.close_session();
+
         check_camera_result!(self.fixture.disconnect());
         self.connected = false;
 

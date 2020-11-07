@@ -34,6 +34,19 @@ typedef struct _LiveViewInfo_t
 class socc_examples_ptpstring
 {
 public:
+    socc_examples_ptpstring(const char *c, size_t length)
+    {
+        std::string ascii(c, length);
+        bytes_size = 1 + (ascii.size() + 1) * 2;
+        bytes = new uint8_t[bytes_size];
+        bytes[0] = ascii.size();
+        for (int i = 0; i < ascii.size() + 1; i++)
+        {
+            bytes[1 + i * 2] = c[i];
+            bytes[1 + i * 2 + 1] = 0;
+        }
+    }
+
     socc_examples_ptpstring(const char *c)
     {
         std::string ascii(c);
@@ -130,7 +143,6 @@ public:
     /* GetObject */
     void GetObject(uint32_t handle, void **object_data = NULL, uint32_t *compressed_size = NULL)
     {
-
         socc_examples_log log(__FUNCTION__, socc_examples_log::SOCC_EXAMPLES_LOG_INFO);
 
         int ret;
@@ -175,7 +187,7 @@ public:
     }
 
     template <typename T>
-    SDIDevicePropInfoDataset *wait_for_IsEnable(uint16_t code, T expect, int count = 1000)
+    SDIDevicePropInfoDataset* wait_for_IsEnable(uint16_t code, T expect, int count = 1000)
     {
         socc_examples_log log(__FUNCTION__, socc_examples_log::SOCC_EXAMPLES_LOG_INFO);
         SDIDevicePropInfoDataset *dataset = NULL;
@@ -211,7 +223,7 @@ public:
     }
 
     template <typename T>
-    size_t wait_for_IsEnable_casted(uint16_t code, T expect, int count = 1000)
+    size_t wait_for_IsEnable_usize(uint16_t code, T expect, int count = 1000)
     {
         return size_t(wait_for_IsEnable(code, expect, count));
     }
@@ -301,11 +313,6 @@ public:
         return ret;
     }
 
-    int SDIO_ControlDevice_u16(uint16_t code, uint16_t value)
-    {
-        return SDIO_ControlDevice(code, value);
-    }
-
     template <typename T>
     int SDIO_SetExtDevicePropValue(uint16_t code, T value)
     {
@@ -331,19 +338,9 @@ public:
         return ret;
     }
 
-    int SDIO_SetExtDevicePropValue_u8(uint16_t code, uint8_t value)
-    {
-        return SDIO_SetExtDevicePropValue(code, value);
-    }
-
-    int SDIO_SetExtDevicePropValue_u16(uint16_t code, uint16_t value)
-    {
-        return SDIO_SetExtDevicePropValue(code, value);
-    }
-
     int SDIO_SetExtDevicePropValue_str(uint16_t code, rust::Str str)
     {
-        return SDIO_SetExtDevicePropValue(code, socc_examples_ptpstring(str.data()));
+        return SDIO_SetExtDevicePropValue(code, socc_examples_ptpstring(str.data(), str.length()));
     }
 
     /* SDIO_GetExtDeviceInfo */
