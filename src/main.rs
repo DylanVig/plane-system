@@ -65,6 +65,16 @@ impl Channels {
 async fn main() -> anyhow::Result<()> {
     pretty_env_logger::init();
 
+    // TEST CODE
+    {
+        debug!("initializing camera");
+        let mut camera = camera::interface::CameraInterface2::new()?;
+        debug!("opening connection to camera");
+        camera.connect()?;
+
+        return Ok(());
+    }
+
     let main_args: cli::args::MainArgs = cli::args::MainArgs::from_args();
     let config = if let Some(config_path) = main_args.config {
         debug!("reading config from {:?}", &config_path);
@@ -120,16 +130,6 @@ async fn main() -> anyhow::Result<()> {
         let channels = channels.clone();
         move || cli::repl::run(channels)
     });
-
-    // TEST CODE
-    {
-        debug!("initializing camera");
-        let mut camera = camera::interface::CameraInterface2::new()?;
-        debug!("opening connection to camera");
-        camera.connect()?;
-
-        return Ok(());
-    }
 
     // wait for any of these tasks to end
     let futures = vec![pixhawk_task, scheduler_task, telemetry_task, server_task, cli_task];
