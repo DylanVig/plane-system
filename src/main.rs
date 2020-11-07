@@ -121,6 +121,16 @@ async fn main() -> anyhow::Result<()> {
         move || cli::repl::run(channels)
     });
 
+    // TEST CODE
+    {
+        debug!("initializing camera");
+        let mut camera = camera::interface::CameraInterface2::new()?;
+        debug!("opening connection to camera");
+        camera.connect()?;
+
+        return Ok(());
+    }
+
     // wait for any of these tasks to end
     let futures = vec![pixhawk_task, scheduler_task, telemetry_task, server_task, cli_task];
     let (result, _, _) = futures::future::select_all(futures).await;

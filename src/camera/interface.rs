@@ -268,18 +268,79 @@ impl CameraInterface2 {
     }
 
     pub fn connect(&mut self) -> anyhow::Result<()> {
+        use ptp::PtpRead;
+        use std::io::{Cursor, Read};
+
         self.camera.open_session(self.timeout())?;
 
-        let phase_type = 1;
         let key_code = 0x0000DA01;
-        let params = [phase_type, key_code, key_code];
+
+        // send SDIO_CONNECT twice, once with phase code 1, and then again with
+        // phase code 2
+
+        trace!("sending SDIO_Connect phase 1");
 
         self.camera.command(
             SonyCommandCode::SdioConnect.into(),
-            &params,
+            &[1, key_code, key_code],
             None,
             self.timeout(),
         )?;
+
+        trace!("sending SDIO_Connect phase 2");
+
+        self.camera.command(
+            SonyCommandCode::SdioConnect.into(),
+            &[2, key_code, key_code],
+            None,
+            self.timeout(),
+        )?;
+
+        trace!("sending SDIO_GetExtDeviceInfo until success");
+
+        let mut retries = 0;
+
+        let sdi_ext_version = loop {
+            // call getextdeviceinfo with initiatorversion = 0x00C8
+
+            let initiation_result = self.camera.command(
+                SonyCommandCode::SdioGetExtDeviceInfo.into(),
+                &[0x00C8],
+                None,
+                self.timeout(),
+            );
+
+            match initiation_result {
+                Ok(ext_device_info) => {
+                    // Vec<u8> is not Read, but Cursor is
+                    let mut ext_device_info = Cursor::new(ext_device_info);
+
+                    let sdi_ext_version = PtpRead::read_ptp_u16(&mut ext_device_info)?;
+
+                    break Ok(sdi_ext_version);
+                }
+                Err(err) => {
+                    if retries < 1000 {
+                        continue;
+                    } else {
+                        break Err(err);
+                    }
+                }
+            }
+        }?;
+
+        trace!("got extension version {:04x}", sdi_ext_version);
+
+        trace!("sending SDIO_Connect phase 3");
+
+        self.camera.command(
+            SonyCommandCode::SdioConnect.into(),
+            &[3, key_code, key_code],
+            None,
+            self.timeout(),
+        )?;
+
+        trace!("connection complete");
 
         Ok(())
     }
