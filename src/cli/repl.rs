@@ -44,11 +44,9 @@ pub enum CameraCliCommand {
         directory: String,
     },
 
-    #[structopt(name = "ls")]
-    EnumerateDirectory {
-        #[structopt(short, long)]
-        deep: bool,
-    },
+    Storage(CameraStorageCliCommand),
+    
+    File(CameraFileCliCommand),
 
     Capture,
 
@@ -59,6 +57,16 @@ pub enum CameraCliCommand {
     Download {
         file: Option<String>,
     },
+}
+
+#[derive(StructOpt, Debug, Clone)]
+pub enum CameraStorageCliCommand {
+    List
+}
+
+#[derive(StructOpt, Debug, Clone)]
+pub enum CameraFileCliCommand {
+    List
 }
 
 pub async fn run(
