@@ -1,12 +1,12 @@
 use std::sync::Arc;
 
-use state::Telemetry;
+use anyhow::Context;
 use ctrlc;
 use pixhawk::{client::PixhawkClient, state::PixhawkMessage};
 use scheduler::Scheduler;
-use telemetry::TelemetryStream;
-use anyhow::Context;
+use state::Telemetry;
 use structopt::StructOpt;
+use telemetry::TelemetryStream;
 use tokio::{spawn, sync::broadcast, task::spawn_blocking};
 
 #[macro_use]
@@ -19,16 +19,16 @@ extern crate num_derive;
 extern crate async_trait;
 
 mod camera;
+mod cli;
 mod gimbal;
 mod gpio;
 mod image_upload;
 mod pixhawk;
 mod scheduler;
-mod telemetry;
 mod server;
-mod util;
-mod cli;
 mod state;
+mod telemetry;
+mod util;
 
 #[derive(Debug)]
 pub struct Channels {
@@ -71,6 +71,9 @@ async fn main() -> anyhow::Result<()> {
         let mut camera = camera::interface::CameraInterface::new()?;
         debug!("opening connection to camera");
         camera.connect()?;
+        debug!("getting current camera properties");
+        let props = camera.update()?;
+        debug!("got camera properties: {:#?}", props);
 
         return Ok(());
     }
@@ -132,7 +135,13 @@ async fn main() -> anyhow::Result<()> {
     });
 
     // wait for any of these tasks to end
-    let futures = vec![pixhawk_task, scheduler_task, telemetry_task, server_task, cli_task];
+    let futures = vec![
+        pixhawk_task,
+        scheduler_task,
+        telemetry_task,
+        server_task,
+        cli_task,
+    ];
     let (result, _, _) = futures::future::select_all(futures).await;
     result?
 }

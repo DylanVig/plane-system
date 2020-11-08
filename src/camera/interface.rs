@@ -1,6 +1,6 @@
 use anyhow::Context;
 use num_traits::{FromPrimitive, ToPrimitive};
-use std::{fmt::Debug, time::Duration};
+use std::{collections::HashMap, collections::HashSet, fmt::Debug, time::Duration};
 
 use ptp::PtpRead;
 use std::io::Cursor;
@@ -32,7 +32,7 @@ impl Into<ptp::CommandCode> for SonyCommandCode {
 }
 
 #[repr(u16)]
-#[derive(ToPrimitive, FromPrimitive, Debug, Copy, Clone, Eq, PartialEq)]
+#[derive(ToPrimitive, FromPrimitive, Debug, Copy, Clone, Eq, PartialEq, Hash)]
 pub enum SonyDevicePropertyCode {
     AELock = 0xD6E8,
     AspectRatio = 0xD6B3,
@@ -84,7 +84,7 @@ pub enum SonyDevicePropertyCode {
 }
 
 #[repr(u16)]
-#[derive(ToPrimitive, FromPrimitive, Debug, Copy, Clone, Eq, PartialEq)]
+#[derive(ToPrimitive, FromPrimitive, Debug, Copy, Clone, Eq, PartialEq, Hash)]
 pub enum SonyDeviceControlCode {
     AELock = 0xD61E,
     AFLock = 0xD63B,
@@ -114,9 +114,26 @@ pub enum SonyDeviceControlCode {
     ZoomControlWideOneShot = 0xD613,
 }
 
+#[derive(Debug)]
+pub struct DevicePropDesc {
+    code: SonyDevicePropertyCode,
+    writeable: bool,
+    enabled: bool,
+    current_value: ptp::PtpDataType,
+    default_value: ptp::PtpDataType,
+    form_flag: u8,
+}
 
 pub struct CameraInterface {
     camera: ptp::PtpCamera<rusb::GlobalContext>,
+    state: Option<CameraState>,
+}
+
+struct CameraState {
+    version: u16,
+    properties: HashMap<SonyDevicePropertyCode, DevicePropDesc>,
+    supported_properties: HashSet<SonyDevicePropertyCode>,
+    supported_controls: HashSet<SonyDeviceControlCode>,
 }
 
 impl CameraInterface {
@@ -130,6 +147,7 @@ impl CameraInterface {
 
         Ok(CameraInterface {
             camera: ptp::PtpCamera::new(handle).context("could not initialize Sony R10C")?,
+            state: None,
         })
     }
 
@@ -163,7 +181,7 @@ impl CameraInterface {
 
         let mut retries = 0;
 
-        let sdi_ext_version = loop {
+        let state = loop {
             // call getextdeviceinfo with initiatorversion = 0x00C8
 
             let initiation_result = self.camera.command(
@@ -180,15 +198,26 @@ impl CameraInterface {
 
                     let sdi_ext_version = PtpRead::read_ptp_u16(&mut ext_device_info)?;
                     let sdi_device_props = PtpRead::read_ptp_u16_vec(&mut ext_device_info)?;
-
                     let sdi_device_props = sdi_device_props
                         .into_iter()
-                        .map(<SonyDevicePropertyCode as FromPrimitive>::from_u16)
-                        .collect::<Vec<_>>();
+                        .filter_map(<SonyDevicePropertyCode as FromPrimitive>::from_u16)
+                        .collect::<HashSet<_>>();
 
-                    debug!("got device props: {:?}", sdi_device_props);
+                    let sdi_device_controls = PtpRead::read_ptp_u16_vec(&mut ext_device_info)?;
+                    let sdi_device_controls = sdi_device_controls
+                        .into_iter()
+                        .filter_map(<SonyDeviceControlCode as FromPrimitive>::from_u16)
+                        .collect::<HashSet<_>>();
 
-                    break Ok(sdi_ext_version);
+                    trace!("got device props: {:?}", sdi_device_props);
+                    trace!("got device controls: {:?}", sdi_device_controls);
+
+                    break Ok(CameraState {
+                        version: sdi_ext_version,
+                        supported_properties: sdi_device_props,
+                        supported_controls: sdi_device_controls,
+                        properties: HashMap::new(),
+                    });
                 }
                 Err(err) => {
                     if retries < 1000 {
@@ -201,7 +230,7 @@ impl CameraInterface {
             }
         }?;
 
-        trace!("got extension version {:04x}", sdi_ext_version);
+        trace!("got extension version 0x{:04X}", state.version);
 
         trace!("sending SDIO_Connect phase 3");
 
@@ -214,6 +243,70 @@ impl CameraInterface {
 
         trace!("connection complete");
 
+        self.state = Some(state);
+
         Ok(())
+    }
+
+    pub fn update(&mut self) -> anyhow::Result<&HashMap<SonyDevicePropertyCode, DevicePropDesc>> {
+        let timeout = self.timeout();
+
+        let state = if let Some(ref mut state) = self.state {
+            state
+        } else {
+            bail!("the camera is not connected")
+        };
+
+        trace!("sending SDIO_GetAllExtDevicePropInfo");
+
+        let result = self.camera.command(
+            SonyCommandCode::SdioGetAllExtDevicePropInfo.into(),
+            &[],
+            None,
+            timeout,
+        )?;
+
+        let mut cursor = Cursor::new(result);
+
+        let num_entries = cursor.read_ptp_u8()? as usize;
+
+        trace!("reading {:?} entries", num_entries);
+
+        let mut properties = HashMap::new();
+
+        for _ in 0..num_entries {
+            let code = cursor.read_ptp_u16()?;
+
+            trace!("got property code 0x{:04x}", code);
+
+            let code: SonyDevicePropertyCode =
+                FromPrimitive::from_u16(code).context("invalid property code")?;
+
+            let data_type = cursor.read_ptp_u16()?;
+            let writeable = cursor.read_ptp_u8()? != 0;
+            let enabled = cursor.read_ptp_u8()? != 0;
+            let default_value = ptp::PtpDataType::read_type(data_type, &mut cursor)?;
+            let current_value = ptp::PtpDataType::read_type(data_type, &mut cursor)?;
+            let form_flag = cursor.read_ptp_u8()?;
+
+            ptp::PtpFormData
+
+            let desc = DevicePropDesc {
+                code,
+                current_value,
+                default_value,
+                enabled,
+                writeable,
+                form_flag,
+            };
+
+            trace!("got property desc {:#?}", desc);
+
+            properties.insert(code, desc);
+        }
+
+        state.properties = properties;
+
+        Ok(&state.properties)
     }
 }
