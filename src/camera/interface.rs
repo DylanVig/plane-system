@@ -2,7 +2,7 @@ use anyhow::Context;
 use num_traits::{FromPrimitive, ToPrimitive};
 use std::{collections::HashMap, collections::HashSet, fmt::Debug, time::Duration};
 
-use ptp::{PtpRead, StorageId};
+use ptp::{ObjectHandle, PtpRead, StorageId};
 use std::io::Cursor;
 
 /// Sony's USB vendor ID
@@ -382,7 +382,7 @@ impl CameraInterface {
     ) -> anyhow::Result<Vec<ObjectHandle>> {
         Ok(self
             .camera
-            .get_object_handles(storage_id, None, self.timeout())?)
+            .get_object_handles(storage_id, None, parent_id, self.timeout())?)
     }
 
     pub fn object_info(&mut self, object_id: ObjectHandle) -> anyhow::Result<ptp::PtpObjectInfo> {
