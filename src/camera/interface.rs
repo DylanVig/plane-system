@@ -2,7 +2,7 @@ use anyhow::Context;
 use num_traits::{FromPrimitive, ToPrimitive};
 use std::{collections::HashMap, collections::HashSet, fmt::Debug, time::Duration};
 
-use ptp::PtpRead;
+use ptp::{PtpRead, StorageId};
 use std::io::Cursor;
 
 /// Sony's USB vendor ID
@@ -238,7 +238,6 @@ impl CameraInterface {
         Ok(())
     }
 
-
     pub fn disconnect(&mut self) -> anyhow::Result<()> {
         self.camera.close_session(self.timeout())?;
 
@@ -368,23 +367,29 @@ impl CameraInterface {
         Ok(self.camera.get_device_info(self.timeout())?)
     }
 
-    pub fn storage_ids(&mut self) -> anyhow::Result<Vec<u32>> {
-        Ok(self.camera.get_storageids(self.timeout())?)
+    pub fn storage_ids(&mut self) -> anyhow::Result<Vec<StorageId>> {
+        Ok(self.camera.get_storage_ids(self.timeout())?)
     }
 
-    pub fn storage_info(&mut self, storage_id: u32) -> anyhow::Result<ptp::PtpStorageInfo> {
+    pub fn storage_info(&mut self, storage_id: StorageId) -> anyhow::Result<ptp::PtpStorageInfo> {
         Ok(self.camera.get_storage_info(storage_id, self.timeout())?)
     }
 
-    pub fn object_handles(&mut self, storage_id: u32) -> anyhow::Result<Vec<u32>> {
-        Ok(self.camera.get_objecthandles_all(storage_id, None, self.timeout())?)
+    pub fn object_handles(
+        &mut self,
+        storage_id: StorageId,
+        parent_id: Option<ObjectHandle>,
+    ) -> anyhow::Result<Vec<ObjectHandle>> {
+        Ok(self
+            .camera
+            .get_object_handles(storage_id, None, self.timeout())?)
     }
 
-    pub fn object_info(&mut self, object_id: u32) -> anyhow::Result<ptp::PtpObjectInfo> {
-        Ok(self.camera.get_objectinfo(object_id, self.timeout())?)
+    pub fn object_info(&mut self, object_id: ObjectHandle) -> anyhow::Result<ptp::PtpObjectInfo> {
+        Ok(self.camera.get_object_info(object_id, self.timeout())?)
     }
 
-    pub fn object_data(&mut self, object_id: u32) -> anyhow::Result<Vec<u8>> {
+    pub fn object_data(&mut self, object_id: ObjectHandle) -> anyhow::Result<Vec<u8>> {
         Ok(self.camera.get_object(object_id, self.timeout())?)
     }
 }
