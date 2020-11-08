@@ -3,7 +3,7 @@ use std::sync::Arc;
 use anyhow::Context;
 use clap::AppSettings;
 use structopt::StructOpt;
-use tokio::sync::broadcast;
+use tokio::sync::{broadcast, mpsc};
 
 use crate::Channels;
 
@@ -13,6 +13,28 @@ use crate::Channels;
 pub enum CliCommand {
     Camera(CameraCliCommand),
     Exit,
+}
+
+#[derive(Debug, Clone)]
+pub struct CliResult {
+    new_current_directory: Option<String>,
+    success: bool,
+}
+
+impl CliResult {
+    pub fn success() -> Self {
+        CliResult {
+            new_current_directory: None,
+            success: true
+        }
+    }
+
+    pub fn failure() -> Self {
+        CliResult {
+            new_current_directory: None,
+            success: false
+        }
+    }
 }
 
 #[derive(StructOpt, Debug, Clone)]
@@ -39,13 +61,19 @@ pub enum CameraCliCommand {
     },
 }
 
-pub fn run(channels: Arc<Channels>) -> anyhow::Result<()> {
-    let sender = &channels.cli;
+pub async fn run(
+    channels: Arc<Channels>,
+    mut receiver: mpsc::Receiver<CliResult>,
+) -> anyhow::Result<()> {
+    let sender = &channels.cli_cmd;
     let mut rl = rustyline::Editor::<()>::new();
+    let mut current_directory = "/".to_owned();
 
     loop {
+        let current_prompt = format!("\n{}\nplane-system> ", current_directory);
+
         let line = rl
-            .readline("\n\nplane-system> ")
+            .readline(&current_prompt)
             .context("failed to read line")?;
 
         trace!("got line: {:#?}", line);
@@ -61,6 +89,12 @@ pub fn run(channels: Arc<Channels>) -> anyhow::Result<()> {
         trace!("got command: {:#?}", cmd);
 
         let _ = sender.send(cmd);
+
+        let result = receiver.recv().await.context("channel closed")?;
+
+        if let Some(new_current_directory) = result.new_current_directory {
+            current_directory = new_current_directory;
+        }
     }
 
     Ok(())
