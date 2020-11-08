@@ -114,16 +114,6 @@ pub enum SonyDeviceControlCode {
     ZoomControlWideOneShot = 0xD613,
 }
 
-#[derive(Debug)]
-pub struct DevicePropDesc {
-    code: SonyDevicePropertyCode,
-    writeable: bool,
-    enabled: bool,
-    current_value: ptp::PtpDataType,
-    default_value: ptp::PtpDataType,
-    form_flag: u8,
-}
-
 pub struct CameraInterface {
     camera: ptp::PtpCamera<rusb::GlobalContext>,
     state: Option<CameraState>,
@@ -131,7 +121,7 @@ pub struct CameraInterface {
 
 struct CameraState {
     version: u16,
-    properties: HashMap<SonyDevicePropertyCode, DevicePropDesc>,
+    properties: HashMap<SonyDevicePropertyCode, ptp::PtpPropInfo>,
     supported_properties: HashSet<SonyDevicePropertyCode>,
     supported_controls: HashSet<SonyDeviceControlCode>,
 }
@@ -248,7 +238,18 @@ impl CameraInterface {
         Ok(())
     }
 
-    pub fn update(&mut self) -> anyhow::Result<&HashMap<SonyDevicePropertyCode, DevicePropDesc>> {
+
+    pub fn disconnect(&mut self) -> anyhow::Result<()> {
+        self.camera.close_session(self.timeout())?;
+
+        self.state = None;
+
+        Ok(())
+    }
+
+    /// Queries the camera for its current state and updates the hashmap held by
+    /// this interface.
+    pub fn update(&mut self) -> anyhow::Result<&HashMap<SonyDevicePropertyCode, ptp::PtpPropInfo>> {
         let timeout = self.timeout();
 
         let state = if let Some(ref mut state) = self.state {
@@ -275,38 +276,115 @@ impl CameraInterface {
         let mut properties = HashMap::new();
 
         for _ in 0..num_entries {
-            let code = cursor.read_ptp_u16()?;
+            let prop = ptp::PtpPropInfo::decode(&mut cursor)?;
+            let code = SonyDevicePropertyCode::from_u16(prop.property_code);
 
-            trace!("got property code 0x{:04x}", code);
-
-            let code: SonyDevicePropertyCode =
-                FromPrimitive::from_u16(code).context("invalid property code")?;
-
-            let data_type = cursor.read_ptp_u16()?;
-            let writeable = cursor.read_ptp_u8()? != 0;
-            let enabled = cursor.read_ptp_u8()? != 0;
-            let default_value = ptp::PtpDataType::read_type(data_type, &mut cursor)?;
-            let current_value = ptp::PtpDataType::read_type(data_type, &mut cursor)?;
-            let form_flag = cursor.read_ptp_u8()?;
-
-            ptp::PtpFormData
-
-            let desc = DevicePropDesc {
-                code,
-                current_value,
-                default_value,
-                enabled,
-                writeable,
-                form_flag,
-            };
-
-            trace!("got property desc {:#?}", desc);
-
-            properties.insert(code, desc);
+            if let Some(code) = code {
+                properties.insert(code, prop);
+            }
         }
 
         state.properties = properties;
 
         Ok(&state.properties)
+    }
+
+    /// Gets information about a camera property from the hashmap. This method
+    /// does NOT query the camera itself.
+    pub fn get(&self, code: SonyDevicePropertyCode) -> Option<ptp::PtpPropInfo> {
+        let state = if let Some(ref state) = self.state {
+            state
+        } else {
+            warn!("get() called when camera is not connected");
+            return None;
+        };
+
+        state.properties.get(&code).cloned()
+    }
+
+    /// Sets the value of a camera property. This should be followed by a call
+    /// to update() and a check to make sure that the intended result was
+    /// achieved.
+    pub fn set(
+        &mut self,
+        code: SonyDevicePropertyCode,
+        new_value: ptp::PtpData,
+    ) -> anyhow::Result<()> {
+        let state = if let Some(ref state) = self.state {
+            state
+        } else {
+            bail!("set() called when camera is not connected");
+        };
+
+        let current_value = state.properties.get(&code).map(|prop| &prop.current);
+
+        if let Some(current_value) = current_value {
+            if current_value == &new_value {
+                trace!("current value is the same as value passed to set(), returning");
+                return Ok(());
+            }
+        }
+
+        let buf = new_value.encode();
+
+        trace!("sending SDIO_SetExtDevicePropValue");
+
+        self.camera.command(
+            SonyCommandCode::SdioSetExtDevicePropValue.into(),
+            &[code.to_u32().unwrap()],
+            Some(buf.as_ref()),
+            self.timeout(),
+        )?;
+
+        Ok(())
+    }
+
+    /// Executes a command on the camera. This should be followed by a call to
+    /// update() and a check to make sure that the intended result was achieved.
+    pub fn execute(
+        &mut self,
+        code: SonyDeviceControlCode,
+        payload: ptp::PtpData,
+    ) -> anyhow::Result<()> {
+        if let None = self.state {
+            warn!("execute() called when camera is not connected");
+        };
+
+        let buf = payload.encode();
+
+        trace!("sending SDIO_ControlDevice");
+
+        self.camera.command(
+            SonyCommandCode::SdioControlDevice.into(),
+            &[code.to_u32().unwrap()],
+            Some(buf.as_ref()),
+            self.timeout(),
+        )?;
+
+        Ok(())
+    }
+
+    pub fn device_info(&mut self) -> anyhow::Result<ptp::PtpDeviceInfo> {
+        Ok(self.camera.get_device_info(self.timeout())?)
+    }
+
+    pub fn storage_ids(&mut self) -> anyhow::Result<Vec<u32>> {
+        Ok(self.camera.get_storageids(self.timeout())?)
+    }
+
+    pub fn storage_info(&mut self, storage_id: u32) -> anyhow::Result<ptp::PtpStorageInfo> {
+        Ok(self.camera.get_storage_info(storage_id, self.timeout())?)
+    }
+
+    pub fn object_handles(&mut self, storage_id: u32) -> anyhow::Result<Vec<u32>> {
+        Ok(self.camera.get_objecthandles_all(storage_id, None, self.timeout())?)
+    }
+
+    pub fn object_info(&mut self, object_id: u32) -> anyhow::Result<ptp::PtpObjectInfo> {
+        Ok(self.camera.get_objectinfo(object_id, self.timeout())?)
+    }
+
+    pub fn object_data(&mut self, object_id: u32) -> anyhow::Result<Vec<u8>> {
+        Ok(self.camera.get_object(object_id, self.timeout())?)
     }
 }

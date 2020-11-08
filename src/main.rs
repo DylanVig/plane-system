@@ -1,8 +1,10 @@
-use std::sync::Arc;
+use std::{sync::Arc, time::Duration};
 
 use anyhow::Context;
+use camera::interface::SonyDevicePropertyCode;
 use ctrlc;
 use pixhawk::{client::PixhawkClient, state::PixhawkMessage};
+use ptp::PtpData;
 use scheduler::Scheduler;
 use state::Telemetry;
 use structopt::StructOpt;
@@ -72,8 +74,41 @@ async fn main() -> anyhow::Result<()> {
         debug!("opening connection to camera");
         camera.connect()?;
         debug!("getting current camera properties");
-        let props = camera.update()?;
-        debug!("got camera properties: {:#?}", props);
+        camera.update()?;
+        debug!("got camera properties");
+        camera.set(SonyDevicePropertyCode::OperatingMode, PtpData::UINT8(0x04))?;
+        debug!("setting operating mode to content transfer");
+
+        tokio::time::delay_for(Duration::from_secs(3)).await;
+
+        camera.update()?;
+
+        let operating_mode = camera
+            .get(SonyDevicePropertyCode::OperatingMode)
+            .unwrap()
+            .current;
+
+        if operating_mode != PtpData::UINT8(0x04) {
+            error!(
+                "setting operating mode did not work, current mode is {:?}",
+                operating_mode
+            );
+        }
+
+        let storage_ids = camera.storage_ids()?;
+
+        for storage_id in storage_ids {
+            trace!("found storage 0x{:08x}", storage_id);
+
+            let object_ids = camera.object_handles(storage_id)?;
+            for object_id in object_ids {
+                trace!("\tfound object 0x{:08x}", object_id);
+                let object_info = camera.object_info(object_id);
+                trace!("\t\tobject info: {:?}", object_info);
+            }
+        }
+
+        camera.disconnect()?;
 
         return Ok(());
     }
