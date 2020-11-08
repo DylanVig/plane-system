@@ -45,10 +45,10 @@ pub fn run(channels: Arc<Channels>) -> anyhow::Result<()> {
 
     loop {
         let line = rl
-            .readline("plane-system> ")
+            .readline("\n\nplane-system> ")
             .context("failed to read line")?;
 
-        info!("got line: {:#?}", line);
+        trace!("got line: {:#?}", line);
 
         let cmd = match <CliCommand as StructOpt>::from_iter_safe(line.split_ascii_whitespace()) {
             Ok(cmd) => cmd,
@@ -58,7 +58,7 @@ pub fn run(channels: Arc<Channels>) -> anyhow::Result<()> {
             }
         };
 
-        info!("got command: {:#?}", cmd);
+        trace!("got command: {:#?}", cmd);
 
         let _ = sender.send(cmd);
     }
