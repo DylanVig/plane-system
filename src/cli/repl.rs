@@ -52,7 +52,7 @@ pub enum CameraCliCommand {
 
     Power(CameraPowerCliCommand),
 
-    Connect,
+    Reconnect,
 
     Zoom {
         level: u8,

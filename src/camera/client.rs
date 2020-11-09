@@ -46,16 +46,18 @@ impl CameraClient {
     }
 
     pub fn init(&mut self) -> anyhow::Result<()> {
-        info!("intializing camera");
+        trace!("intializing camera");
 
         self.iface.connect()?;
 
         trace!("setting time on camera");
 
-        self.iface.set(
+        if let Err(err) = self.iface.set(
             SonyDevicePropertyCode::DateTime,
             PtpData::STR(chrono::Local::now().to_string()),
-        )?;
+        ) {
+            warn!("could not set date/time on camera: {:?}")
+        }
 
         info!("initialized camera");
 
@@ -94,6 +96,9 @@ impl CameraClient {
 
             tokio::time::delay_for(Duration::from_secs(1)).await;
         }
+
+        info!("disconnecting from camera");
+        self.iface.disconnect()?;
 
         Ok(())
     }
