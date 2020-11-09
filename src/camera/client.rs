@@ -50,6 +50,13 @@ impl CameraClient {
 
         self.iface.connect()?;
 
+        trace!("setting time on camera");
+
+        self.iface.set(
+            SonyDevicePropertyCode::DateTime,
+            PtpData::STR(chrono::Local::now().to_string()),
+        )?;
+
         info!("initialized camera");
 
         Ok(())
@@ -218,7 +225,10 @@ impl CameraClient {
                                 Row::new(vec![
                                     Cell::new(&format!("{}", handle), Default::default()),
                                     Cell::new(&format!("{}", info.filename), Default::default()),
-                                    Cell::new(&format!("{:?}", info.object_format), Default::default()),
+                                    Cell::new(
+                                        &format!("{:?}", info.object_format),
+                                        Default::default(),
+                                    ),
                                     Cell::new(&compressed_size_str, Default::default()),
                                 ])
                             }
@@ -245,10 +255,10 @@ impl CameraClient {
                 match cmd {
                     CameraPowerCliCommand::Up => self
                         .iface
-                        .execute(SonyDeviceControlCode::PowerOff, ptp::PtpData::UINT16(0))?,
+                        .execute(SonyDeviceControlCode::PowerOff, ptp::PtpData::UINT16(1))?,
                     CameraPowerCliCommand::Down => self
                         .iface
-                        .execute(SonyDeviceControlCode::PowerOff, ptp::PtpData::UINT16(1))?,
+                        .execute(SonyDeviceControlCode::PowerOff, ptp::PtpData::UINT16(2))?,
                 };
 
                 Ok(CliResult::success())
