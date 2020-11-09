@@ -50,6 +50,10 @@ pub enum CameraCliCommand {
 
     Capture,
 
+    Power(CameraPowerCliCommand),
+
+    Connect,
+
     Zoom {
         level: u8,
     },
@@ -67,6 +71,12 @@ pub enum CameraStorageCliCommand {
 #[derive(StructOpt, Debug, Clone)]
 pub enum CameraFileCliCommand {
     List
+}
+
+#[derive(StructOpt, Debug, Clone)]
+pub enum CameraPowerCliCommand {
+    Up,
+    Down
 }
 
 pub async fn run(
