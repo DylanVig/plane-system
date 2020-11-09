@@ -8,7 +8,9 @@ use std::io::Cursor;
 /// Sony's USB vendor ID
 const SONY_USB_VID: u16 = 0x054C;
 /// Sony R10C camera's product ID
-const SONY_USB_PID: u16 = 0x0A79;
+const SONY_USB_R10C_PID: u16 = 0x0A79;
+/// Sony R10C camera's product ID when it's powered off and charging
+const SONY_USB_R10C_PID_CHARGING: u16 = 0x0994;
 /// Sony's PTP extension vendor ID
 const SONY_PTP_VID: u16 = 0x0011;
 
@@ -132,7 +134,8 @@ impl CameraInterface {
     }
 
     pub fn new() -> anyhow::Result<Self> {
-        let handle = rusb::open_device_with_vid_pid(SONY_USB_VID, SONY_USB_PID)
+        let handle = rusb::open_device_with_vid_pid(SONY_USB_VID, SONY_USB_R10C_PID)
+            .or_else(|| rusb::open_device_with_vid_pid(SONY_USB_VID, SONY_USB_R10C_PID_CHARGING))
             .context("could not open Sony R10C usb device")?;
 
         Ok(CameraInterface {

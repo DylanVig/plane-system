@@ -263,6 +263,12 @@ impl CameraClient {
 
                 Ok(CliResult::success())
             }
+            CameraCliCommand::Reconnect => {
+                self.iface = CameraInterface::new().context("failed to create camera interface")?;
+                self.init()?;
+
+                Ok(CliResult::success())
+            }
             _ => todo!(),
         }
     }
