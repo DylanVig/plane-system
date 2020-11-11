@@ -366,6 +366,16 @@ impl CameraInterface {
         Ok(())
     }
 
+    /// Receives an event from the camera.
+    pub fn recv(
+        &mut self
+    ) -> anyhow::Result<ptp::PtpEvent> {
+        let event = self.camera.event(Some(Duration::from_secs(1)))?;
+
+        trace!("received event: {:#?}", &event);
+        Ok(event)
+    }
+
     pub fn device_info(&mut self) -> anyhow::Result<ptp::PtpDeviceInfo> {
         Ok(self.camera.get_device_info(self.timeout())?)
     }

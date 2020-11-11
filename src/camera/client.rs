@@ -3,8 +3,9 @@ use std::{sync::Arc, time::Duration};
 use anyhow::Context;
 use cli_table::{format::CellFormat, Cell, Row, Table};
 use humansize::{file_size_opts, FileSize};
-use ptp::PtpData;
+use ptp::{ObjectHandle, PtpData};
 use tokio::{
+    io::AsyncWriteExt,
     sync::broadcast::{self, TryRecvError},
     task::spawn_blocking,
     time::delay_for,
@@ -50,13 +51,16 @@ impl CameraClient {
 
         self.iface.connect()?;
 
-        trace!("setting time on camera");
+        // RFC 3339 = ISO 8601 = camera datetime format
+        let time_str = chrono::Local::now().to_rfc3339();
+        
+        trace!("setting time on camera to '{}'", &time_str);
 
         if let Err(err) = self.iface.set(
             SonyDevicePropertyCode::DateTime,
-            PtpData::STR(chrono::Local::now().to_string()),
+            PtpData::STR(time_str),
         ) {
-            warn!("could not set date/time on camera: {:?}")
+            warn!("could not set date/time on camera: {:?}", err);
         }
 
         info!("initialized camera");
@@ -92,6 +96,10 @@ impl CameraClient {
                 }
                 Ok(CliCommand::Exit) => break,
                 _ => {}
+            }
+
+            if let Ok(event) = self.iface.recv() {
+                trace!("received event: {:?}", event);
             }
 
             tokio::time::delay_for(Duration::from_secs(1)).await;
@@ -271,6 +279,86 @@ impl CameraClient {
             CameraCliCommand::Reconnect => {
                 self.iface = CameraInterface::new().context("failed to create camera interface")?;
                 self.init()?;
+
+                Ok(CliResult::success())
+            }
+            CameraCliCommand::Capture => {
+                self.ensure_mode(0x02).await?;
+
+                // press shutter button halfway to fix the focus
+                self.iface
+                    .execute(SonyDeviceControlCode::S1Button, PtpData::UINT16(0x0002))?;
+
+                delay_for(Duration::from_millis(100)).await;
+
+                // shoot!
+                self.iface
+                    .execute(SonyDeviceControlCode::S2Button, PtpData::UINT16(0x0002))?;
+
+                delay_for(Duration::from_millis(100)).await;
+
+                // release
+                self.iface
+                    .execute(SonyDeviceControlCode::S2Button, PtpData::UINT16(0x0001))?;
+
+                delay_for(Duration::from_millis(100)).await;
+
+                // hell yeah
+                self.iface
+                    .execute(SonyDeviceControlCode::S1Button, PtpData::UINT16(0x0001))?;
+
+                info!("waiting for image event");
+
+                loop {
+                    if let Ok(event) = self.iface.recv() {
+                        // 0xC204 = image taken
+                        if let ptp::EventCode::Vendor(0xC204) = event.code {
+                            break;
+                        }
+                    }
+                }
+
+                info!("received image event");
+
+                let shot_handle = ObjectHandle::from(0xFFFFC001);
+
+                let shot_info = self
+                    .iface
+                    .object_info(shot_handle)
+                    .context("error while getting shot info")?;
+
+                let shot_data = self
+                    .iface
+                    .object_data(shot_handle)
+                    .context("error while getting shot data")?;
+
+                info!("captured image: {:?}", shot_info);
+
+                info!(
+                    "image size: {}",
+                    shot_data
+                        .len()
+                        .file_size(humansize::file_size_opts::BINARY)
+                        .unwrap()
+                );
+
+                let mut image_path =
+                    std::env::current_dir().context("failed to get current directory")?;
+
+                image_path.push(shot_info.filename);
+
+                info!("writing image to file '{}'", image_path.to_string_lossy());
+
+                let mut image_file = tokio::fs::File::create(&image_path)
+                    .await
+                    .context("failed to create file")?;
+
+                image_file
+                    .write_all(&shot_data[..])
+                    .await
+                    .context("failed to save image")?;
+
+                info!("wrote image to file '{}'", image_path.to_string_lossy());
 
                 Ok(CliResult::success())
             }
