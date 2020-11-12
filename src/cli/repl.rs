@@ -60,6 +60,21 @@ pub async fn run(channels: Arc<Channels>) -> anyhow::Result<()> {
     Ok(())
 }
 
+fn table_format() -> prettytable::format::TableFormat {
+    prettytable::format::FormatBuilder::new()
+        .column_separator('|')
+        .borders('|')
+        .separators(
+            &[
+                prettytable::format::LinePosition::Top,
+                prettytable::format::LinePosition::Bottom,
+            ],
+            prettytable::format::LineSeparator::new('-', '+', '+', '+'),
+        )
+        .padding(1, 1)
+        .build()
+}
+
 fn format_camera_response(response: CameraResponse) -> () {
     match response {
         CameraResponse::Unit => println!("done"),
@@ -145,15 +160,20 @@ fn format_camera_response(response: CameraResponse) -> () {
                 ]);
             }
 
+            table.set_format(table_format());
             table.printstd();
         }
         CameraResponse::CameraObjectInfo { objects } => {
             let mut table = Table::new();
+
             table.add_row(row![
                 "handle",
                 "filename",
                 "type",
                 "compressed size",
+                "capture date",
+                "modified date",
+                "dimensions"
             ]);
 
             for (id, info) in objects.into_iter() {
@@ -163,6 +183,8 @@ fn format_camera_response(response: CameraResponse) -> () {
                     .object_compressed_size
                     .file_size(humansize::file_size_opts::BINARY)
                     .unwrap();
+
+                let dimensions = format!("{}x{}", info.image_pix_width, info.image_pix_height);
 
                 let file_type = match info.object_format {
                     ptp::ObjectFormatCode::Standard(s) => match s {
@@ -224,9 +246,13 @@ fn format_camera_response(response: CameraResponse) -> () {
                     file_name,
                     file_type,
                     size,
+                    info.capture_date,
+                    info.modification_date,
+                    dimensions
                 ]);
             }
 
+            table.set_format(table_format());
             table.printstd();
         }
     }

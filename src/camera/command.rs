@@ -41,8 +41,8 @@ pub enum CameraStorageRequest {
 #[derive(StructOpt, Debug, Clone)]
 pub enum CameraFileRequest {
     List {
-        #[structopt(parse(try_from_str = crate::util::parse_hex_u16))]
-        parent: Option<u16>
+        #[structopt(parse(try_from_str = crate::util::parse_hex_u32))]
+        parent: Option<u32>
     },
 }
 

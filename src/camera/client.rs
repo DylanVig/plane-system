@@ -35,8 +35,9 @@ impl CameraClient {
 
         self.iface.connect()?;
 
-        // RFC 3339 = ISO 8601 = camera datetime format
-        let time_str = chrono::Local::now().to_rfc3339();
+        let time_str = chrono::Local::now()
+            .format("%Y%m%dT%H%M%S%.3f%:z")
+            .to_string();
 
         trace!("setting time on camera to '{}'", &time_str);
 
@@ -104,7 +105,8 @@ impl CameraClient {
                         } else {
                             Ok(storage_ids)
                         }
-                    }).await?;
+                    })
+                    .await?;
 
                     trace!("got storage ids: {:?}", storage_ids);
 
@@ -136,13 +138,17 @@ impl CameraClient {
                         } else {
                             Ok(())
                         }
-                    }).await?;
+                    })
+                    .await?;
 
                     let object_handles = self
                         .iface
                         .object_handles(
                             ptp::StorageId::from(0x00010001),
-                            parent.clone().unwrap_or(ptp::ObjectHandle::root()),
+                            parent
+                                .clone()
+                                .map(|v| ObjectHandle::from(v))
+                                .or(Some(ptp::ObjectHandle::root())),
                         )
                         .context("could not get object handles")?;
 
@@ -286,13 +292,13 @@ impl CameraClient {
                 }
             }
 
-            debug!("setting operating mode to {:04x}", mode);
+            debug!("setting operating mode to 0x{:04x}", mode);
 
             self.iface
                 .set(SonyDevicePropertyCode::OperatingMode, PtpData::UINT8(mode))
                 .context("failed to set operating mode of camera")?;
 
-            Ok(())
+            bail!("wrong operating mode")
         })
         .await
     }
