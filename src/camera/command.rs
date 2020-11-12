@@ -26,6 +26,8 @@ pub enum CameraRequest {
     Exposure(CameraExposureRequest),
 
     SaveMode(CameraSaveModeRequest),
+
+    Reset,
 }
 
 #[derive(StructOpt, Debug, Clone)]

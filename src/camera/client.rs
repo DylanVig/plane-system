@@ -87,6 +87,12 @@ impl CameraClient {
 
     async fn exec(&mut self, cmd: &CameraRequest) -> anyhow::Result<CameraResponse> {
         match cmd {
+            CameraRequest::Reset => {
+                self.iface.reset().context("error while resetting camera")?;
+
+                Ok(CameraResponse::Unit)
+            }
+
             CameraRequest::Storage(cmd) => match cmd {
                 CameraStorageRequest::List => {
                     self.ensure_mode(0x04).await?;
@@ -167,7 +173,7 @@ impl CameraClient {
                     let shot_handle = ObjectHandle::from(*handle);
 
                     let image_path = self.download_object(shot_handle).await?;
-                    
+
                     Ok(CameraResponse::File { path: image_path })
                 }
             },

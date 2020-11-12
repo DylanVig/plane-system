@@ -1,8 +1,8 @@
 use anyhow::Context;
 use num_traits::{FromPrimitive, ToPrimitive};
-use std::{collections::HashMap, collections::HashSet, fmt::Debug, time::Duration};
 use ptp::{ObjectHandle, PtpRead, StorageId};
 use std::io::Cursor;
+use std::{collections::HashMap, collections::HashSet, fmt::Debug, time::Duration};
 
 /// Sony's USB vendor ID
 const SONY_USB_VID: u16 = 0x054C;
@@ -244,6 +244,12 @@ impl CameraInterface {
         self.camera.close_session(self.timeout())?;
 
         self.state = None;
+
+        Ok(())
+    }
+
+    pub fn reset(&mut self) -> anyhow::Result<()> {
+        self.camera.reset()?;
 
         Ok(())
     }
