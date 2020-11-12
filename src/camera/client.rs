@@ -88,7 +88,14 @@ impl CameraClient {
     async fn exec(&mut self, cmd: &CameraRequest) -> anyhow::Result<CameraResponse> {
         match cmd {
             CameraRequest::Reset => {
+                let _ = self.iface.disconnect();
+
                 self.iface.reset().context("error while resetting camera")?;
+
+                tokio::time::delay_for(Duration::from_secs(1)).await;
+
+                self.iface = CameraInterface::new().context("failed to create camera interface")?;
+                self.init()?;
 
                 Ok(CameraResponse::Unit)
             }
@@ -367,7 +374,7 @@ impl CameraClient {
 
             let current_op_mode = current_state.get(&CameraPropertyCode::OperatingMode);
 
-            debug!("current op mode: {:?}", current_op_mode);
+            trace!("current op mode: {:?}", current_op_mode);
 
             if let Some(PtpData::UINT8(current_op_mode)) = current_op_mode.map(|d| &d.current) {
                 if *current_op_mode == mode {
