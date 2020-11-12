@@ -1,4 +1,4 @@
-use crate::{pixhawk::state::PixhawkEvent, state::TelemetryInfo, util::ReceiverExt, Channels};
+use crate::{Channels, pixhawk::state::PixhawkEvent, util::ReceiverExt, state::TelemetryInfo};
 
 use std::sync::{Arc, Mutex};
 

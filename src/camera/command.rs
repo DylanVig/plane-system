@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 
-use clap::AppSettings;
 use serde::Serialize;
 use structopt::StructOpt;
 
@@ -9,8 +8,6 @@ use crate::Command;
 pub type CameraCommand = Command<CameraRequest, CameraResponse>;
 
 #[derive(StructOpt, Debug, Clone)]
-#[structopt(setting(AppSettings::NoBinaryName))]
-#[structopt(rename_all = "kebab-case")]
 pub enum CameraRequest {
     #[structopt(name = "cd")]
     ChangeDirectory {
@@ -43,7 +40,10 @@ pub enum CameraStorageRequest {
 
 #[derive(StructOpt, Debug, Clone)]
 pub enum CameraFileRequest {
-    List,
+    List {
+        #[structopt(parse(try_from_str = crate::util::parse_hex_u16))]
+        parent: Option<u16>
+    },
 }
 
 #[derive(StructOpt, Debug, Clone)]

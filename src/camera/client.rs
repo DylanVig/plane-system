@@ -2,17 +2,13 @@ use std::{collections::HashMap, sync::Arc, time::Duration};
 
 use anyhow::Context;
 use humansize::{file_size_opts, FileSize};
-use ptp::{ObjectHandle, PtpData};
-use tokio::{
-    io::AsyncWriteExt,
-    sync::mpsc,
-    time::delay_for,
-};
+use ptp::{ObjectHandle, PtpData, StorageId};
+use tokio::{io::AsyncWriteExt, sync::mpsc, time::delay_for};
 
 use crate::{util::*, Channels};
 
-use super::*;
 use super::interface::*;
+use super::*;
 
 pub struct CameraClient {
     iface: CameraInterface,
@@ -95,10 +91,20 @@ impl CameraClient {
 
                     trace!("getting storage ids");
 
-                    let storage_ids = self
-                        .iface
-                        .storage_ids()
-                        .context("could not get storage ids")?;
+                    let storage_ids = retry_delay(10, Duration::from_secs(1), || {
+                        trace!("checking for storage ID 0x00010000");
+
+                        let storage_ids = self
+                            .iface
+                            .storage_ids()
+                            .context("could not get storage ids")?;
+
+                        if storage_ids.contains(&StorageId::from(0x00010000)) {
+                            bail!("no logical storage available");
+                        } else {
+                            Ok(storage_ids)
+                        }
+                    }).await?;
 
                     trace!("got storage ids: {:?}", storage_ids);
 
@@ -110,19 +116,33 @@ impl CameraClient {
                 }
             },
             CameraRequest::File(cmd) => match cmd {
-                CameraFileRequest::List => {
+                CameraFileRequest::List { parent } => {
                     self.ensure_mode(0x04).await?;
 
                     trace!("getting object handles");
 
-                    // TODO: wait until camera reports storage id 0x00010001 as
-                    // existing
+                    // wait for storage ID 0x00010001 to exist
+
+                    retry_delay(10, Duration::from_secs(1), || {
+                        trace!("checking for storage ID 0x00010001");
+
+                        let storage_ids = self
+                            .iface
+                            .storage_ids()
+                            .context("could not get storage ids")?;
+
+                        if !storage_ids.contains(&StorageId::from(0x00010001)) {
+                            bail!("no storage available");
+                        } else {
+                            Ok(())
+                        }
+                    }).await?;
 
                     let object_handles = self
                         .iface
                         .object_handles(
                             ptp::StorageId::from(0x00010001),
-                            Some(ptp::ObjectHandle::root()),
+                            parent.clone().unwrap_or(ptp::ObjectHandle::root()),
                         )
                         .context("could not get object handles")?;
 
@@ -247,7 +267,7 @@ impl CameraClient {
     }
 
     async fn ensure_mode(&mut self, mode: u8) -> anyhow::Result<()> {
-        retry_delay(10, Some(Duration::from_millis(1000)), || {
+        retry_delay(10, Duration::from_millis(1000), || {
             trace!("checking operating mode");
 
             let current_state = self

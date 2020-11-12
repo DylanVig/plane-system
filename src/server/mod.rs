@@ -4,8 +4,8 @@ use std::{convert::Infallible, net::SocketAddr, sync::Arc, time::SystemTime};
 use tokio::sync::RwLock;
 use warp::{self, Filter};
 
-use crate::{pixhawk::state::PixhawkEvent, pixhawk::state::Telemetry, state::RegionOfInterest};
-use crate::{util::ReceiverExt, Channels};
+use crate::{pixhawk::state::PixhawkEvent, util::ReceiverExt, pixhawk::state::Telemetry, state::RegionOfInterest};
+use crate::{Channels};
 
 #[derive(Clone)]
 struct ServerState {}
