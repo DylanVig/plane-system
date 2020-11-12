@@ -4,15 +4,16 @@ use anyhow::Context;
 use structopt::StructOpt;
 use tokio::sync::mpsc;
 
-use crate::{Channels, command::{CommandData, ResponseData}};
+use crate::{Channels, camera::CameraRequest, Command};
 
+#[derive(StructOpt, Debug)]
+enum ReplRequest {
+    Camera(CameraRequest)
+}
 
 pub async fn run(
     channels: Arc<Channels>,
 ) -> anyhow::Result<()> {
-    let sender = &channels.cmd;
-    let receiver = channels.response.subscribe();
-
     let mut rl = rustyline::Editor::<()>::new();
     let mut current_directory = "/".to_owned();
 
@@ -25,7 +26,7 @@ pub async fn run(
 
         trace!("got line: {:#?}", line);
 
-        let cmd = match <CommandData as StructOpt>::from_iter_safe(line.split_ascii_whitespace()) {
+        let request = match <ReplRequest as StructOpt>::from_iter_safe(line.split_ascii_whitespace()) {
             Ok(cmd) => cmd,
             Err(err) => {
                 println!("{}", err.message);
@@ -33,11 +34,15 @@ pub async fn run(
             }
         };
 
-        trace!("got command: {:#?}", cmd);
+        trace!("got command: {:#?}", request);
 
-        let _ = sender.send(cmd);
-
-        let result = receiver.recv().await.context("channel closed")?;
+        let response = match request {
+            ReplRequest::Camera(request) => {
+                let (cmd, chan) = Command::new(request);
+                channels.camera_cmd.clone().send(cmd).await?;
+                chan.await
+            }
+        };
     }
 
     Ok(())

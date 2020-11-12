@@ -1,16 +1,14 @@
-use std::{sync::Arc, time::Duration};
+use std::sync::Arc;
 
 use anyhow::Context;
-use camera::{client::CameraClient, interface::SonyDevicePropertyCode, state::CameraMessage};
-use command::{Command, CommandData, Response, ResponseData};
+use camera::{client::CameraClient, state::CameraEvent};
 use ctrlc;
-use pixhawk::{client::PixhawkClient, state::PixhawkMessage};
-use ptp::PtpData;
+use pixhawk::{client::PixhawkClient, state::PixhawkEvent};
 use scheduler::Scheduler;
 use state::TelemetryInfo;
 use structopt::StructOpt;
 use telemetry::TelemetryStream;
-use tokio::{spawn, sync::{broadcast, mpsc}, sync::{oneshot, watch}, task::spawn_blocking};
+use tokio::{spawn, sync::*};
 
 #[macro_use]
 extern crate log;
@@ -32,7 +30,6 @@ mod server;
 mod state;
 mod telemetry;
 mod util;
-mod command;
 
 #[derive(Debug)]
 pub struct Channels {
@@ -43,31 +40,55 @@ pub struct Channels {
     telemetry: watch::Receiver<Option<TelemetryInfo>>,
 
     /// Channel for broadcasting updates to the state of the Pixhawk.
-    pixhawk: broadcast::Sender<PixhawkMessage>,
+    pixhawk_event: broadcast::Sender<PixhawkEvent>,
+
+    /// Channel for sending instructions to the Pixhawk.
+    pixhawk_cmd: mpsc::Sender<pixhawk::PixhawkCommand>,
 
     /// Channel for broadcasting updates to the state of the camera.
-    camera: broadcast::Sender<CameraMessage>,
+    camera_event: broadcast::Sender<CameraEvent>,
+
+    /// Channel for sending instructions to the camera.
+    camera_cmd: mpsc::Sender<camera::CameraCommand>,
 }
 
-#[async_trait]
-pub trait Component {
-    type Cmd: Command;
-
-    async fn run() -> anyhow::Result<()>;
-
-    async fn exec(command: Self::Cmd) -> anyhow::Result<<Self::Cmd as Command>::Res>;
+#[derive(Debug)]
+pub struct Command<Req, Res, Err = anyhow::Error> {
+    request: Req,
+    chan: oneshot::Sender<Result<Res, Err>>,
 }
 
-pub trait Command {
-    type Res: Response;
-    type Data;
+impl<Req, Res, Err> Command<Req, Res, Err> {
+    fn new(request: Req) -> (Self, oneshot::Receiver<Result<Res, Err>>) {
+        let (sender, receiver) = oneshot::channel();
 
-    fn channel(&self) -> oneshot::Sender<Self::Res>;
-    fn data(&self) -> Self::Data;
-}
+        let cmd = Command {
+            chan: sender,
+            request,
+        };
 
-pub trait Response: serde::Serialize {
+        (cmd, receiver)
+    }
 
+    fn channel(self) -> oneshot::Sender<Result<Res, Err>> {
+        self.chan
+    }
+
+    fn request(&self) -> &Req {
+        &self.request
+    }
+
+    fn respond(self, result: Result<Res, Err>) -> Result<(), Result<Res, Err>> {
+        self.channel().send(result)
+    }
+
+    fn success(self, data: Res) -> Result<(), Result<Res, Err>> {
+        self.channel().send(Ok(data))
+    }
+
+    fn error(self, error: Err) -> Result<(), Result<Res, Err>> {
+        self.channel().send(Err(error))
+    }
 }
 
 #[tokio::main]
@@ -88,14 +109,18 @@ async fn main() -> anyhow::Result<()> {
 
     let (interrupt_sender, interrupt_receiver) = watch::channel(false);
     let (telemetry_sender, telemetry_receiver) = watch::channel(None);
-    let (pixhawk_sender, _) = broadcast::channel(64);
-    let (camera_sender, _) = broadcast::channel(256);
+    let (pixhawk_event_sender, _) = broadcast::channel(64);
+    let (pixhawk_cmd_sender, pixhawk_cmd_receiver) = mpsc::channel(64);
+    let (camera_event_sender, _) = broadcast::channel(256);
+    let (camera_cmd_sender, camera_cmd_receiver) = mpsc::channel(256);
 
     let channels = Arc::new(Channels {
         interrupt: interrupt_receiver,
         telemetry: telemetry_receiver,
-        pixhawk: pixhawk_sender,
-        camera: camera_sender,
+        pixhawk_event: pixhawk_event_sender,
+        pixhawk_cmd: pixhawk_cmd_sender,
+        camera_event: camera_event_sender,
+        camera_cmd: camera_cmd_sender,
     });
 
     let mut futures = Vec::new();
@@ -112,12 +137,15 @@ async fn main() -> anyhow::Result<()> {
 
     if let Some(pixhawk_address) = config.pixhawk.address {
         info!("connecting to pixhawk at {}", pixhawk_address);
-        let mut pixhawk_client = PixhawkClient::connect(channels.clone(), pixhawk_address).await?;
+
+        let mut pixhawk_client =
+            PixhawkClient::connect(channels.clone(), pixhawk_cmd_receiver, pixhawk_address).await?;
         let pixhawk_task = spawn(async move { pixhawk_client.run().await });
+
         futures.push(pixhawk_task);
 
         info!("initializing telemetry stream");
-        let mut telemetry = TelemetryStream::new(channels.clone());
+        let mut telemetry = TelemetryStream::new(channels.clone(), telemetry_sender);
         let telemetry_task = spawn(async move { telemetry.run().await });
         futures.push(telemetry_task);
     } else {
@@ -127,7 +155,7 @@ async fn main() -> anyhow::Result<()> {
     if config.camera {
         info!("connecting to camera");
         let camera_task = spawn({
-            let mut camera_client = CameraClient::connect(channels.clone())?;
+            let mut camera_client = CameraClient::connect(channels.clone(), camera_cmd_receiver)?;
             async move { camera_client.run().await }
         });
         futures.push(camera_task);
@@ -158,7 +186,6 @@ async fn main() -> anyhow::Result<()> {
         cli::repl::run(channels)
     });
     futures.push(cli_task);
-
 
     // wait for any of these tasks to end
     let (result, _, _) = futures::future::select_all(futures).await;

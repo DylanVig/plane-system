@@ -1,40 +1,36 @@
 use std::{collections::HashMap, sync::Arc, time::Duration};
 
 use anyhow::Context;
-use cli_table::{Cell, Row, Table};
 use humansize::{file_size_opts, FileSize};
 use ptp::{ObjectHandle, PtpData};
 use tokio::{
     io::AsyncWriteExt,
-    sync::broadcast::{self, TryRecvError},
+    sync::mpsc,
     time::delay_for,
 };
 
-use crate::{command::*, util::*, Channels};
+use crate::{util::*, Channels};
 
-use super::{
-    interface::CameraInterface, interface::SonyDeviceControlCode, interface::SonyDevicePropertyCode,
-};
+use super::*;
+use super::interface::*;
 
 pub struct CameraClient {
     iface: CameraInterface,
     channels: Arc<Channels>,
-    cmd: broadcast::Receiver<Command>,
-    interrupt: broadcast::Receiver<()>,
+    cmd: mpsc::Receiver<CameraCommand>,
 }
 
 impl CameraClient {
-    pub fn connect(channels: Arc<Channels>) -> anyhow::Result<Self> {
+    pub fn connect(
+        channels: Arc<Channels>,
+        cmd: mpsc::Receiver<CameraCommand>,
+    ) -> anyhow::Result<Self> {
         let iface = CameraInterface::new().context("failed to create camera interface")?;
-
-        let cmd = channels.cmd.subscribe();
-        let interrupt = channels.interrupt.subscribe();
 
         Ok(CameraClient {
             iface,
             channels,
             cmd,
-            interrupt,
         })
     }
 
@@ -63,28 +59,23 @@ impl CameraClient {
     pub async fn run(&mut self) -> anyhow::Result<()> {
         self.init()?;
 
-        loop {
-            match self.interrupt.try_recv() {
-                Ok(_) => break,
-                Err(TryRecvError::Empty) => {}
-                Err(_) => todo!("handle interrupt receiver lagging??"),
-            }
+        let interrupt = self.channels.interrupt.clone();
 
+        loop {
             match self.cmd.try_recv() {
-                Ok(cmd) => match cmd.data {
-                    CommandData::Camera(camera_cmd) => {
-                        let result = self.exec(camera_cmd).await;
-                        self.channels
-                            .response
-                            .send(Response::result_for(&cmd, result));
-                    }
-                    CommandData::Exit => break,
-                },
+                Ok(cmd) => {
+                    let result = self.exec(cmd.request()).await;
+                    let _ = cmd.respond(result);
+                }
                 _ => {}
             }
 
             if let Ok(event) = self.iface.recv() {
                 trace!("received event: {:?}", event);
+            }
+
+            if *interrupt.borrow() {
+                break;
             }
 
             tokio::time::delay_for(Duration::from_secs(1)).await;
@@ -96,10 +87,10 @@ impl CameraClient {
         Ok(())
     }
 
-    async fn exec(&mut self, cmd: CameraCommand) -> anyhow::Result<ResponseData> {
+    async fn exec(&mut self, cmd: &CameraRequest) -> anyhow::Result<CameraResponse> {
         match cmd {
-            CameraCommand::Storage(cmd) => match cmd {
-                CameraStorageCommand::List => {
+            CameraRequest::Storage(cmd) => match cmd {
+                CameraStorageRequest::List => {
                     self.ensure_mode(0x04).await?;
 
                     trace!("getting storage ids");
@@ -115,11 +106,11 @@ impl CameraClient {
                         .iter()
                         .map(|&id| self.iface.storage_info(id).map(|info| (id, info)))
                         .collect::<Result<HashMap<_, _>, _>>()
-                        .map(|storages| ResponseData::CameraStorageInfo { storages })
+                        .map(|storages| CameraResponse::CameraStorageInfo { storages })
                 }
             },
-            CameraCommand::File(cmd) => match cmd {
-                CameraFileCommand::List => {
+            CameraRequest::File(cmd) => match cmd {
+                CameraFileRequest::List => {
                     self.ensure_mode(0x04).await?;
 
                     trace!("getting object handles");
@@ -141,30 +132,30 @@ impl CameraClient {
                         .iter()
                         .map(|&id| self.iface.object_info(id).map(|info| (id, info)))
                         .collect::<Result<HashMap<_, _>, _>>()
-                        .map(|objects| ResponseData::CameraObjectInfo { objects })
+                        .map(|objects| CameraResponse::CameraObjectInfo { objects })
                 }
             },
-            CameraCommand::Power(cmd) => {
+            CameraRequest::Power(cmd) => {
                 self.ensure_mode(0x02).await?;
 
                 match cmd {
-                    CameraPowerCommand::Up => self
+                    CameraPowerRequest::Up => self
                         .iface
                         .execute(SonyDeviceControlCode::PowerOff, ptp::PtpData::UINT16(1))?,
-                    CameraPowerCommand::Down => self
+                    CameraPowerRequest::Down => self
                         .iface
                         .execute(SonyDeviceControlCode::PowerOff, ptp::PtpData::UINT16(2))?,
                 };
 
-                Ok(ResponseData::Unit)
+                Ok(CameraResponse::Unit)
             }
-            CameraCommand::Reconnect => {
+            CameraRequest::Reconnect => {
                 self.iface = CameraInterface::new().context("failed to create camera interface")?;
                 self.init()?;
 
-                Ok(ResponseData::Unit)
+                Ok(CameraResponse::Unit)
             }
-            CameraCommand::Capture => {
+            CameraRequest::Capture => {
                 self.ensure_mode(0x02).await?;
 
                 // press shutter button halfway to fix the focus
@@ -249,7 +240,7 @@ impl CameraClient {
 
                 info!("wrote image to file '{}'", image_path.to_string_lossy());
 
-                Ok(ResponseData::File { path: image_path })
+                Ok(CameraResponse::File { path: image_path })
             }
             _ => bail!("not implemented"),
         }
