@@ -1,16 +1,14 @@
-use std::{sync::Arc, time::Duration};
+use std::sync::Arc;
 
 use anyhow::Context;
-use camera::{client::CameraClient, state::CameraMessage, interface::SonyDevicePropertyCode};
-use cli::repl::CliCommand;
+use camera::{client::CameraClient, state::CameraEvent};
 use ctrlc;
-use pixhawk::{client::PixhawkClient, state::PixhawkMessage};
-use ptp::PtpData;
+use pixhawk::{client::PixhawkClient, state::PixhawkEvent};
 use scheduler::Scheduler;
-use state::Telemetry;
+use state::TelemetryInfo;
 use structopt::StructOpt;
 use telemetry::TelemetryStream;
-use tokio::{spawn, sync::broadcast, task::spawn_blocking};
+use tokio::{spawn, sync::*};
 
 #[macro_use]
 extern crate log;
@@ -36,35 +34,60 @@ mod util;
 #[derive(Debug)]
 pub struct Channels {
     /// Channel for broadcasting a signal when the server should terminate.
-    interrupt: broadcast::Sender<()>,
-
-    /// Channel for broadcasting updates to the state of the Pixhawk.
-    pixhawk: broadcast::Sender<PixhawkMessage>,
+    interrupt: watch::Receiver<bool>,
 
     /// Channel for broadcasting telemetry information gathered from the gimbal and pixhawk
-    telemetry: broadcast::Sender<Telemetry>,
+    telemetry: watch::Receiver<Option<TelemetryInfo>>,
 
-    /// Channel for broadcasting commands the user enters via the REPL
-    cli: broadcast::Sender<CliCommand>,
+    /// Channel for broadcasting updates to the state of the Pixhawk.
+    pixhawk_event: broadcast::Sender<PixhawkEvent>,
 
-    camera: broadcast::Sender<CameraMessage>,
+    /// Channel for sending instructions to the Pixhawk.
+    pixhawk_cmd: mpsc::Sender<pixhawk::PixhawkCommand>,
+
+    /// Channel for broadcasting updates to the state of the camera.
+    camera_event: broadcast::Sender<CameraEvent>,
+
+    /// Channel for sending instructions to the camera.
+    camera_cmd: mpsc::Sender<camera::CameraCommand>,
 }
 
-impl Channels {
-    pub fn new() -> Self {
-        let (interrupt_sender, _) = broadcast::channel(1);
-        let (telemetry_sender, _) = broadcast::channel(1);
-        let (pixhawk_sender, _) = broadcast::channel(64);
-        let (cli_sender, _) = broadcast::channel(1024);
-        let (camera_sender, _) = broadcast::channel(256);
+#[derive(Debug)]
+pub struct Command<Req, Res, Err = anyhow::Error> {
+    request: Req,
+    chan: oneshot::Sender<Result<Res, Err>>,
+}
 
-        Channels {
-            interrupt: interrupt_sender,
-            pixhawk: pixhawk_sender,
-            telemetry: telemetry_sender,
-            cli: cli_sender,
-            camera: camera_sender,
-        }
+impl<Req, Res, Err> Command<Req, Res, Err> {
+    fn new(request: Req) -> (Self, oneshot::Receiver<Result<Res, Err>>) {
+        let (sender, receiver) = oneshot::channel();
+
+        let cmd = Command {
+            chan: sender,
+            request,
+        };
+
+        (cmd, receiver)
+    }
+
+    fn channel(self) -> oneshot::Sender<Result<Res, Err>> {
+        self.chan
+    }
+
+    fn request(&self) -> &Req {
+        &self.request
+    }
+
+    fn respond(self, result: Result<Res, Err>) -> Result<(), Result<Res, Err>> {
+        self.channel().send(result)
+    }
+
+    fn success(self, data: Res) -> Result<(), Result<Res, Err>> {
+        self.channel().send(Ok(data))
+    }
+
+    fn error(self, error: Err) -> Result<(), Result<Res, Err>> {
+        self.channel().send(Err(error))
     }
 }
 
@@ -84,7 +107,22 @@ async fn main() -> anyhow::Result<()> {
 
     let config = config.context("failed to read config file")?;
 
-    let channels: Arc<Channels> = Arc::new(Channels::new());
+    let (interrupt_sender, interrupt_receiver) = watch::channel(false);
+    let (telemetry_sender, telemetry_receiver) = watch::channel(None);
+    let (pixhawk_event_sender, _) = broadcast::channel(64);
+    let (pixhawk_cmd_sender, pixhawk_cmd_receiver) = mpsc::channel(64);
+    let (camera_event_sender, _) = broadcast::channel(256);
+    let (camera_cmd_sender, camera_cmd_receiver) = mpsc::channel(256);
+
+    let channels = Arc::new(Channels {
+        interrupt: interrupt_receiver,
+        telemetry: telemetry_receiver,
+        pixhawk_event: pixhawk_event_sender,
+        pixhawk_cmd: pixhawk_cmd_sender,
+        camera_event: camera_event_sender,
+        camera_cmd: camera_cmd_sender,
+    });
+
     let mut futures = Vec::new();
 
     ctrlc::set_handler({
@@ -92,20 +130,22 @@ async fn main() -> anyhow::Result<()> {
 
         move || {
             info!("received interrupt, shutting down");
-            let _ = channels.interrupt.send(());
+            let _ = interrupt_sender.broadcast(true);
         }
     })
     .expect("could not set ctrl+c handler");
 
     if let Some(pixhawk_address) = config.pixhawk.address {
         info!("connecting to pixhawk at {}", pixhawk_address);
+
         let mut pixhawk_client =
-            PixhawkClient::connect(channels.clone(), pixhawk_address).await?;
+            PixhawkClient::connect(channels.clone(), pixhawk_cmd_receiver, pixhawk_address).await?;
         let pixhawk_task = spawn(async move { pixhawk_client.run().await });
+
         futures.push(pixhawk_task);
 
         info!("initializing telemetry stream");
-        let mut telemetry = TelemetryStream::new(channels.clone());
+        let mut telemetry = TelemetryStream::new(channels.clone(), telemetry_sender);
         let telemetry_task = spawn(async move { telemetry.run().await });
         futures.push(telemetry_task);
     } else {
@@ -114,13 +154,19 @@ async fn main() -> anyhow::Result<()> {
 
     if config.camera {
         info!("connecting to camera");
-        let mut camera_client = CameraClient::connect(channels.clone())?;
-        let camera_task = spawn(async move { camera_client.run().await });
+        let camera_task = spawn({
+            let mut camera_client = CameraClient::connect(channels.clone(), camera_cmd_receiver)?;
+            async move { camera_client.run().await }
+        });
         futures.push(camera_task);
     }
 
     info!("initializing scheduler");
-    let scheduler = Scheduler::new(channels.clone());
+    let scheduler_task = spawn({
+        let scheduler = Scheduler::new(channels.clone());
+        async move { scheduler.run().await }
+    });
+    futures.push(scheduler_task);
 
     info!("initializing server");
     let server_address = config
@@ -128,19 +174,17 @@ async fn main() -> anyhow::Result<()> {
         .address
         .parse()
         .context("invalid server address")?;
-
-    let scheduler_task = spawn(async move { scheduler.run().await });
     let server_task = spawn({
         let channels = channels.clone();
         server::serve(channels, server_address)
     });
-    let cli_task = spawn_blocking({
-        let channels = channels.clone();
-        move || cli::repl::run(channels)
-    });
-
-    futures.push(scheduler_task);
     futures.push(server_task);
+
+    info!("intializing cli");
+    let cli_task = spawn({
+        let channels = channels.clone();
+        cli::repl::run(channels)
+    });
     futures.push(cli_task);
 
     // wait for any of these tasks to end

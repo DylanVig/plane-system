@@ -1,56 +1,32 @@
 use std::sync::Arc;
 
 use anyhow::Context;
-use clap::AppSettings;
 use structopt::StructOpt;
-use tokio::sync::broadcast;
+use tokio::sync::mpsc;
 
-use crate::Channels;
+use crate::{Channels, camera::CameraRequest, Command};
 
-#[derive(StructOpt, Debug, Clone)]
-#[structopt(setting(AppSettings::NoBinaryName))]
-#[structopt(rename_all = "kebab-case")]
-pub enum CliCommand {
-    Camera(CameraCliCommand),
-    Exit,
+#[derive(StructOpt, Debug)]
+enum ReplRequest {
+    Camera(CameraRequest)
 }
 
-#[derive(StructOpt, Debug, Clone)]
-pub enum CameraCliCommand {
-    #[structopt(name = "cd")]
-    ChangeDirectory {
-        directory: String,
-    },
-
-    #[structopt(name = "ls")]
-    EnumerateDirectory {
-        #[structopt(short, long)]
-        deep: bool,
-    },
-
-    Capture,
-
-    Zoom {
-        level: u8,
-    },
-
-    Download {
-        file: Option<String>,
-    },
-}
-
-pub fn run(channels: Arc<Channels>) -> anyhow::Result<()> {
-    let sender = &channels.cli;
+pub async fn run(
+    channels: Arc<Channels>,
+) -> anyhow::Result<()> {
     let mut rl = rustyline::Editor::<()>::new();
+    let mut current_directory = "/".to_owned();
 
     loop {
+        let current_prompt = format!("\n{}\nplane-system> ", current_directory);
+
         let line = rl
-            .readline("plane-system> ")
+            .readline(&current_prompt)
             .context("failed to read line")?;
 
-        info!("got line: {:#?}", line);
+        trace!("got line: {:#?}", line);
 
-        let cmd = match <CliCommand as StructOpt>::from_iter_safe(line.split_ascii_whitespace()) {
+        let request = match <ReplRequest as StructOpt>::from_iter_safe(line.split_ascii_whitespace()) {
             Ok(cmd) => cmd,
             Err(err) => {
                 println!("{}", err.message);
@@ -58,9 +34,15 @@ pub fn run(channels: Arc<Channels>) -> anyhow::Result<()> {
             }
         };
 
-        info!("got command: {:#?}", cmd);
+        trace!("got command: {:#?}", request);
 
-        let _ = sender.send(cmd);
+        let response = match request {
+            ReplRequest::Camera(request) => {
+                let (cmd, chan) = Command::new(request);
+                channels.camera_cmd.clone().send(cmd).await?;
+                chan.await
+            }
+        };
     }
 
     Ok(())

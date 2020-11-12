@@ -17,7 +17,7 @@ pub struct Telemetry {
 }
 
 #[derive(Debug, Clone)]
-pub enum PixhawkMessage {
+pub enum PixhawkEvent {
     Image {
         time: SystemTime,
         foc_len: f32,
@@ -34,3 +34,6 @@ pub enum PixhawkMessage {
         attitude: Attitude,
     },
 }
+
+// TODO
+pub type PixhawkCommand = ();

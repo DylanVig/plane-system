@@ -1,4 +1,4 @@
-use crate::{pixhawk::state::PixhawkMessage, state::RegionOfInterest, util::ReceiverExt, Channels};
+use crate::{pixhawk::state::PixhawkEvent, state::RegionOfInterest, util::ReceiverExt, Channels};
 use anyhow::Context;
 use std::{sync::Arc, time::Duration};
 use tokio::time::timeout;
@@ -27,13 +27,14 @@ impl Scheduler {
     }
 
     pub async fn run(&self) -> anyhow::Result<()> {
-        let mut telemetry_recv = self.channels.telemetry.subscribe();
-        let mut pixhawk_recv = self.channels.pixhawk.subscribe();
-        let mut interrupt_recv = self.channels.interrupt.subscribe();
+        let mut pixhawk_recv = self.channels.pixhawk_event.subscribe();
+        let mut telemetry_recv = self.channels.telemetry.clone();
+        let interrupt_recv = self.channels.interrupt.clone();
+
         loop {
             if let Ok(Ok(message)) = timeout(Duration::from_millis(10), pixhawk_recv.recv()).await {
                 match message {
-                    PixhawkMessage::Image {
+                    PixhawkEvent::Image {
                         time,
                         foc_len,
                         img_idx,
@@ -47,17 +48,17 @@ impl Scheduler {
             }
 
             let telemetry = telemetry_recv
-                .recv_skip()
+                .recv()
                 .await
                 .context("telemetry stream closed")?;
 
             debug!("{:?}", telemetry);
 
-            if let Ok(_) = timeout(Duration::from_millis(10), interrupt_recv.recv()).await {
+            if *interrupt_recv.borrow() {
                 break;
             }
         }
-        
+
         Ok(())
     }
 }

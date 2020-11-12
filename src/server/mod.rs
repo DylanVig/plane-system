@@ -4,7 +4,7 @@ use std::{convert::Infallible, net::SocketAddr, sync::Arc, time::SystemTime};
 use tokio::sync::RwLock;
 use warp::{self, Filter};
 
-use crate::{pixhawk::state::PixhawkMessage, pixhawk::state::Telemetry, state::RegionOfInterest};
+use crate::{pixhawk::state::PixhawkEvent, pixhawk::state::Telemetry, state::RegionOfInterest};
 use crate::{util::ReceiverExt, Channels};
 
 #[derive(Clone)]
@@ -56,16 +56,16 @@ pub async fn serve(channels: Arc<Channels>, address: SocketAddr) -> anyhow::Resu
     info!("initialized server");
     info!("listening at {:?}", address);
 
-    let mut interrupt_recv = channels.interrupt.subscribe();
+    let mut interrupt_recv = channels.interrupt.clone();
     let (_, server) = warp::serve(api).bind_with_graceful_shutdown(address, async move {
         debug!("server recv interrupt");
-        interrupt_recv.recv().await.unwrap();
+        interrupt_recv.recv().await;
     });
 
     let server_task = tokio::spawn(server);
 
-    let mut interrupt_recv = channels.interrupt.subscribe();
-    let mut pixhawk_recv = channels.pixhawk.subscribe();
+    let interrupt_recv = channels.interrupt.clone();
+    let mut pixhawk_recv = channels.pixhawk_event.subscribe();
     let channel_task = tokio::spawn(async move {
         loop {
             let pixhawk_msg = pixhawk_recv
@@ -76,18 +76,18 @@ pub async fn serve(channels: Arc<Channels>, address: SocketAddr) -> anyhow::Resu
             let mut pixhawk_telem = pixhawk_telem.write().await;
 
             match pixhawk_msg {
-                PixhawkMessage::Gps { coords } => {
+                PixhawkEvent::Gps { coords } => {
                     pixhawk_telem.coords = Some(coords);
                     pixhawk_telem.coords_timestamp = Some(SystemTime::now());
                 }
-                PixhawkMessage::Orientation { attitude } => {
+                PixhawkEvent::Orientation { attitude } => {
                     pixhawk_telem.attitude = Some(attitude);
                     pixhawk_telem.attitude_timestamp = Some(SystemTime::now());
                 }
                 _ => {}
             }
 
-            if let Ok(()) = interrupt_recv.try_recv() {
+            if *interrupt_recv.borrow() {
                 debug!("pixhawk recv interrupt");
                 break;
             }
