@@ -2,19 +2,15 @@ use std::{sync::Arc, time::Duration};
 
 use anyhow::Context;
 use camera::{client::CameraClient, interface::SonyDevicePropertyCode, state::CameraMessage};
-use cli::repl::{CliCommand, CliResult};
+use command::{Command, CommandData, Response, ResponseData};
 use ctrlc;
 use pixhawk::{client::PixhawkClient, state::PixhawkMessage};
 use ptp::PtpData;
 use scheduler::Scheduler;
-use state::Telemetry;
+use state::TelemetryInfo;
 use structopt::StructOpt;
 use telemetry::TelemetryStream;
-use tokio::{
-    spawn,
-    sync::{broadcast, mpsc},
-    task::spawn_blocking,
-};
+use tokio::{spawn, sync::{broadcast, mpsc}, sync::{oneshot, watch}, task::spawn_blocking};
 
 #[macro_use]
 extern crate log;
@@ -36,25 +32,42 @@ mod server;
 mod state;
 mod telemetry;
 mod util;
+mod command;
 
 #[derive(Debug)]
 pub struct Channels {
     /// Channel for broadcasting a signal when the server should terminate.
-    interrupt: broadcast::Sender<()>,
+    interrupt: watch::Receiver<bool>,
+
+    /// Channel for broadcasting telemetry information gathered from the gimbal and pixhawk
+    telemetry: watch::Receiver<Option<TelemetryInfo>>,
 
     /// Channel for broadcasting updates to the state of the Pixhawk.
     pixhawk: broadcast::Sender<PixhawkMessage>,
 
-    /// Channel for broadcasting telemetry information gathered from the gimbal and pixhawk
-    telemetry: broadcast::Sender<Telemetry>,
-
-    /// Channel for broadcasting commands the user enters via the REPL
-    cli_cmd: broadcast::Sender<CliCommand>,
-
-    /// Channel for returning results from commands
-    cli_result: mpsc::Sender<CliResult>,
-
+    /// Channel for broadcasting updates to the state of the camera.
     camera: broadcast::Sender<CameraMessage>,
+}
+
+#[async_trait]
+pub trait Component {
+    type Cmd: Command;
+
+    async fn run() -> anyhow::Result<()>;
+
+    async fn exec(command: Self::Cmd) -> anyhow::Result<<Self::Cmd as Command>::Res>;
+}
+
+pub trait Command {
+    type Res: Response;
+    type Data;
+
+    fn channel(&self) -> oneshot::Sender<Self::Res>;
+    fn data(&self) -> Self::Data;
+}
+
+pub trait Response: serde::Serialize {
+
 }
 
 #[tokio::main]
@@ -73,19 +86,15 @@ async fn main() -> anyhow::Result<()> {
 
     let config = config.context("failed to read config file")?;
 
-    let (interrupt_sender, _) = broadcast::channel(1);
-    let (telemetry_sender, _) = broadcast::channel(1);
+    let (interrupt_sender, interrupt_receiver) = watch::channel(false);
+    let (telemetry_sender, telemetry_receiver) = watch::channel(None);
     let (pixhawk_sender, _) = broadcast::channel(64);
-    let (cli_cmd_sender, _) = broadcast::channel(1024);
-    let (cli_result_sender, cli_result_receiver) = mpsc::channel(1);
     let (camera_sender, _) = broadcast::channel(256);
 
     let channels = Arc::new(Channels {
-        interrupt: interrupt_sender,
+        interrupt: interrupt_receiver,
+        telemetry: telemetry_receiver,
         pixhawk: pixhawk_sender,
-        telemetry: telemetry_sender,
-        cli_cmd: cli_cmd_sender,
-        cli_result: cli_result_sender,
         camera: camera_sender,
     });
 
@@ -96,7 +105,7 @@ async fn main() -> anyhow::Result<()> {
 
         move || {
             info!("received interrupt, shutting down");
-            let _ = channels.interrupt.send(());
+            let _ = interrupt_sender.broadcast(true);
         }
     })
     .expect("could not set ctrl+c handler");
@@ -146,7 +155,7 @@ async fn main() -> anyhow::Result<()> {
     info!("intializing cli");
     let cli_task = spawn({
         let channels = channels.clone();
-        cli::repl::run(channels, cli_result_receiver)
+        cli::repl::run(channels)
     });
     futures.push(cli_task);
 

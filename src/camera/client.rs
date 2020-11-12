@@ -1,33 +1,25 @@
-use std::{sync::Arc, time::Duration};
+use std::{collections::HashMap, sync::Arc, time::Duration};
 
 use anyhow::Context;
-use cli_table::{format::CellFormat, Cell, Row, Table};
+use cli_table::{Cell, Row, Table};
 use humansize::{file_size_opts, FileSize};
 use ptp::{ObjectHandle, PtpData};
 use tokio::{
     io::AsyncWriteExt,
     sync::broadcast::{self, TryRecvError},
-    task::spawn_blocking,
     time::delay_for,
 };
 
-use crate::{
-    cli::repl::{
-        CameraCliCommand, CameraFileCliCommand, CameraPowerCliCommand, CameraStorageCliCommand,
-        CliCommand, CliResult,
-    },
-    Channels,
-};
+use crate::{command::*, util::*, Channels};
 
 use super::{
-    interface::CameraInterface, interface::SonyDeviceControlCode,
-    interface::SonyDevicePropertyCode, state::CameraMessage,
+    interface::CameraInterface, interface::SonyDeviceControlCode, interface::SonyDevicePropertyCode,
 };
 
 pub struct CameraClient {
     iface: CameraInterface,
     channels: Arc<Channels>,
-    cli: broadcast::Receiver<CliCommand>,
+    cmd: broadcast::Receiver<Command>,
     interrupt: broadcast::Receiver<()>,
 }
 
@@ -35,13 +27,13 @@ impl CameraClient {
     pub fn connect(channels: Arc<Channels>) -> anyhow::Result<Self> {
         let iface = CameraInterface::new().context("failed to create camera interface")?;
 
-        let cli = channels.cli_cmd.subscribe();
+        let cmd = channels.cmd.subscribe();
         let interrupt = channels.interrupt.subscribe();
 
         Ok(CameraClient {
             iface,
             channels,
-            cli,
+            cmd,
             interrupt,
         })
     }
@@ -53,13 +45,13 @@ impl CameraClient {
 
         // RFC 3339 = ISO 8601 = camera datetime format
         let time_str = chrono::Local::now().to_rfc3339();
-        
+
         trace!("setting time on camera to '{}'", &time_str);
 
-        if let Err(err) = self.iface.set(
-            SonyDevicePropertyCode::DateTime,
-            PtpData::STR(time_str),
-        ) {
+        if let Err(err) = self
+            .iface
+            .set(SonyDevicePropertyCode::DateTime, PtpData::STR(time_str))
+        {
             warn!("could not set date/time on camera: {:?}", err);
         }
 
@@ -78,23 +70,16 @@ impl CameraClient {
                 Err(_) => todo!("handle interrupt receiver lagging??"),
             }
 
-            match self.cli.try_recv() {
-                Ok(CliCommand::Camera(cmd)) => {
-                    let result = self.exec(cmd).await;
-
-                    match result {
-                        Ok(result) => self.channels.cli_result.clone().send(result).await?,
-                        Err(err) => {
-                            error!("{:?}", err);
-                            self.channels
-                                .cli_result
-                                .clone()
-                                .send(CliResult::failure())
-                                .await?
-                        }
-                    };
-                }
-                Ok(CliCommand::Exit) => break,
+            match self.cmd.try_recv() {
+                Ok(cmd) => match cmd.data {
+                    CommandData::Camera(camera_cmd) => {
+                        let result = self.exec(camera_cmd).await;
+                        self.channels
+                            .response
+                            .send(Response::result_for(&cmd, result));
+                    }
+                    CommandData::Exit => break,
+                },
                 _ => {}
             }
 
@@ -111,10 +96,10 @@ impl CameraClient {
         Ok(())
     }
 
-    async fn exec(&mut self, cmd: CameraCliCommand) -> anyhow::Result<CliResult> {
+    async fn exec(&mut self, cmd: CameraCommand) -> anyhow::Result<ResponseData> {
         match cmd {
-            CameraCliCommand::Storage(cmd) => match cmd {
-                CameraStorageCliCommand::List => {
+            CameraCommand::Storage(cmd) => match cmd {
+                CameraStorageCommand::List => {
                     self.ensure_mode(0x04).await?;
 
                     trace!("getting storage ids");
@@ -126,80 +111,21 @@ impl CameraClient {
 
                     trace!("got storage ids: {:?}", storage_ids);
 
-                    let storage_infos = storage_ids
+                    storage_ids
                         .iter()
-                        .filter(|id| **id != 0xFFFFFFFF.into() && **id != 0x00010000.into())
-                        .map(|&id| (id, self.iface.storage_info(id)))
-                        .collect::<Vec<_>>();
-
-                    trace!("got storage infos: {:?}", storage_infos);
-
-                    let title_row = Row::new(vec![
-                        Cell::new("id", Default::default()),
-                        Cell::new("label", Default::default()),
-                        Cell::new("capacity", Default::default()),
-                        Cell::new("space", Default::default()),
-                        Cell::new("access", Default::default()),
-                        Cell::new("description", Default::default()),
-                    ]);
-
-                    let mut table_rows = vec![title_row];
-
-                    table_rows.extend(storage_infos.into_iter().map(|(id, result)| match result {
-                        Ok(info) => {
-                            let max_capacity_str =
-                                info.max_capacity.file_size(file_size_opts::BINARY).unwrap();
-
-                            let free_space_str = info
-                                .free_space_in_bytes
-                                .file_size(file_size_opts::BINARY)
-                                .unwrap();
-
-                            let access_str = match info.access_capability {
-                                ptp::AccessType::Standard(cap) => {
-                                    let access_str = match cap {
-                                        ptp::StandardAccessType::ReadWrite => "r+w",
-                                        ptp::StandardAccessType::ReadOnlyNoDelete => "r",
-                                        ptp::StandardAccessType::ReadOnly => "r+d",
-                                    };
-
-                                    access_str.to_owned()
-                                }
-                                ptp::AccessType::Reserved(val) => format!("0x{:04x}", val),
-                            };
-
-                            Row::new(vec![
-                                Cell::new(&format!("{}", id), Default::default()),
-                                Cell::new(&info.volume_label, Default::default()),
-                                Cell::new(&max_capacity_str, Default::default()),
-                                Cell::new(&free_space_str, Default::default()),
-                                Cell::new(&access_str, Default::default()),
-                                Cell::new(&info.storage_description, Default::default()),
-                            ])
-                        }
-                        Err(_) => Row::new(vec![
-                            Cell::new(&format!("{}", id), Default::default()),
-                            Cell::new("error", Default::default()),
-                            Cell::new("error", Default::default()),
-                            Cell::new("error", Default::default()),
-                            Cell::new("error", Default::default()),
-                            Cell::new("error", Default::default()),
-                        ]),
-                    }));
-
-                    let table = Table::new(table_rows, cli_table::format::NO_BORDER_COLUMN_TITLE)
-                        .context("could not create table")?;
-
-                    table.print_stdout().context("could not write table")?;
-
-                    Ok(CliResult::success())
+                        .map(|&id| self.iface.storage_info(id).map(|info| (id, info)))
+                        .collect::<Result<HashMap<_, _>, _>>()
+                        .map(|storages| ResponseData::CameraStorageInfo { storages })
                 }
             },
-            CameraCliCommand::File(cmd) => match cmd {
-                CameraFileCliCommand::List => {
+            CameraCommand::File(cmd) => match cmd {
+                CameraFileCommand::List => {
                     self.ensure_mode(0x04).await?;
 
                     trace!("getting object handles");
+
+                    // TODO: wait until camera reports storage id 0x00010001 as
+                    // existing
 
                     let object_handles = self
                         .iface
@@ -211,78 +137,34 @@ impl CameraClient {
 
                     trace!("got object handles: {:?}", object_handles);
 
-                    let object_infos = object_handles
+                    object_handles
                         .iter()
-                        .map(|&id| (id, self.iface.object_info(id)))
-                        .collect::<Vec<_>>();
-
-                    trace!("got object infos: {:?}", object_infos);
-
-                    let title_row = Row::new(vec![
-                        Cell::new("handle", Default::default()),
-                        Cell::new("filename", Default::default()),
-                        Cell::new("type", Default::default()),
-                        Cell::new("compressed size", Default::default()),
-                    ]);
-
-                    let mut table_rows = vec![title_row];
-
-                    table_rows.extend(object_infos.into_iter().map(
-                        |(handle, result)| match result {
-                            Ok(info) => {
-                                let compressed_size_str = info
-                                    .object_compressed_size
-                                    .file_size(file_size_opts::BINARY)
-                                    .unwrap();
-
-                                Row::new(vec![
-                                    Cell::new(&format!("{}", handle), Default::default()),
-                                    Cell::new(&format!("{}", info.filename), Default::default()),
-                                    Cell::new(
-                                        &format!("{:?}", info.object_format),
-                                        Default::default(),
-                                    ),
-                                    Cell::new(&compressed_size_str, Default::default()),
-                                ])
-                            }
-                            Err(_) => Row::new(vec![
-                                Cell::new(&format!("{}", handle), Default::default()),
-                                Cell::new("error", Default::default()),
-                                Cell::new("error", Default::default()),
-                                Cell::new("error", Default::default()),
-                            ]),
-                        },
-                    ));
-
-                    let table = Table::new(table_rows, cli_table::format::NO_BORDER_COLUMN_TITLE)
-                        .context("could not create table")?;
-
-                    table.print_stdout().context("could not write table")?;
-
-                    Ok(CliResult::success())
+                        .map(|&id| self.iface.object_info(id).map(|info| (id, info)))
+                        .collect::<Result<HashMap<_, _>, _>>()
+                        .map(|objects| ResponseData::CameraObjectInfo { objects })
                 }
             },
-            CameraCliCommand::Power(cmd) => {
+            CameraCommand::Power(cmd) => {
                 self.ensure_mode(0x02).await?;
 
                 match cmd {
-                    CameraPowerCliCommand::Up => self
+                    CameraPowerCommand::Up => self
                         .iface
                         .execute(SonyDeviceControlCode::PowerOff, ptp::PtpData::UINT16(1))?,
-                    CameraPowerCliCommand::Down => self
+                    CameraPowerCommand::Down => self
                         .iface
                         .execute(SonyDeviceControlCode::PowerOff, ptp::PtpData::UINT16(2))?,
                 };
 
-                Ok(CliResult::success())
+                Ok(ResponseData::Unit)
             }
-            CameraCliCommand::Reconnect => {
+            CameraCommand::Reconnect => {
                 self.iface = CameraInterface::new().context("failed to create camera interface")?;
                 self.init()?;
 
-                Ok(CliResult::success())
+                Ok(ResponseData::Unit)
             }
-            CameraCliCommand::Capture => {
+            CameraCommand::Capture => {
                 self.ensure_mode(0x02).await?;
 
                 // press shutter button halfway to fix the focus
@@ -312,10 +194,17 @@ impl CameraClient {
                 loop {
                     if let Ok(event) = self.iface.recv() {
                         // 0xC204 = image taken
-                        if let ptp::EventCode::Vendor(0xC204) = event.code {
-                            break;
+                        match event.code {
+                            ptp::EventCode::Vendor(0xC204) => match event.params[0] {
+                                Some(1) => break,
+                                Some(2) => bail!("capture failure"),
+                                _ => bail!("unknown capture status"),
+                            },
+                            _ => {}
                         }
                     }
+
+                    delay_for(Duration::from_millis(100)).await;
                 }
 
                 info!("received image event");
@@ -360,18 +249,16 @@ impl CameraClient {
 
                 info!("wrote image to file '{}'", image_path.to_string_lossy());
 
-                Ok(CliResult::success())
+                Ok(ResponseData::File { path: image_path })
             }
-            _ => todo!(),
+            _ => bail!("not implemented"),
         }
     }
 
     async fn ensure_mode(&mut self, mode: u8) -> anyhow::Result<()> {
-        let mut retries = 0usize;
+        retry_delay(10, Some(Duration::from_millis(1000)), || {
+            trace!("checking operating mode");
 
-        trace!("checking operating mode");
-
-        while retries < 10 {
             let current_state = self
                 .iface
                 .update()
@@ -384,7 +271,7 @@ impl CameraClient {
             if let Some(PtpData::UINT8(current_op_mode)) = current_op_mode.map(|d| &d.current) {
                 if *current_op_mode == mode {
                     // we are in the right mode, break
-                    break;
+                    return Ok(());
                 }
             }
 
@@ -394,13 +281,8 @@ impl CameraClient {
                 .set(SonyDevicePropertyCode::OperatingMode, PtpData::UINT8(mode))
                 .context("failed to set operating mode of camera")?;
 
-            delay_for(Duration::from_millis(1000)).await;
-
-            retries += 1;
-        }
-
-        delay_for(Duration::from_millis(1000)).await;
-
-        Ok(())
+            Ok(())
+        })
+        .await
     }
 }

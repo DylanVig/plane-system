@@ -1,89 +1,18 @@
 use std::sync::Arc;
 
 use anyhow::Context;
-use clap::AppSettings;
 use structopt::StructOpt;
-use tokio::sync::{broadcast, mpsc};
+use tokio::sync::mpsc;
 
-use crate::Channels;
+use crate::{Channels, command::{CommandData, ResponseData}};
 
-#[derive(StructOpt, Debug, Clone)]
-#[structopt(setting(AppSettings::NoBinaryName))]
-#[structopt(rename_all = "kebab-case")]
-pub enum CliCommand {
-    Camera(CameraCliCommand),
-    Exit,
-}
-
-#[derive(Debug, Clone)]
-pub struct CliResult {
-    new_current_directory: Option<String>,
-    success: bool,
-}
-
-impl CliResult {
-    pub fn success() -> Self {
-        CliResult {
-            new_current_directory: None,
-            success: true
-        }
-    }
-
-    pub fn failure() -> Self {
-        CliResult {
-            new_current_directory: None,
-            success: false
-        }
-    }
-}
-
-#[derive(StructOpt, Debug, Clone)]
-pub enum CameraCliCommand {
-    #[structopt(name = "cd")]
-    ChangeDirectory {
-        directory: String,
-    },
-
-    Storage(CameraStorageCliCommand),
-    
-    File(CameraFileCliCommand),
-
-    Capture,
-
-    Power(CameraPowerCliCommand),
-
-    Reconnect,
-
-    Zoom {
-        level: u8,
-    },
-
-    Download {
-        file: Option<String>,
-    },
-}
-
-#[derive(StructOpt, Debug, Clone)]
-pub enum CameraStorageCliCommand {
-    List
-}
-
-#[derive(StructOpt, Debug, Clone)]
-pub enum CameraFileCliCommand {
-    List
-}
-
-#[derive(StructOpt, Debug, Clone)]
-pub enum CameraPowerCliCommand {
-    Up,
-    Down
-}
 
 pub async fn run(
     channels: Arc<Channels>,
-    mut receiver: mpsc::Receiver<CliResult>,
 ) -> anyhow::Result<()> {
-    let sender = &channels.cli_cmd;
+    let sender = &channels.cmd;
+    let receiver = channels.response.subscribe();
+
     let mut rl = rustyline::Editor::<()>::new();
     let mut current_directory = "/".to_owned();
 
@@ -96,7 +25,7 @@ pub async fn run(
 
         trace!("got line: {:#?}", line);
 
-        let cmd = match <CliCommand as StructOpt>::from_iter_safe(line.split_ascii_whitespace()) {
+        let cmd = match <CommandData as StructOpt>::from_iter_safe(line.split_ascii_whitespace()) {
             Ok(cmd) => cmd,
             Err(err) => {
                 println!("{}", err.message);
@@ -109,10 +38,6 @@ pub async fn run(
         let _ = sender.send(cmd);
 
         let result = receiver.recv().await.context("channel closed")?;
-
-        if let Some(new_current_directory) = result.new_current_directory {
-            current_directory = new_current_directory;
-        }
     }
 
     Ok(())

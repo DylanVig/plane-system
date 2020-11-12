@@ -1,4 +1,4 @@
-use crate::{pixhawk::state::PixhawkMessage, state::Telemetry, util::ReceiverExt, Channels};
+use crate::{pixhawk::state::PixhawkMessage, state::TelemetryInfo, util::ReceiverExt, Channels};
 
 use std::sync::{Arc, Mutex};
 
@@ -8,7 +8,7 @@ use tokio::spawn;
 use tokio::time::interval;
 
 // Noteworthy that this isn't a RwLock because we have at most one reader at any given moment
-type TelemetryState = Arc<Mutex<Telemetry>>;
+type TelemetryState = Arc<Mutex<TelemetryInfo>>;
 
 struct TelemetryCollector {
     telemetry_state: TelemetryState,
@@ -89,7 +89,7 @@ impl TelemetryPublisher {
 
 impl TelemetryStream {
     pub fn new(channels: Arc<Channels>) -> Self {
-        let telemetry_state = Arc::new(Mutex::new(Telemetry::default()));
+        let telemetry_state = Arc::new(Mutex::new(TelemetryInfo::default()));
 
         Self {
             telemetry_state,
