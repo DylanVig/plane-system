@@ -78,6 +78,7 @@ fn table_format() -> prettytable::format::TableFormat {
 fn format_camera_response(response: CameraResponse) -> () {
     match response {
         CameraResponse::Unit => println!("done"),
+
         CameraResponse::Data { data } => {
             let size = data
                 .len()
@@ -86,10 +87,12 @@ fn format_camera_response(response: CameraResponse) -> () {
 
             println!("received {} of data", size);
         }
+
         CameraResponse::File { path } => {
             println!("received file: {}", path.to_string_lossy());
         }
-        CameraResponse::CameraStorageInfo { storages } => {
+
+        CameraResponse::StorageInfo { storages } => {
             let mut table = Table::new();
             table.add_row(row![
                 "id",
@@ -163,7 +166,8 @@ fn format_camera_response(response: CameraResponse) -> () {
             table.set_format(table_format());
             table.printstd();
         }
-        CameraResponse::CameraObjectInfo { objects } => {
+
+        CameraResponse::ObjectInfo { objects } => {
             let mut table = Table::new();
 
             table.add_row(row![
@@ -254,6 +258,21 @@ fn format_camera_response(response: CameraResponse) -> () {
 
             table.set_format(table_format());
             table.printstd();
+        }
+
+        CameraResponse::ZoomLevel { zoom_level } => {
+            println!("zoom level: {}", zoom_level);
+        }
+        CameraResponse::SaveMode { save_mode } => match save_mode {
+            crate::camera::CameraSaveMode::HostDevice => {
+                println!("saving to host device");
+            }
+            crate::camera::CameraSaveMode::MemoryCard1 => {
+                println!("saving to camera memory");
+            }
+        },
+        CameraResponse::ExposureMode { exposure_mode } => {
+            println!("new exposure mode: {:?}", exposure_mode);
         }
     }
 }

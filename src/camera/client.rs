@@ -1,7 +1,8 @@
-use std::{collections::HashMap, sync::Arc, time::Duration};
+use std::{collections::HashMap, path::PathBuf, sync::Arc, time::Duration};
 
 use anyhow::Context;
 use humansize::{file_size_opts, FileSize};
+use num_traits::{FromPrimitive, ToPrimitive};
 use ptp::{ObjectHandle, PtpData, StorageId};
 use tokio::{io::AsyncWriteExt, sync::mpsc, time::delay_for};
 
@@ -43,7 +44,7 @@ impl CameraClient {
 
         if let Err(err) = self
             .iface
-            .set(SonyDevicePropertyCode::DateTime, PtpData::STR(time_str))
+            .set(CameraPropertyCode::DateTime, PtpData::STR(time_str))
         {
             warn!("could not set date/time on camera: {:?}", err);
         }
@@ -114,9 +115,10 @@ impl CameraClient {
                         .iter()
                         .map(|&id| self.iface.storage_info(id).map(|info| (id, info)))
                         .collect::<Result<HashMap<_, _>, _>>()
-                        .map(|storages| CameraResponse::CameraStorageInfo { storages })
+                        .map(|storages| CameraResponse::StorageInfo { storages })
                 }
             },
+
             CameraRequest::File(cmd) => match cmd {
                 CameraFileRequest::List { parent } => {
                     self.ensure_mode(0x04).await?;
@@ -158,53 +160,64 @@ impl CameraClient {
                         .iter()
                         .map(|&id| self.iface.object_info(id).map(|info| (id, info)))
                         .collect::<Result<HashMap<_, _>, _>>()
-                        .map(|objects| CameraResponse::CameraObjectInfo { objects })
+                        .map(|objects| CameraResponse::ObjectInfo { objects })
+                }
+
+                CameraFileRequest::Get { handle } => {
+                    let shot_handle = ObjectHandle::from(*handle);
+
+                    let image_path = self.download_object(shot_handle).await?;
+                    
+                    Ok(CameraResponse::File { path: image_path })
                 }
             },
+
             CameraRequest::Power(cmd) => {
                 self.ensure_mode(0x02).await?;
 
                 match cmd {
                     CameraPowerRequest::Up => self
                         .iface
-                        .execute(SonyDeviceControlCode::PowerOff, ptp::PtpData::UINT16(1))?,
+                        .execute(CameraControlCode::PowerOff, ptp::PtpData::UINT16(1))?,
                     CameraPowerRequest::Down => self
                         .iface
-                        .execute(SonyDeviceControlCode::PowerOff, ptp::PtpData::UINT16(2))?,
+                        .execute(CameraControlCode::PowerOff, ptp::PtpData::UINT16(2))?,
                 };
 
                 Ok(CameraResponse::Unit)
             }
+
             CameraRequest::Reconnect => {
                 self.iface = CameraInterface::new().context("failed to create camera interface")?;
                 self.init()?;
 
                 Ok(CameraResponse::Unit)
             }
+
             CameraRequest::Capture => {
                 self.ensure_mode(0x02).await?;
 
                 // press shutter button halfway to fix the focus
                 self.iface
-                    .execute(SonyDeviceControlCode::S1Button, PtpData::UINT16(0x0002))?;
+                    .execute(CameraControlCode::S1Button, PtpData::UINT16(0x0002))?;
 
                 delay_for(Duration::from_millis(100)).await;
 
                 // shoot!
                 self.iface
-                    .execute(SonyDeviceControlCode::S2Button, PtpData::UINT16(0x0002))?;
+                    .execute(CameraControlCode::S2Button, PtpData::UINT16(0x0002))?;
 
                 delay_for(Duration::from_millis(100)).await;
 
                 // release
                 self.iface
-                    .execute(SonyDeviceControlCode::S2Button, PtpData::UINT16(0x0001))?;
+                    .execute(CameraControlCode::S2Button, PtpData::UINT16(0x0001))?;
 
                 delay_for(Duration::from_millis(100)).await;
 
                 // hell yeah
                 self.iface
-                    .execute(SonyDeviceControlCode::S1Button, PtpData::UINT16(0x0001))?;
+                    .execute(CameraControlCode::S1Button, PtpData::UINT16(0x0001))?;
 
                 info!("waiting for image event");
 
@@ -226,49 +239,114 @@ impl CameraClient {
 
                 info!("received image event");
 
+                let save_media = self
+                    .iface
+                    .get(CameraPropertyCode::SaveMedia)
+                    .context("unknown whether image is saved to host or device")?
+                    .current;
+
+                match save_media {
+                    PtpData::UINT16(save_media) => match CameraSaveMode::from_u16(save_media) {
+                        Some(save_media) => match save_media {
+                            // continue
+                            CameraSaveMode::HostDevice => {}
+                            // we're done here
+                            CameraSaveMode::MemoryCard1 => return Ok(CameraResponse::Unit),
+                        },
+                        None => bail!("invalid save media"),
+                    },
+                    _ => bail!("invalid save media"),
+                }
+
                 let shot_handle = ObjectHandle::from(0xFFFFC001);
 
-                let shot_info = self
-                    .iface
-                    .object_info(shot_handle)
-                    .context("error while getting shot info")?;
-
-                let shot_data = self
-                    .iface
-                    .object_data(shot_handle)
-                    .context("error while getting shot data")?;
-
-                info!("captured image: {:?}", shot_info);
-
-                info!(
-                    "image size: {}",
-                    shot_data
-                        .len()
-                        .file_size(humansize::file_size_opts::BINARY)
-                        .unwrap()
-                );
-
-                let mut image_path =
-                    std::env::current_dir().context("failed to get current directory")?;
-
-                image_path.push(shot_info.filename);
-
-                info!("writing image to file '{}'", image_path.to_string_lossy());
-
-                let mut image_file = tokio::fs::File::create(&image_path)
-                    .await
-                    .context("failed to create file")?;
-
-                image_file
-                    .write_all(&shot_data[..])
-                    .await
-                    .context("failed to save image")?;
-
-                info!("wrote image to file '{}'", image_path.to_string_lossy());
+                let image_path = self.download_object(shot_handle).await?;
 
                 Ok(CameraResponse::File { path: image_path })
             }
-            _ => bail!("not implemented"),
+
+            CameraRequest::Zoom(req) => match req {
+                CameraZoomRequest::Level(req) => {
+                    if let CameraZoomLevelRequest::Set { level } = req {
+                        self.iface
+                            .set(
+                                CameraPropertyCode::ZoomAbsolutePosition,
+                                PtpData::UINT16(*level as u16),
+                            )
+                            .context("failed to set zoom level")?;
+                    };
+
+                    let prop = self
+                        .iface
+                        .update()
+                        .context("failed to query camera properties")?
+                        .get(&CameraPropertyCode::ZoomAbsolutePosition)
+                        .context("failed to query zoom level")?;
+
+                    if let PtpData::UINT16(level) = prop.current {
+                        return Ok(CameraResponse::ZoomLevel {
+                            zoom_level: level as u8,
+                        });
+                    }
+
+                    bail!("invalid zoom level");
+                }
+                CameraZoomRequest::Mode(req) => bail!("unimplemented"),
+            },
+
+            CameraRequest::Exposure(req) => match req {
+                CameraExposureRequest::Mode(req) => {
+                    if let CameraExposureModeRequest::Set { mode } = req {
+                        self.iface
+                            .set(
+                                CameraPropertyCode::ExposureMode,
+                                PtpData::UINT16(mode.to_u16().unwrap()),
+                            )
+                            .context("failed to set exposure mode")?;
+                    };
+
+                    let prop = self
+                        .iface
+                        .update()
+                        .context("failed to query camera properties")?
+                        .get(&CameraPropertyCode::ExposureMode)
+                        .context("failed to query save media")?;
+
+                    if let PtpData::UINT16(mode) = prop.current {
+                        if let Some(exposure_mode) = CameraExposureMode::from_u16(mode) {
+                            return Ok(CameraResponse::ExposureMode { exposure_mode });
+                        }
+                    }
+
+                    bail!("invalid exposure mode");
+                }
+            },
+
+            CameraRequest::SaveMode(req) => {
+                if let CameraSaveModeRequest::Set { mode } = req {
+                    self.iface
+                        .set(
+                            CameraPropertyCode::SaveMedia,
+                            PtpData::UINT16(mode.to_u16().unwrap()),
+                        )
+                        .context("failed to set save media")?;
+                };
+
+                let prop = self
+                    .iface
+                    .update()
+                    .context("failed to query camera properties")?
+                    .get(&CameraPropertyCode::SaveMedia)
+                    .context("failed to query save media")?;
+
+                if let PtpData::UINT16(mode) = prop.current {
+                    if let Some(save_mode) = CameraSaveMode::from_u16(mode) {
+                        return Ok(CameraResponse::SaveMode { save_mode });
+                    }
+                }
+
+                bail!("invalid save media");
+            }
         }
     }
 
@@ -281,7 +359,7 @@ impl CameraClient {
                 .update()
                 .context("could not get current camera state")?;
 
-            let current_op_mode = current_state.get(&SonyDevicePropertyCode::OperatingMode);
+            let current_op_mode = current_state.get(&CameraPropertyCode::OperatingMode);
 
             debug!("current op mode: {:?}", current_op_mode);
 
@@ -295,11 +373,42 @@ impl CameraClient {
             debug!("setting operating mode to 0x{:04x}", mode);
 
             self.iface
-                .set(SonyDevicePropertyCode::OperatingMode, PtpData::UINT8(mode))
+                .set(CameraPropertyCode::OperatingMode, PtpData::UINT8(mode))
                 .context("failed to set operating mode of camera")?;
 
             bail!("wrong operating mode")
         })
         .await
+    }
+
+    async fn download_object(&mut self, handle: ObjectHandle) -> anyhow::Result<PathBuf> {
+        let shot_info = self
+            .iface
+            .object_info(handle)
+            .context("error while getting image info")?;
+
+        let shot_data = self
+            .iface
+            .object_data(handle)
+            .context("error while getting image data")?;
+
+        let mut image_path = std::env::current_dir().context("failed to get current directory")?;
+
+        image_path.push(shot_info.filename);
+
+        info!("writing image to file '{}'", image_path.to_string_lossy());
+
+        let mut image_file = tokio::fs::File::create(&image_path)
+            .await
+            .context("failed to create file")?;
+
+        image_file
+            .write_all(&shot_data[..])
+            .await
+            .context("failed to save image")?;
+
+        info!("wrote image to file '{}'", image_path.to_string_lossy());
+
+        Ok(image_path)
     }
 }
