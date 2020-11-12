@@ -9,33 +9,58 @@ use crate::Channels;
 
 #[derive(StructOpt, Debug, Clone)]
 #[structopt(setting(AppSettings::NoBinaryName))]
+#[structopt(rename_all = "kebab-case")]
 pub enum CliCommand {
-    TakeImage,
+    Camera(CameraCliCommand),
     Exit,
+}
+
+#[derive(StructOpt, Debug, Clone)]
+pub enum CameraCliCommand {
+    #[structopt(name = "cd")]
+    ChangeDirectory {
+        directory: String,
+    },
+
+    #[structopt(name = "ls")]
+    EnumerateDirectory {
+        #[structopt(short, long)]
+        deep: bool,
+    },
+
+    Capture,
+
+    Zoom {
+        level: u8,
+    },
+
+    Download {
+        file: Option<String>,
+    },
 }
 
 pub fn run(channels: Arc<Channels>) -> anyhow::Result<()> {
     let sender = &channels.cli;
+    let mut rl = rustyline::Editor::<()>::new();
 
     loop {
-        let mut rl = rustyline::Editor::<()>::new();
         let line = rl
             .readline("plane-system> ")
             .context("failed to read line")?;
 
-        let cmd: CliCommand =
-            CliCommand::from_iter_safe(line.split_ascii_whitespace()).context("invalid command")?;
-        
+        info!("got line: {:#?}", line);
 
-        match cmd {
-            CliCommand::TakeImage => {
-                info!("taking image");
+        let cmd = match <CliCommand as StructOpt>::from_iter_safe(line.split_ascii_whitespace()) {
+            Ok(cmd) => cmd,
+            Err(err) => {
+                println!("{}", err.message);
+                continue;
             }
-            CliCommand::Exit => {
-                info!("exiting");
-                break;
-            }
-        }
+        };
+
+        info!("got command: {:#?}", cmd);
+
+        let _ = sender.send(cmd);
     }
 
     Ok(())
