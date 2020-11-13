@@ -1,9 +1,7 @@
 use serde::Serialize;
 
 #[derive(Debug, Clone)]
-pub enum CameraEvent {
-  
-}
+pub enum CameraEvent {}
 
 #[repr(u16)]
 #[derive(Debug, Copy, Clone, FromPrimitive, ToPrimitive, Serialize)]

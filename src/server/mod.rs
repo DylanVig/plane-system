@@ -43,15 +43,12 @@ pub async fn serve(channels: Arc<Channels>, address: SocketAddr) -> anyhow::Resu
             warp::reply()
         });
 
-    let route_telem =
-        warp::path!("api" / "telemetry").and(warp::get()).and_then({
-            move || {
-                let telemetry = telemetry_receiver.clone().borrow().clone();
-                async move {
-                    Result::<_, Infallible>::Ok(warp::reply::json(&telemetry))
-                }
-            }
-        });
+    let route_telem = warp::path!("api" / "telemetry").and(warp::get()).and_then({
+        move || {
+            let telemetry = telemetry_receiver.clone().borrow().clone();
+            async move { Result::<_, Infallible>::Ok(warp::reply::json(&telemetry)) }
+        }
+    });
 
     let api = route_roi.or(route_telem);
 

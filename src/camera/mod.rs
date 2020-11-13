@@ -1,8 +1,8 @@
-mod interface;
-pub mod command;
 pub mod client;
+pub mod command;
+mod interface;
 pub mod state;
 
 pub use client::*;
-pub use state::*;
 pub use command::*;
+pub use state::*;

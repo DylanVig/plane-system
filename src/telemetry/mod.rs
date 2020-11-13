@@ -1,4 +1,4 @@
-use crate::{Channels, pixhawk::state::PixhawkEvent, util::ReceiverExt, state::TelemetryInfo};
+use crate::{pixhawk::state::PixhawkEvent, state::TelemetryInfo, util::ReceiverExt, Channels};
 
 use std::sync::{Arc, Mutex};
 
@@ -45,9 +45,7 @@ impl TelemetryCollector {
                 .context("pixhawk stream closed")?;
 
             match message {
-                PixhawkEvent::Gps { coords } => {
-                    self.state.lock().unwrap().position = coords
-                }
+                PixhawkEvent::Gps { coords } => self.state.lock().unwrap().position = coords,
                 PixhawkEvent::Orientation { attitude } => {
                     self.state.lock().unwrap().plane_attitude = attitude
                 }
