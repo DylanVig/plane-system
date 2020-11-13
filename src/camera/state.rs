@@ -6,7 +6,7 @@ pub enum CameraEvent {
 }
 
 #[repr(u16)]
-#[derive(Debug, Clone, FromPrimitive, ToPrimitive, Serialize)]
+#[derive(Debug, Copy, Clone, FromPrimitive, ToPrimitive, Serialize)]
 pub enum CameraExposureMode {
     ManualExposure = 0x0001,
     ProgramAuto,
@@ -22,7 +22,7 @@ pub enum CameraExposureMode {
 }
 
 #[repr(u8)]
-#[derive(Debug, Clone, FromPrimitive, ToPrimitive, Serialize)]
+#[derive(Debug, Copy, Clone, FromPrimitive, ToPrimitive, Serialize)]
 pub enum CameraCompressionMode {
     Std = 0x02,
     Fine = 0x03,
@@ -30,7 +30,7 @@ pub enum CameraCompressionMode {
 }
 
 #[repr(u16)]
-#[derive(Debug, Clone, FromPrimitive, ToPrimitive, Serialize)]
+#[derive(Debug, Copy, Clone, FromPrimitive, ToPrimitive, Serialize)]
 pub enum CameraSaveMode {
     HostDevice = 0x0001,
     MemoryCard1 = 0x0002,

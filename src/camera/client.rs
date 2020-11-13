@@ -34,7 +34,9 @@ impl CameraClient {
     pub fn init(&mut self) -> anyhow::Result<()> {
         trace!("intializing camera");
 
-        self.iface.connect()?;
+        self.iface
+            .connect()
+            .context("error while connecting to camera")?;
 
         let time_str = chrono::Local::now()
             .format("%Y%m%dT%H%M%S%.3f%:z")
@@ -48,6 +50,8 @@ impl CameraClient {
         {
             warn!("could not set date/time on camera: {:?}", err);
         }
+
+        self.iface.update().context("could not get camera state")?;
 
         info!("initialized camera");
 
@@ -96,6 +100,7 @@ impl CameraClient {
 
                 self.iface = CameraInterface::new().context("failed to create camera interface")?;
                 self.init()?;
+                self.ensure_mode(0x02).await?;
 
                 Ok(CameraResponse::Unit)
             }
@@ -201,8 +206,11 @@ impl CameraClient {
             }
 
             CameraRequest::Reconnect => {
-                self.iface = CameraInterface::new().context("failed to create camera interface")?;
-                self.init()?;
+                self.iface
+                    .disconnect()
+                    .context("error while disconnecting from camera")?;
+                self.init().context("error while initializing camera")?;
+                self.ensure_mode(0x02).await?;
 
                 Ok(CameraResponse::Unit)
             }
@@ -234,21 +242,27 @@ impl CameraClient {
 
                 info!("waiting for image event");
 
-                loop {
-                    if let Ok(event) = self.iface.recv() {
-                        // 0xC204 = image taken
-                        match event.code {
-                            ptp::EventCode::Vendor(0xC204) => match event.params[0] {
-                                Some(1) => break,
-                                Some(2) => bail!("capture failure"),
-                                _ => bail!("unknown capture status"),
-                            },
-                            _ => {}
+                tokio::time::timeout(Duration::from_millis(2000), async {
+                    loop {
+                        if let Ok(event) = self.iface.recv() {
+                            // 0xC204 = image taken
+                            match event.code {
+                                ptp::EventCode::Vendor(0xC204) => match event.params[0] {
+                                    Some(1) => break,
+                                    Some(2) => bail!("capture failure"),
+                                    _ => bail!("unknown capture status"),
+                                },
+                                _ => {}
+                            }
                         }
+
+                        delay_for(Duration::from_millis(100)).await;
                     }
 
-                    delay_for(Duration::from_millis(100)).await;
-                }
+                    Ok(())
+                })
+                .await
+                .context("timed out while waiting for image confirmation")??;
 
                 info!("received image event");
 
@@ -279,87 +293,95 @@ impl CameraClient {
             }
 
             CameraRequest::Zoom(req) => match req {
-                CameraZoomRequest::Level(req) => {
-                    if let CameraZoomLevelRequest::Set { level } = req {
-                        self.iface
-                            .set(
-                                CameraPropertyCode::ZoomAbsolutePosition,
-                                PtpData::UINT16(*level as u16),
-                            )
-                            .context("failed to set zoom level")?;
-                    };
+                CameraZoomRequest::Level(req) => match req {
+                    CameraZoomLevelRequest::Set { level } => {
+                        self.ensure_setting(
+                            CameraPropertyCode::ZoomAbsolutePosition,
+                            PtpData::UINT16(*level as u16),
+                        )
+                        .await?;
 
-                    let prop = self
-                        .iface
-                        .update()
-                        .context("failed to query camera properties")?
-                        .get(&CameraPropertyCode::ZoomAbsolutePosition)
-                        .context("failed to query zoom level")?;
-
-                    if let PtpData::UINT16(level) = prop.current {
-                        return Ok(CameraResponse::ZoomLevel {
-                            zoom_level: level as u8,
-                        });
+                        return Ok(CameraResponse::ZoomLevel { zoom_level: *level });
                     }
+                    CameraZoomLevelRequest::Get => {
+                        let prop = self
+                            .iface
+                            .update()
+                            .context("failed to query camera properties")?
+                            .get(&CameraPropertyCode::ZoomAbsolutePosition)
+                            .context("failed to query zoom level")?;
 
-                    bail!("invalid zoom level");
-                }
+                        if let PtpData::UINT16(level) = prop.current {
+                            return Ok(CameraResponse::ZoomLevel {
+                                zoom_level: level as u8,
+                            });
+                        }
+
+                        bail!("invalid zoom level");
+                    }
+                },
                 CameraZoomRequest::Mode(req) => bail!("unimplemented"),
             },
 
             CameraRequest::Exposure(req) => match req {
-                CameraExposureRequest::Mode(req) => {
-                    if let CameraExposureModeRequest::Set { mode } = req {
-                        self.iface
-                            .set(
-                                CameraPropertyCode::ExposureMode,
-                                PtpData::UINT16(mode.to_u16().unwrap()),
-                            )
-                            .context("failed to set exposure mode")?;
-                    };
+                CameraExposureRequest::Mode(req) => match req {
+                    CameraExposureModeRequest::Set { mode } => {
+                        self.ensure_setting(
+                            CameraPropertyCode::ExposureMode,
+                            PtpData::UINT16(mode.to_u16().unwrap()),
+                        )
+                        .await?;
 
+                        return Ok(CameraResponse::ExposureMode {
+                            exposure_mode: *mode,
+                        });
+                    }
+                    CameraExposureModeRequest::Get => {
+                        let prop = self
+                            .iface
+                            .update()
+                            .context("failed to query camera properties")?
+                            .get(&CameraPropertyCode::ExposureMode)
+                            .context("failed to query exposure mode")?;
+
+                        if let PtpData::UINT16(mode) = prop.current {
+                            if let Some(exposure_mode) = CameraExposureMode::from_u16(mode) {
+                                return Ok(CameraResponse::ExposureMode { exposure_mode });
+                            }
+                        }
+
+                        bail!("invalid exposure mode");
+                    }
+                },
+            },
+
+            CameraRequest::SaveMode(req) => match req {
+                CameraSaveModeRequest::Set { mode } => {
+                    self.ensure_setting(
+                        CameraPropertyCode::SaveMedia,
+                        PtpData::UINT16(mode.to_u16().unwrap()),
+                    )
+                    .await?;
+
+                    return Ok(CameraResponse::SaveMode { save_mode: *mode });
+                }
+                CameraSaveModeRequest::Get => {
                     let prop = self
                         .iface
                         .update()
                         .context("failed to query camera properties")?
-                        .get(&CameraPropertyCode::ExposureMode)
+                        .get(&CameraPropertyCode::SaveMedia)
                         .context("failed to query save media")?;
 
                     if let PtpData::UINT16(mode) = prop.current {
-                        if let Some(exposure_mode) = CameraExposureMode::from_u16(mode) {
-                            return Ok(CameraResponse::ExposureMode { exposure_mode });
+                        if let Some(save_mode) = CameraSaveMode::from_u16(mode) {
+                            return Ok(CameraResponse::SaveMode { save_mode });
                         }
                     }
 
-                    bail!("invalid exposure mode");
+                    bail!("invalid save media");
                 }
             },
-
-            CameraRequest::SaveMode(req) => {
-                if let CameraSaveModeRequest::Set { mode } = req {
-                    self.iface
-                        .set(
-                            CameraPropertyCode::SaveMedia,
-                            PtpData::UINT16(mode.to_u16().unwrap()),
-                        )
-                        .context("failed to set save media")?;
-                };
-
-                let prop = self
-                    .iface
-                    .update()
-                    .context("failed to query camera properties")?
-                    .get(&CameraPropertyCode::SaveMedia)
-                    .context("failed to query save media")?;
-
-                if let PtpData::UINT16(mode) = prop.current {
-                    if let Some(save_mode) = CameraSaveMode::from_u16(mode) {
-                        return Ok(CameraResponse::SaveMode { save_mode });
-                    }
-                }
-
-                bail!("invalid save media");
-            }
         }
     }
 
@@ -390,6 +412,56 @@ impl CameraClient {
                 .context("failed to set operating mode of camera")?;
 
             bail!("wrong operating mode")
+        })
+        .await
+    }
+
+    async fn ensure_setting(
+        &mut self,
+        setting: CameraPropertyCode,
+        value: PtpData,
+    ) -> anyhow::Result<()> {
+        let current_setting = self.iface.get(setting);
+
+        trace!("current {:?}: {:?}", setting, current_setting);
+
+        if let Some(current_setting) = current_setting {
+            if current_setting.current == value {
+                // we are in the right mode, break
+                return Ok(());
+            }
+
+            if current_setting.is_enable != 1 || current_setting.get_set != 1 {
+                bail!("changing this property is not supported");
+            }
+        }
+
+        retry_delay(10, Duration::from_millis(1000), || {
+            debug!("setting {:?} to {:?}", setting, value);
+
+            self.iface
+                .set(setting, value.clone())
+                .context(format!("failed to set {:?}", setting))?;
+
+            trace!("checking setting {:?}", setting);
+
+            let current_state = self
+                .iface
+                .update()
+                .context("could not get current camera state")?;
+
+            let current_setting = current_state.get(&setting);
+
+            trace!("current {:?}: {:?}", setting, current_setting);
+
+            if let Some(current_setting) = current_setting {
+                if current_setting.current == value {
+                    // we are in the right mode, break
+                    return Ok(());
+                }
+            }
+
+            bail!("failed to set {:?}", setting);
         })
         .await
     }

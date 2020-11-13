@@ -22,7 +22,7 @@ pub async fn run(channels: Arc<Channels>) -> anyhow::Result<()> {
     let mut current_directory = "/".to_owned();
 
     loop {
-        let current_prompt = format!("\n{}\nplane-system> ", current_directory);
+        let current_prompt = format!("\n{}\nplane-system> ", current_directory).bright_white();
 
         let line = rl
             .readline(&current_prompt)
