@@ -5,7 +5,7 @@ use serde::Deserialize;
 
 #[derive(Debug, Deserialize)]
 pub struct PixhawkConfig {
-    pub address: String,
+    pub address: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -17,6 +17,7 @@ pub struct ServerConfig {
 pub struct PlaneSystemConfig {
     pub pixhawk: PixhawkConfig,
     pub server: ServerConfig,
+    pub camera: bool,
 }
 
 impl PlaneSystemConfig {

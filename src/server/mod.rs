@@ -4,8 +4,11 @@ use std::{convert::Infallible, net::SocketAddr, sync::Arc, time::SystemTime};
 use tokio::sync::RwLock;
 use warp::{self, Filter};
 
-use crate::{pixhawk::state::PixhawkMessage, pixhawk::state::Telemetry, state::RegionOfInterest};
-use crate::{util::ReceiverExt, Channels};
+use crate::Channels;
+use crate::{
+    pixhawk::state::PixhawkEvent, pixhawk::state::Telemetry, state::RegionOfInterest,
+    util::ReceiverExt,
+};
 
 #[derive(Clone)]
 struct ServerState {}
@@ -30,7 +33,7 @@ enum ClientType {
 pub async fn serve(channels: Arc<Channels>, address: SocketAddr) -> anyhow::Result<()> {
     info!("initializing server");
 
-    let pixhawk_telem = Arc::new(RwLock::new(<Telemetry as Default>::default()));
+    let telemetry_receiver = Arc::new(channels.telemetry.clone());
 
     let route_roi = warp::path!("api" / "roi")
         .and(warp::post())
@@ -40,66 +43,28 @@ pub async fn serve(channels: Arc<Channels>, address: SocketAddr) -> anyhow::Resu
             warp::reply()
         });
 
-    let route_telem = warp::path!("api" / "telemetry").and(warp::get()).and_then({
-        let pixhawk_telem = pixhawk_telem.clone();
-        move || {
-            let pixhawk_telem = pixhawk_telem.clone();
-            async move {
-                let telem = pixhawk_telem.read().await.clone();
-                Result::<_, Infallible>::Ok(warp::reply::json(&telem))
+    let route_telem =
+        warp::path!("api" / "telemetry").and(warp::get()).and_then({
+            move || {
+                let telemetry = telemetry_receiver.clone().borrow().clone();
+                async move {
+                    Result::<_, Infallible>::Ok(warp::reply::json(&telemetry))
+                }
             }
-        }
-    });
+        });
 
     let api = route_roi.or(route_telem);
 
     info!("initialized server");
     info!("listening at {:?}", address);
 
-    let mut interrupt_recv = channels.interrupt.subscribe();
+    let mut interrupt_recv = channels.interrupt.clone();
     let (_, server) = warp::serve(api).bind_with_graceful_shutdown(address, async move {
         debug!("server recv interrupt");
-        interrupt_recv.recv().await.unwrap();
+        interrupt_recv.recv().await;
     });
 
-    let server_task = tokio::spawn(server);
-
-    let mut interrupt_recv = channels.interrupt.subscribe();
-    let mut pixhawk_recv = channels.pixhawk.subscribe();
-    let channel_task = tokio::spawn(async move {
-        loop {
-            let pixhawk_msg = pixhawk_recv
-                .recv_skip()
-                .await
-                .context("pixhawk stream closed")?;
-
-            let mut pixhawk_telem = pixhawk_telem.write().await;
-
-            match pixhawk_msg {
-                PixhawkMessage::Gps { coords } => {
-                    pixhawk_telem.coords = Some(coords);
-                    pixhawk_telem.coords_timestamp = Some(SystemTime::now());
-                }
-                PixhawkMessage::Orientation { attitude } => {
-                    pixhawk_telem.attitude = Some(attitude);
-                    pixhawk_telem.attitude_timestamp = Some(SystemTime::now());
-                }
-                _ => {}
-            }
-
-            if let Ok(()) = interrupt_recv.try_recv() {
-                debug!("pixhawk recv interrupt");
-                break;
-            }
-        }
-
-        anyhow::Result::<()>::Ok(())
-    });
-
-    let results = futures::future::join(server_task, channel_task).await;
-
-    results.0?;
-    results.1?;
+    server.await;
 
     Ok(())
 }

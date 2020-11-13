@@ -13,6 +13,7 @@ use tokio::{
     io::AsyncWriteExt,
     net::{TcpStream, ToSocketAddrs},
     sync::broadcast,
+    sync::{mpsc, watch},
 };
 
 use mavlink::{
@@ -24,33 +25,32 @@ use crate::{
     Channels,
 };
 
-use super::state::PixhawkMessage;
+use super::{state::PixhawkEvent, PixhawkCommand};
 
 pub struct PixhawkClient {
     sock: TcpStream,
     buf: BytesMut,
     sequence: AtomicU8,
     channels: Arc<Channels>,
-    interrupt: broadcast::Receiver<()>,
+    cmd: mpsc::Receiver<PixhawkCommand>,
 }
 
 impl PixhawkClient {
     pub async fn connect<A: ToSocketAddrs>(
         channels: Arc<Channels>,
+        cmd: mpsc::Receiver<PixhawkCommand>,
         addr: A,
     ) -> anyhow::Result<Self> {
         let sock = TcpStream::connect(addr)
             .await
             .context("failed to connect to pixhawk")?;
 
-        let interrupt = channels.interrupt.subscribe();
-
         Ok(PixhawkClient {
             sock,
             buf: BytesMut::with_capacity(1024),
             sequence: AtomicU8::default(),
             channels,
-            interrupt,
+            cmd,
         })
     }
 
@@ -181,11 +181,18 @@ impl PixhawkClient {
         info!("initializing pixhawk");
         self.init().await?;
 
-        loop {
-            let msg = self.recv().await?;
-            trace!("received message: {:?}", msg);
+        let interrupt = self.channels.interrupt.clone();
 
-            if let Ok(()) =  self.interrupt.try_recv() {
+        // no delay b/c this is an I/O-bound loop
+
+        loop {
+            if let Ok(cmd) = self.cmd.try_recv() {
+                self.exec(cmd).await?;
+            }
+
+            let _ = self.recv().await?;
+
+            if *interrupt.borrow() {
                 info!("received interrupt, shutting down");
                 break;
             }
@@ -194,47 +201,45 @@ impl PixhawkClient {
         Ok(())
     }
 
+    async fn exec(&mut self, cmd: PixhawkCommand) -> anyhow::Result<()> {
+        Ok(())
+    }
+
     /// Reacts to a message received from the Pixhawk.
     async fn handle(&self, message: &apm::MavMessage) -> anyhow::Result<()> {
         match message {
             apm::MavMessage::common(common::MavMessage::GLOBAL_POSITION_INT(data)) => {
-                let _ = self.channels
-                    .pixhawk
-                    .send(PixhawkMessage::Gps {
-                        coords: Coords3D::new(
-                            data.lat as f32 / 1e7,
-                            data.lon as f32 / 1e7,
-                            data.alt as f32 / 1e3,
-                        ),
-                    });
+                let _ = self.channels.pixhawk_event.send(PixhawkEvent::Gps {
+                    coords: Coords3D::new(
+                        data.lat as f32 / 1e7,
+                        data.lon as f32 / 1e7,
+                        data.alt as f32 / 1e3,
+                    ),
+                });
             }
             apm::MavMessage::common(common::MavMessage::ATTITUDE(data)) => {
-                let _ = self.channels
-                    .pixhawk
-                    .send(PixhawkMessage::Orientation {
-                        attitude: Attitude::new(
-                            data.roll * 180. / PI,
-                            data.pitch * 180. / PI,
-                            data.yaw * 180. / PI,
-                        ),
-                    });
+                let _ = self.channels.pixhawk_event.send(PixhawkEvent::Orientation {
+                    attitude: Attitude::new(
+                        data.roll * 180. / PI,
+                        data.pitch * 180. / PI,
+                        data.yaw * 180. / PI,
+                    ),
+                });
             }
             apm::MavMessage::CAMERA_FEEDBACK(data) => {
-                let _ = self.channels
-                    .pixhawk
-                    .send(PixhawkMessage::Image {
-                        foc_len: data.foc_len,
-                        img_idx: data.img_idx,
-                        cam_idx: data.cam_idx,
-                        flags: data.flags,
-                        time: SystemTime::UNIX_EPOCH + Duration::from_micros(data.time_usec),
-                        attitude: Attitude::new(data.roll, data.pitch, data.yaw),
-                        coords: Coords3D::new(
-                            data.lat as f32 / 1e7,
-                            data.lng as f32 / 1e7,
-                            data.alt_msl,
-                        ),
-                    });
+                let _ = self.channels.pixhawk_event.send(PixhawkEvent::Image {
+                    foc_len: data.foc_len,
+                    img_idx: data.img_idx,
+                    cam_idx: data.cam_idx,
+                    flags: data.flags,
+                    time: SystemTime::UNIX_EPOCH + Duration::from_micros(data.time_usec),
+                    attitude: Attitude::new(data.roll, data.pitch, data.yaw),
+                    coords: Coords3D::new(
+                        data.lat as f32 / 1e7,
+                        data.lng as f32 / 1e7,
+                        data.alt_msl,
+                    ),
+                });
             }
             _ => {}
         }

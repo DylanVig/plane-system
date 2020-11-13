@@ -1,204 +1,407 @@
-use cxx::UniquePtr;
-use std::{
-    error::Error,
-    fmt::{Debug, Display},
-    time::Duration,
-};
+use anyhow::Context;
+use num_traits::{FromPrimitive, ToPrimitive};
+use ptp::{ObjectHandle, PtpRead, StorageId};
+use std::io::Cursor;
+use std::{collections::HashMap, collections::HashSet, fmt::Debug, time::Duration};
 
-#[cxx::bridge]
-mod ffi {
-    extern "C" {
-        include!("socc_types.h");
-        include!("socc_examples_fixture.h");
+/// Sony's USB vendor ID
+const SONY_USB_VID: u16 = 0x054C;
+/// Sony R10C camera's product ID
+const SONY_USB_R10C_PID: u16 = 0x0A79;
+/// Sony R10C camera's product ID when it's powered off and charging
+const SONY_USB_R10C_PID_CHARGING: u16 = 0x0994;
+/// Sony's PTP extension vendor ID
+const SONY_PTP_VID: u16 = 0x0011;
 
-        type socc_examples_fixture;
-        type socc_ptp;
-        type socc_error;
-
-        fn make_ptp() -> UniquePtr<socc_ptp>;
-        fn make_fixture(ptp: &mut socc_ptp) -> UniquePtr<socc_examples_fixture>;
-
-        fn connect(self: &mut socc_examples_fixture) -> i32;
-        fn disconnect(self: &mut socc_examples_fixture) -> i32;
-
-        fn OpenSession(self: &mut socc_examples_fixture, session_id: u32) -> i32;
-        fn CloseSession(self: &mut socc_examples_fixture) -> ();
-
-        fn SDIO_Connect(
-            self: &mut socc_examples_fixture,
-            phase_type: u32,
-            keycode1: u32,
-            keycode2: u32,
-        ) -> i32;
-        fn SDIO_SetExtDevicePropValue_u8(
-            self: &mut socc_examples_fixture,
-            code: u16,
-            data: u8,
-        ) -> i32;
-        fn SDIO_SetExtDevicePropValue_u16(
-            self: &mut socc_examples_fixture,
-            code: u16,
-            data: u16,
-        ) -> i32;
-        fn SDIO_SetExtDevicePropValue_str(
-            self: &mut socc_examples_fixture,
-            code: u16,
-            data: &str,
-        ) -> i32;
-        fn SDIO_ControlDevice_u16(self: &mut socc_examples_fixture, code: u16, value: u16) -> i32;
-
-        fn wait_for_InitiatorVersion(
-            self: &mut socc_examples_fixture,
-            expect: u16,
-            retry_count: i32,
-        ) -> i32;
-        /// Actually returns `*const SDIDevicePropInfoDataset` but raw pointers
-        /// are not supported by cxx yet
-        fn wait_for_IsEnable_casted(
-            self: &mut socc_examples_fixture,
-            code: u16,
-            expect: u16,
-            retry_count: i32,
-        ) -> usize;
-        fn wait_for_CurrentValue(
-            self: &mut socc_examples_fixture,
-            code: u16,
-            expect: u16,
-            retry_count: i32,
-        ) -> i32;
-    }
-
-    extern "Rust" {}
+#[repr(u16)]
+#[derive(ToPrimitive, FromPrimitive, Copy, Clone, Eq, PartialEq, Debug)]
+pub enum SonyCommandCode {
+    SdioConnect = 0x96FE,
+    SdioGetExtDeviceInfo = 0x96FD,
+    SdioSetExtDevicePropValue = 0x96FA,
+    SdioControlDevice = 0x96F8,
+    SdioGetAllExtDevicePropInfo = 0x96F6,
+    SdioSendUpdateFile = 0x96F5,
+    SdioGetExtLensInfo = 0x96F4,
+    SdioExtDeviceDeleteObject = 0x96F1,
 }
 
-// TODO: verify that the C++ code isn't doing anything thread-unsafe 🤨
-unsafe impl Send for ffi::socc_examples_fixture {}
-unsafe impl Send for ffi::socc_ptp {}
-
-#[derive(FromPrimitive, Debug, Copy, Clone)]
-#[repr(i32)]
-pub enum CameraError {
-    NotSupported = -1,
-    InvalidParamter = -2,
-
-    UsbInit = -101,
-    UsbDeviceNotFound = -102,
-    UsbOpen = -103,
-    UsbTimeout = -104,
-    UsbEndpointHalted = -105,
-    UsbOverflow = -106,
-    UsbDisconnected = -107,
-    UsbOther = -108,
-
-    ThreadInit = -201,
-    ThreadCreate = -202,
-
-    PtpTransaction = -301,
-}
-
-impl Display for CameraError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:?}", self)
+impl Into<ptp::CommandCode> for SonyCommandCode {
+    fn into(self) -> ptp::CommandCode {
+        ptp::CommandCode::Other(self.to_u16().unwrap())
     }
 }
 
-impl Error for CameraError {
-    fn source(&self) -> Option<&(dyn Error + 'static)> {
-        None
-    }
+#[repr(u16)]
+#[derive(ToPrimitive, FromPrimitive, Debug, Copy, Clone, Eq, PartialEq, Hash)]
+pub enum CameraPropertyCode {
+    AELock = 0xD6E8,
+    AspectRatio = 0xD6B3,
+    BatteryLevel = 0xD6F1,
+    BatteryRemain = 0xD6E7,
+    BiaxialAB = 0xD6E3,
+    BiaxialGM = 0xD6EF,
+    CaptureCount = 0xD633,
+    Caution = 0xD6BA,
+    ColorTemperature = 0xD6F0,
+    Compression = 0xD6B9,
+    DateTime = 0xD6B1,
+    DriveMode = 0xD6B0,
+    ExposureCompensation = 0xD6C3,
+    ExposureMode = 0xD6CC,
+    FNumber = 0xD6C5,
+    FocusIndication = 0xD6EC,
+    FocusMagnificationLevel = 0xD6A7,
+    FocusMagnificationPosition = 0xD6A8,
+    FocusMagnificationState = 0xD6A6,
+    FocusMode = 0xD6CB,
+    ImageSize = 0xD6B7,
+    IntervalStillRecordingState = 0xD632,
+    IntervalTime = 0xD631,
+    ISO = 0xD6F2,
+    LensStatus = 0xD6A9,
+    LensUpdateState = 0xD624,
+    LiveViewResolution = 0xD6AA,
+    LiveViewStatus = 0xD6DE,
+    LocationInfo = 0xD6C0,
+    MediaFormatState = 0xD6C7,
+    MovieFormat = 0xD6BD,
+    MovieQuality = 0xD6BC,
+    MovieRecording = 0xD6CD,
+    MovieSteady = 0xD6D1,
+    NotifyFocus = 0xD6AF,
+    OperatingMode = 0xD6E2,
+    SaveMedia = 0xD6CF,
+    ShootingFileInfo = 0xD6C6,
+    ShutterSpeed = 0xD6EA,
+    StillSteadyMode = 0xD6D0,
+    StorageInfo = 0xD6BB,
+    WhiteBalance = 0xD6B8,
+    WhiteBalanceInit = 0xD6DF,
+    ZoomInfo = 0xD6BF,
+    ZoomMagnificationInfo = 0xD63A,
+    ZoomAbsolutePosition = 0xD6BE,
+    Zoom = 0xD6C9,
+}
+
+#[repr(u16)]
+#[derive(ToPrimitive, FromPrimitive, Debug, Copy, Clone, Eq, PartialEq, Hash)]
+pub enum CameraControlCode {
+    AELock = 0xD61E,
+    AFLock = 0xD63B,
+    CameraSettingReset = 0xD6D9,
+    ExposureCompensation = 0xD6C3,
+    FNumber = 0xD6C5,
+    FocusFarForContinuous = 0xD6A4,
+    FocusFarForOneShot = 0xD6A2,
+    FocusMagnification = 0xD6A5,
+    FocusNearForContinuous = 0xD6A3,
+    FocusNearForOneShot = 0xD6A1,
+    IntervalStillRecording = 0xD630,
+    ISO = 0xD6F2,
+    MediaFormat = 0xD61C,
+    MovieRecording = 0xD60F,
+    PowerOff = 0xD637,
+    RequestForUpdate = 0xD612,
+    RequestForUpdateForLens = 0xD625,
+    S1Button = 0xD61D,
+    S2Button = 0xD617,
+    ShutterSpeed = 0xD6EA,
+    SystemInit = 0xD6DA,
+    ZoomControlAbsolute = 0xD60E,
+    ZoomControlTele = 0xD63C,
+    ZoomControlTeleOneShot = 0xD614,
+    ZoomControlWide = 0xD63E,
+    ZoomControlWideOneShot = 0xD613,
 }
 
 pub struct CameraInterface {
-    _ptp: UniquePtr<ffi::socc_ptp>,
-    fixture: UniquePtr<ffi::socc_examples_fixture>,
-    connected: bool,
+    camera: ptp::PtpCamera<rusb::GlobalContext>,
+    state: Option<CameraState>,
 }
 
-macro_rules! check_camera_result {
-    ($result: expr) => {{
-        use anyhow::Context;
-        use num_traits::FromPrimitive;
-
-        match $result {
-            0 => {}
-            err => {
-                if let Some(err) = <CameraError as FromPrimitive>::from_i32(err) {
-                    return Err(err).context(stringify!($result));
-                }
-
-                return Err(anyhow!("Unknown camera error {:?}", err));
-            }
-        }
-    }};
+struct CameraState {
+    version: u16,
+    properties: HashMap<CameraPropertyCode, ptp::PtpPropInfo>,
+    supported_properties: HashSet<CameraPropertyCode>,
+    supported_controls: HashSet<CameraControlCode>,
 }
 
 impl CameraInterface {
-    pub fn new() -> Self {
-        let mut ptp = unsafe { ffi::make_ptp() };
-        let fixture = unsafe { ffi::make_fixture(&mut ptp) };
-
-        CameraInterface {
-            _ptp: ptp,
-            fixture,
-            connected: false,
-        }
+    pub fn timeout(&self) -> Option<Duration> {
+        Some(Duration::from_secs(5))
     }
 
-    pub fn is_connected(&self) -> bool {
-        self.connected
+    pub fn new() -> anyhow::Result<Self> {
+        let handle = rusb::open_device_with_vid_pid(SONY_USB_VID, SONY_USB_R10C_PID)
+            .or_else(|| rusb::open_device_with_vid_pid(SONY_USB_VID, SONY_USB_R10C_PID_CHARGING))
+            .context("could not open Sony R10C usb device")?;
+
+        Ok(CameraInterface {
+            camera: ptp::PtpCamera::new(handle).context("could not initialize Sony R10C")?,
+            state: None,
+        })
     }
 
     pub fn connect(&mut self) -> anyhow::Result<()> {
-        check_camera_result!(self.fixture.connect());
+        self.camera.open_session(self.timeout())?;
 
-        check_camera_result!(self.fixture.OpenSession(1));
+        let key_code = 0x0000DA01;
 
-        check_camera_result!(self.fixture.SDIO_Connect(0x000001, 0x0000DA01, 0x0000DA01));
-        check_camera_result!(self.fixture.SDIO_Connect(0x000002, 0x0000DA01, 0x0000DA01));
-        check_camera_result!(self.fixture.wait_for_InitiatorVersion(0x00C8, 1000));
-        check_camera_result!(self.fixture.SDIO_Connect(0x000003, 0x0000DA01, 0x0000DA01));
+        // send SDIO_CONNECT twice, once with phase code 1, and then again with
+        // phase code 2
 
-        self.fixture.wait_for_IsEnable_casted(0xD6B1, 0x01, 1000);
-        check_camera_result!(self
-            .fixture
-            .SDIO_SetExtDevicePropValue_str(0xD6B1, "20150801T150000+0900"));
+        trace!("sending SDIO_Connect phase 1");
 
-        self.fixture.wait_for_IsEnable_casted(0xD6E2, 0x01, 1000);
-        self.fixture.SDIO_SetExtDevicePropValue_u8(0xD6E2, 0x02);
-        self.fixture.wait_for_CurrentValue(0xD6E2, 0x02, 1000);
+        self.camera.command(
+            SonyCommandCode::SdioConnect.into(),
+            &[1, key_code, key_code],
+            None,
+            self.timeout(),
+        )?;
 
-        self.fixture.SDIO_SetExtDevicePropValue_u16(0xD6CF, 0x0001);
-        self.fixture.wait_for_CurrentValue(0xD6CF, 0x0001, 1000);
+        trace!("sending SDIO_Connect phase 2");
 
-        self.fixture.wait_for_CurrentValue(0xD6DE, 0x01, 1000);
-        self.connected = true;
+        self.camera.command(
+            SonyCommandCode::SdioConnect.into(),
+            &[2, key_code, key_code],
+            None,
+            self.timeout(),
+        )?;
 
-        Ok(())
-    }
+        trace!("sending SDIO_GetExtDeviceInfo until success");
 
-    pub fn take_photo(&mut self) -> anyhow::Result<()> {
-        /* SDIO_ControlDevice, s1 down */
-        check_camera_result!(self.fixture.SDIO_ControlDevice_u16(0xD61D, 0x0002));
+        let mut retries = 0;
 
-        /* SDIO_ControlDevice, s2 down */
-        check_camera_result!(self.fixture.SDIO_ControlDevice_u16(0xD617, 0x0002));
-        std::thread::sleep(Duration::from_millis(100));
+        let state = loop {
+            // call getextdeviceinfo with initiatorversion = 0x00C8
 
-        /* SDIO_ControlDevice, s2 up */
-        check_camera_result!(self.fixture.SDIO_ControlDevice_u16(0xD617, 0x0001));
-        std::thread::sleep(Duration::from_millis(100));
+            let initiation_result = self.camera.command(
+                SonyCommandCode::SdioGetExtDeviceInfo.into(),
+                &[0x00C8],
+                None,
+                self.timeout(),
+            );
 
-        /* SDIO_ControlDevice, s1 down */
-        check_camera_result!(self.fixture.SDIO_ControlDevice_u16(0xD61D, 0x0001));
+            match initiation_result {
+                Ok(ext_device_info) => {
+                    // Vec<u8> is not Read, but Cursor is
+                    let mut ext_device_info = Cursor::new(ext_device_info);
+
+                    let sdi_ext_version = PtpRead::read_ptp_u16(&mut ext_device_info)?;
+                    let sdi_device_props = PtpRead::read_ptp_u16_vec(&mut ext_device_info)?;
+                    let sdi_device_props = sdi_device_props
+                        .into_iter()
+                        .filter_map(<CameraPropertyCode as FromPrimitive>::from_u16)
+                        .collect::<HashSet<_>>();
+
+                    let sdi_device_controls = PtpRead::read_ptp_u16_vec(&mut ext_device_info)?;
+                    let sdi_device_controls = sdi_device_controls
+                        .into_iter()
+                        .filter_map(<CameraControlCode as FromPrimitive>::from_u16)
+                        .collect::<HashSet<_>>();
+
+                    trace!("got device props: {:?}", sdi_device_props);
+                    trace!("got device controls: {:?}", sdi_device_controls);
+
+                    break Ok(CameraState {
+                        version: sdi_ext_version,
+                        supported_properties: sdi_device_props,
+                        supported_controls: sdi_device_controls,
+                        properties: HashMap::new(),
+                    });
+                }
+                Err(err) => {
+                    if retries < 1000 {
+                        retries += 1;
+                        continue;
+                    } else {
+                        break Err(err);
+                    }
+                }
+            }
+        }?;
+
+        trace!("got extension version 0x{:04X}", state.version);
+
+        trace!("sending SDIO_Connect phase 3");
+
+        self.camera.command(
+            SonyCommandCode::SdioConnect.into(),
+            &[3, key_code, key_code],
+            None,
+            self.timeout(),
+        )?;
+
+        trace!("connection complete");
+
+        self.state = Some(state);
 
         Ok(())
     }
 
     pub fn disconnect(&mut self) -> anyhow::Result<()> {
-        self.fixture.CloseSession();
-        check_camera_result!(self.fixture.disconnect());
-        self.connected = false;
+        self.camera.close_session(self.timeout())?;
+
+        self.state = None;
 
         Ok(())
+    }
+
+    pub fn reset(&mut self) -> anyhow::Result<()> {
+        self.camera.reset()?;
+
+        Ok(())
+    }
+
+    /// Queries the camera for its current state and updates the hashmap held by
+    /// this interface.
+    pub fn update(&mut self) -> anyhow::Result<&HashMap<CameraPropertyCode, ptp::PtpPropInfo>> {
+        let timeout = self.timeout();
+
+        let state = if let Some(ref mut state) = self.state {
+            state
+        } else {
+            bail!("the camera is not connected")
+        };
+
+        trace!("sending SDIO_GetAllExtDevicePropInfo");
+
+        let result = self.camera.command(
+            SonyCommandCode::SdioGetAllExtDevicePropInfo.into(),
+            &[],
+            None,
+            timeout,
+        )?;
+
+        let mut cursor = Cursor::new(result);
+
+        let num_entries = cursor.read_ptp_u8()? as usize;
+
+        trace!("reading {:?} entries", num_entries);
+
+        let mut properties = HashMap::new();
+
+        for _ in 0..num_entries {
+            let prop = ptp::PtpPropInfo::decode(&mut cursor)?;
+            let code = CameraPropertyCode::from_u16(prop.property_code);
+
+            if let Some(code) = code {
+                properties.insert(code, prop);
+            }
+        }
+
+        state.properties = properties;
+
+        Ok(&state.properties)
+    }
+
+    /// Gets information about a camera property from the hashmap. This method
+    /// does NOT query the camera itself.
+    pub fn get(&self, code: CameraPropertyCode) -> Option<ptp::PtpPropInfo> {
+        let state = if let Some(ref state) = self.state {
+            state
+        } else {
+            warn!("get() called when camera is not connected");
+            return None;
+        };
+
+        state.properties.get(&code).cloned()
+    }
+
+    /// Sets the value of a camera property. This should be followed by a call
+    /// to update() and a check to make sure that the intended result was
+    /// achieved.
+    pub fn set(&mut self, code: CameraPropertyCode, new_value: ptp::PtpData) -> anyhow::Result<()> {
+        let state = if let Some(ref state) = self.state {
+            state
+        } else {
+            bail!("set() called when camera is not connected");
+        };
+
+        let current_value = state.properties.get(&code).map(|prop| &prop.current);
+
+        if let Some(current_value) = current_value {
+            if current_value == &new_value {
+                trace!("current value is the same as value passed to set(), returning");
+                return Ok(());
+            }
+        }
+
+        let buf = new_value.encode();
+
+        trace!("sending SDIO_SetExtDevicePropValue");
+
+        self.camera.command(
+            SonyCommandCode::SdioSetExtDevicePropValue.into(),
+            &[code.to_u32().unwrap()],
+            Some(buf.as_ref()),
+            self.timeout(),
+        )?;
+
+        Ok(())
+    }
+
+    /// Executes a command on the camera. This should be followed by a call to
+    /// update() and a check to make sure that the intended result was achieved.
+    pub fn execute(
+        &mut self,
+        code: CameraControlCode,
+        payload: ptp::PtpData,
+    ) -> anyhow::Result<()> {
+        if let None = self.state {
+            warn!("execute() called when camera is not connected");
+        };
+
+        let buf = payload.encode();
+
+        trace!("sending SDIO_ControlDevice");
+
+        self.camera.command(
+            SonyCommandCode::SdioControlDevice.into(),
+            &[code.to_u32().unwrap()],
+            Some(buf.as_ref()),
+            self.timeout(),
+        )?;
+
+        Ok(())
+    }
+
+    /// Receives an event from the camera.
+    pub fn recv(&mut self) -> anyhow::Result<ptp::PtpEvent> {
+        let event = self.camera.event(Some(Duration::from_secs(1)))?;
+
+        trace!("received event: {:#?}", &event);
+        Ok(event)
+    }
+
+    pub fn device_info(&mut self) -> anyhow::Result<ptp::PtpDeviceInfo> {
+        Ok(self.camera.get_device_info(self.timeout())?)
+    }
+
+    pub fn storage_ids(&mut self) -> anyhow::Result<Vec<StorageId>> {
+        Ok(self.camera.get_storage_ids(self.timeout())?)
+    }
+
+    pub fn storage_info(&mut self, storage_id: StorageId) -> anyhow::Result<ptp::PtpStorageInfo> {
+        Ok(self.camera.get_storage_info(storage_id, self.timeout())?)
+    }
+
+    pub fn object_handles(
+        &mut self,
+        storage_id: StorageId,
+        parent_id: Option<ObjectHandle>,
+    ) -> anyhow::Result<Vec<ObjectHandle>> {
+        Ok(self
+            .camera
+            .get_object_handles(storage_id, None, parent_id, self.timeout())?)
+    }
+
+    pub fn object_info(&mut self, object_id: ObjectHandle) -> anyhow::Result<ptp::PtpObjectInfo> {
+        Ok(self.camera.get_object_info(object_id, self.timeout())?)
+    }
+
+    pub fn object_data(&mut self, object_id: ObjectHandle) -> anyhow::Result<Vec<u8>> {
+        Ok(self.camera.get_object(object_id, self.timeout())?)
     }
 }

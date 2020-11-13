@@ -1,8 +1,7 @@
-use crate::scheduler::backend::*;
-use crate::{pixhawk::state::PixhawkMessage, state::RegionOfInterest, util::ReceiverExt, Channels};
 use anyhow::Context;
-use std::{sync::Arc, time::Duration};
-use tokio::time::timeout;
+
+use crate::{scheduler::backend::*, Channels};
+use std::sync::Arc;
 
 mod backend;
 mod state;
@@ -26,28 +25,36 @@ impl Scheduler {
     }
 
     pub async fn run(&mut self) -> anyhow::Result<()> {
-        let mut telemetry_recv = self.channels.telemetry.subscribe();
-        let mut interrupt_recv = self.channels.interrupt.subscribe();
+        let mut telemetry_recv = self.channels.telemetry.clone();
+        let mut interrupt_recv = self.channels.interrupt.clone();
+
         let mut counter: u8 = 0;
         loop {
             let telemetry = telemetry_recv
-                .recv_skip()
+                .recv()
                 .await
                 .context("telemetry channel closed")?;
-            
-            self.backend.update_telemetry(telemetry);
+
+            if let Some(telemetry) = telemetry {
+                self.backend.update_telemetry(telemetry);
+            }
+
             if let Some(capture_request) = self.backend.get_capture_request() {
                 debug!("Got a capture request: {:?}", capture_request);
             }
+
             if counter == 100 {
                 self.backend.set_capture_response();
                 counter = 0;
             } else {
                 counter += 1;
             }
-            if let Ok(_) = interrupt_recv.try_recv() { break; }
+
+            if *interrupt_recv.borrow() {
+                break;
+            }
         }
-        
+
         Ok(())
     }
 }

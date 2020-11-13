@@ -1,15 +1,7 @@
 use crate::{
-    state::{
-        RegionOfInterest,
-        Telemetry,
-    },
     scheduler::state::*,
+    state::{RegionOfInterest, TelemetryInfo},
 };
-
-use tokio::time::interval;
-use std::time::Duration;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
 
 pub struct SchedulerBackend {
     /// List of regions of interest that should be photographed as soon as
@@ -19,23 +11,22 @@ pub struct SchedulerBackend {
 
     /// The current telemetry that the backend will make base decisions on. The
     /// frontend should update this as it receives new telemetry.
-    telemetry: Telemetry,
+    telemetry: TelemetryInfo,
 
     /// Bool representing whether it's time to create a capture request.
     time_for_capture: bool,
 }
 
-
 impl SchedulerBackend {
     pub fn new() -> Self {
         Self {
             rois: Vec::new(),
-            telemetry: Telemetry::default(),
-            time_for_capture: true,            
+            telemetry: TelemetryInfo::default(),
+            time_for_capture: true,
         }
     }
 
-    pub fn update_telemetry(&mut self, telemetry: Telemetry) {
+    pub fn update_telemetry(&mut self, telemetry: TelemetryInfo) {
         self.telemetry = telemetry;
     }
 
