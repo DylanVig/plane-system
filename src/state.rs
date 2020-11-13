@@ -122,7 +122,7 @@ impl Attitude {
     }
 }
 
-#[derive(Default, Debug, Clone, Copy)]
+#[derive(Default, Debug, Clone, Copy, Serialize)]
 pub struct TelemetryInfo {
     pub plane_attitude: Attitude,
     pub gimbal_attitude: Attitude,

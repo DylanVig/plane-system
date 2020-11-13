@@ -123,28 +123,27 @@ async fn main() -> anyhow::Result<()> {
 
     let mut futures = Vec::new();
 
-    ctrlc::set_handler({
-        let channels = channels.clone();
-
-        move || {
-            info!("received interrupt, shutting down");
-            let _ = interrupt_sender.broadcast(true);
-        }
+    ctrlc::set_handler(move || {
+        info!("received interrupt, shutting down");
+        let _ = interrupt_sender.broadcast(true);
     })
     .expect("could not set ctrl+c handler");
 
     if let Some(pixhawk_address) = config.pixhawk.address {
         info!("connecting to pixhawk at {}", pixhawk_address);
-
-        let mut pixhawk_client =
-            PixhawkClient::connect(channels.clone(), pixhawk_cmd_receiver, pixhawk_address).await?;
-        let pixhawk_task = spawn(async move { pixhawk_client.run().await });
-
+        let pixhawk_task = spawn({
+            let mut pixhawk_client =
+                PixhawkClient::connect(channels.clone(), pixhawk_cmd_receiver, pixhawk_address)
+                    .await?;
+            async move { pixhawk_client.run().await }
+        });
         futures.push(pixhawk_task);
 
         info!("initializing telemetry stream");
-        let mut telemetry = TelemetryStream::new(channels.clone(), telemetry_sender);
-        let telemetry_task = spawn(async move { telemetry.run().await });
+        let telemetry_task = spawn({
+            let telemetry = TelemetryStream::new(channels.clone(), telemetry_sender);
+            async move { telemetry.run().await }
+        });
         futures.push(telemetry_task);
     } else {
         info!("pixhawk address not specified, disabling pixhawk connection and telemetry stream");
@@ -185,7 +184,15 @@ async fn main() -> anyhow::Result<()> {
     });
     futures.push(cli_task);
 
-    // wait for any of these tasks to end
-    let (result, _, _) = futures::future::select_all(futures).await;
-    result?
+    while futures.len() > 0 {
+        // wait for each task to end
+        let (result, _, remaining) = futures::future::select_all(futures).await;
+
+        // if a task ended with an error or did not join properly, end the process
+        result??;
+
+        futures = remaining;
+    }
+
+    Ok(())
 }
