@@ -160,7 +160,7 @@ async fn main() -> anyhow::Result<()> {
 
     info!("initializing scheduler");
     let scheduler_task = spawn({
-        let scheduler = Scheduler::new(channels.clone());
+        let mut scheduler = Scheduler::new(channels.clone());
         async move { scheduler.run().await }
     });
     futures.push(scheduler_task);
