@@ -1,7 +1,11 @@
-use std::time::Duration;
+use std::{num::ParseIntError, time::Duration};
 
 use futures::Future;
 use tokio::sync::broadcast::{self, RecvError};
+
+pub fn parse_hex_u32(src: &str) -> Result<u32, ParseIntError> {
+    u32::from_str_radix(src, 16)
+}
 
 /// This is an extension trait for channel receivers.
 #[async_trait]
@@ -52,7 +56,7 @@ pub fn retry<F: FnMut() -> Result<T, E>, T, E>(
 
 pub async fn retry_delay<F: FnMut() -> Result<T, E>, T, E>(
     times: usize,
-    spacing: Option<Duration>,
+    spacing: Duration,
     mut op: F,
 ) -> Result<T, E> {
     if times < 1 {
@@ -65,9 +69,7 @@ pub async fn retry_delay<F: FnMut() -> Result<T, E>, T, E>(
     while tries < times && result.is_err() {
         result = op();
 
-        if let Some(spacing) = spacing {
-            tokio::time::delay_for(spacing).await;
-        }
+        tokio::time::delay_for(spacing).await;
 
         tries += 1;
     }

@@ -1,4 +1,4 @@
-use crate::{pixhawk::state::PixhawkEvent, state::RegionOfInterest, util::ReceiverExt, Channels};
+use crate::{pixhawk::state::PixhawkEvent, state::RegionOfInterest, Channels};
 use anyhow::Context;
 use std::{sync::Arc, time::Duration};
 use tokio::time::timeout;

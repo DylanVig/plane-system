@@ -1,9 +1,8 @@
 use anyhow::Context;
 use num_traits::{FromPrimitive, ToPrimitive};
-use std::{collections::HashMap, collections::HashSet, fmt::Debug, time::Duration};
-
 use ptp::{ObjectHandle, PtpRead, StorageId};
 use std::io::Cursor;
+use std::{collections::HashMap, collections::HashSet, fmt::Debug, time::Duration};
 
 /// Sony's USB vendor ID
 const SONY_USB_VID: u16 = 0x054C;
@@ -35,7 +34,7 @@ impl Into<ptp::CommandCode> for SonyCommandCode {
 
 #[repr(u16)]
 #[derive(ToPrimitive, FromPrimitive, Debug, Copy, Clone, Eq, PartialEq, Hash)]
-pub enum SonyDevicePropertyCode {
+pub enum CameraPropertyCode {
     AELock = 0xD6E8,
     AspectRatio = 0xD6B3,
     BatteryLevel = 0xD6F1,
@@ -87,7 +86,7 @@ pub enum SonyDevicePropertyCode {
 
 #[repr(u16)]
 #[derive(ToPrimitive, FromPrimitive, Debug, Copy, Clone, Eq, PartialEq, Hash)]
-pub enum SonyDeviceControlCode {
+pub enum CameraControlCode {
     AELock = 0xD61E,
     AFLock = 0xD63B,
     CameraSettingReset = 0xD6D9,
@@ -123,9 +122,9 @@ pub struct CameraInterface {
 
 struct CameraState {
     version: u16,
-    properties: HashMap<SonyDevicePropertyCode, ptp::PtpPropInfo>,
-    supported_properties: HashSet<SonyDevicePropertyCode>,
-    supported_controls: HashSet<SonyDeviceControlCode>,
+    properties: HashMap<CameraPropertyCode, ptp::PtpPropInfo>,
+    supported_properties: HashSet<CameraPropertyCode>,
+    supported_controls: HashSet<CameraControlCode>,
 }
 
 impl CameraInterface {
@@ -193,13 +192,13 @@ impl CameraInterface {
                     let sdi_device_props = PtpRead::read_ptp_u16_vec(&mut ext_device_info)?;
                     let sdi_device_props = sdi_device_props
                         .into_iter()
-                        .filter_map(<SonyDevicePropertyCode as FromPrimitive>::from_u16)
+                        .filter_map(<CameraPropertyCode as FromPrimitive>::from_u16)
                         .collect::<HashSet<_>>();
 
                     let sdi_device_controls = PtpRead::read_ptp_u16_vec(&mut ext_device_info)?;
                     let sdi_device_controls = sdi_device_controls
                         .into_iter()
-                        .filter_map(<SonyDeviceControlCode as FromPrimitive>::from_u16)
+                        .filter_map(<CameraControlCode as FromPrimitive>::from_u16)
                         .collect::<HashSet<_>>();
 
                     trace!("got device props: {:?}", sdi_device_props);
@@ -249,9 +248,15 @@ impl CameraInterface {
         Ok(())
     }
 
+    pub fn reset(&mut self) -> anyhow::Result<()> {
+        self.camera.reset()?;
+
+        Ok(())
+    }
+
     /// Queries the camera for its current state and updates the hashmap held by
     /// this interface.
-    pub fn update(&mut self) -> anyhow::Result<&HashMap<SonyDevicePropertyCode, ptp::PtpPropInfo>> {
+    pub fn update(&mut self) -> anyhow::Result<&HashMap<CameraPropertyCode, ptp::PtpPropInfo>> {
         let timeout = self.timeout();
 
         let state = if let Some(ref mut state) = self.state {
@@ -279,7 +284,7 @@ impl CameraInterface {
 
         for _ in 0..num_entries {
             let prop = ptp::PtpPropInfo::decode(&mut cursor)?;
-            let code = SonyDevicePropertyCode::from_u16(prop.property_code);
+            let code = CameraPropertyCode::from_u16(prop.property_code);
 
             if let Some(code) = code {
                 properties.insert(code, prop);
@@ -293,7 +298,7 @@ impl CameraInterface {
 
     /// Gets information about a camera property from the hashmap. This method
     /// does NOT query the camera itself.
-    pub fn get(&self, code: SonyDevicePropertyCode) -> Option<ptp::PtpPropInfo> {
+    pub fn get(&self, code: CameraPropertyCode) -> Option<ptp::PtpPropInfo> {
         let state = if let Some(ref state) = self.state {
             state
         } else {
@@ -307,11 +312,7 @@ impl CameraInterface {
     /// Sets the value of a camera property. This should be followed by a call
     /// to update() and a check to make sure that the intended result was
     /// achieved.
-    pub fn set(
-        &mut self,
-        code: SonyDevicePropertyCode,
-        new_value: ptp::PtpData,
-    ) -> anyhow::Result<()> {
+    pub fn set(&mut self, code: CameraPropertyCode, new_value: ptp::PtpData) -> anyhow::Result<()> {
         let state = if let Some(ref state) = self.state {
             state
         } else {
@@ -345,7 +346,7 @@ impl CameraInterface {
     /// update() and a check to make sure that the intended result was achieved.
     pub fn execute(
         &mut self,
-        code: SonyDeviceControlCode,
+        code: CameraControlCode,
         payload: ptp::PtpData,
     ) -> anyhow::Result<()> {
         if let None = self.state {
@@ -367,9 +368,7 @@ impl CameraInterface {
     }
 
     /// Receives an event from the camera.
-    pub fn recv(
-        &mut self
-    ) -> anyhow::Result<ptp::PtpEvent> {
+    pub fn recv(&mut self) -> anyhow::Result<ptp::PtpEvent> {
         let event = self.camera.event(Some(Duration::from_secs(1)))?;
 
         trace!("received event: {:#?}", &event);
