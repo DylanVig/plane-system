@@ -1,6 +1,6 @@
-use crate::state::RegionOfInterest;
+mod interface;
+pub mod client;
+pub mod command;
 
-pub enum GimbalState {
-    Fixed,
-    Tracking(RegionOfInterest),
-}
+pub use client::*;
+pub use command::*;

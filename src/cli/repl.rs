@@ -7,13 +7,21 @@ use prettytable::{cell, row, Table};
 use structopt::StructOpt;
 use tokio::sync::mpsc;
 
-use crate::{camera::CameraRequest, camera::CameraResponse, Channels, Command};
+use crate::{
+    camera::CameraRequest, 
+    camera::CameraResponse, 
+    gimbal::GimbalRequest, 
+    gimbal::GimbalResponse,
+    Channels, 
+    Command,
+};
 
 #[derive(StructOpt, Debug)]
 #[structopt(setting(clap::AppSettings::NoBinaryName))]
 #[structopt(rename_all = "kebab-case")]
 enum ReplRequest {
     Camera(CameraRequest),
+    Gimbal(GimbalRequest),
     Exit,
 }
 
@@ -51,8 +59,12 @@ pub async fn run(channels: Arc<Channels>) -> anyhow::Result<()> {
                     Ok(response) => format_camera_response(response),
                     Err(err) => println!("{}", format!("error: {}", err).red()),
                 };
-            }
-
+            },
+            ReplRequest::Gimbal(request) => {
+                let (cmd, chan) = Command::new(request);
+                channels.gimbal_cmd.clone().send(cmd).await?;
+                let _ = chan.await?;
+            },
             ReplRequest::Exit => break,
         };
     }

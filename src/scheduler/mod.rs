@@ -1,10 +1,18 @@
 use anyhow::Context;
 
-use crate::{scheduler::backend::*, Channels};
+use crate::{
+    gimbal::GimbalRequest, 
+    gimbal::GimbalResponse,
+    Channels, 
+    Command,
+};
+
 use std::sync::Arc;
 
 mod backend;
 mod state;
+
+use backend::*;
 
 /// Controls whether the plane is taking pictures of the ground (first-pass),
 /// taking pictures of ROIs (second-pass), or doing nothing. Coordinates sending
@@ -28,7 +36,6 @@ impl Scheduler {
         let mut telemetry_recv = self.channels.telemetry.clone();
         let mut interrupt_recv = self.channels.interrupt.clone();
 
-        let mut counter: u8 = 0;
         loop {
             let telemetry = telemetry_recv
                 .recv()
@@ -43,12 +50,13 @@ impl Scheduler {
                 debug!("Got a capture request: {:?}", capture_request);
             }
 
-            if counter == 100 {
-                self.backend.set_capture_response();
-                counter = 0;
-            } else {
-                counter += 1;
-            }
+            let (roll, pitch) = self.backend.get_target_gimbal_angles();
+            let request = GimbalRequest::Control {
+                roll,
+                pitch,
+            };
+            let (cmd, _) = Command::new(request);
+            self.channels.gimbal_cmd.clone().send(cmd).await?;
 
             if *interrupt_recv.borrow() {
                 break;

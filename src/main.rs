@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use anyhow::Context;
 use camera::{client::CameraClient, state::CameraEvent};
+use gimbal::{client::GimbalClient};
 use ctrlc;
 use pixhawk::{client::PixhawkClient, state::PixhawkEvent};
 use scheduler::Scheduler;
@@ -48,6 +49,9 @@ pub struct Channels {
 
     /// Channel for sending instructions to the camera.
     camera_cmd: mpsc::Sender<camera::CameraCommand>,
+
+    /// Channel for sending instructions to the gimbal.
+    gimbal_cmd: mpsc::Sender<gimbal::GimbalCommand>,
 }
 
 #[derive(Debug)]
@@ -111,6 +115,7 @@ async fn main() -> anyhow::Result<()> {
     let (pixhawk_cmd_sender, pixhawk_cmd_receiver) = mpsc::channel(64);
     let (camera_event_sender, _) = broadcast::channel(256);
     let (camera_cmd_sender, camera_cmd_receiver) = mpsc::channel(256);
+    let (gimbal_cmd_sender, gimbal_cmd_receiver) = mpsc::channel(256);
 
     let channels = Arc::new(Channels {
         interrupt: interrupt_receiver,
@@ -119,6 +124,7 @@ async fn main() -> anyhow::Result<()> {
         pixhawk_cmd: pixhawk_cmd_sender,
         camera_event: camera_event_sender,
         camera_cmd: camera_cmd_sender,
+        gimbal_cmd: gimbal_cmd_sender,
     });
 
     let mut futures = Vec::new();
@@ -139,15 +145,16 @@ async fn main() -> anyhow::Result<()> {
         });
         futures.push(pixhawk_task);
 
-        info!("initializing telemetry stream");
-        let telemetry_task = spawn({
-            let telemetry = TelemetryStream::new(channels.clone(), telemetry_sender);
-            async move { telemetry.run().await }
-        });
-        futures.push(telemetry_task);
     } else {
         info!("pixhawk address not specified, disabling pixhawk connection and telemetry stream");
     }
+
+    info!("initializing telemetry stream");
+    let telemetry_task = spawn({
+        let telemetry = TelemetryStream::new(channels.clone(), telemetry_sender);
+        async move { telemetry.run().await }
+    });
+    futures.push(telemetry_task);
 
     if config.camera {
         info!("connecting to camera");
@@ -157,6 +164,14 @@ async fn main() -> anyhow::Result<()> {
         });
         futures.push(camera_task);
     }
+
+    // TODO: make this configurable
+    info!("initializing gimbal");
+    let gimbal_task = spawn({
+        let mut gimbal_client = GimbalClient::connect(channels.clone(), gimbal_cmd_receiver)?;
+        async move { gimbal_client.run().await }
+    });
+    futures.push(gimbal_task);
 
     info!("initializing scheduler");
     let scheduler_task = spawn({
