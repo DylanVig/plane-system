@@ -11,7 +11,7 @@ use bytes::{Buf, BytesMut};
 use tokio::{
     io::AsyncReadExt,
     io::AsyncWriteExt,
-    net::{UdpSocket, ToSocketAddrs},
+    net::{TcpStream, ToSocketAddrs},
     sync::broadcast,
     sync::{mpsc, watch},
 };
@@ -28,7 +28,7 @@ use crate::{
 use super::{state::PixhawkEvent, PixhawkCommand};
 
 pub struct PixhawkClient {
-    sock: UdpSocket,
+    sock: TcpStream,
     buf: BytesMut,
     sequence: AtomicU8,
     channels: Arc<Channels>,
@@ -41,8 +41,10 @@ impl PixhawkClient {
         cmd: mpsc::Receiver<PixhawkCommand>,
         addr: A,
     ) -> anyhow::Result<Self> {
-        let sock = UdpSocket::bind(addr.clone()).await?;
-        sock.connect(addr).await?;
+        let sock = TcpStream::connect(addr)
+            .await
+            .context("failed to connect to pixhawk")?;
+
         Ok(PixhawkClient {
             sock,
             buf: BytesMut::with_capacity(1024),
@@ -106,7 +108,7 @@ impl PixhawkClient {
         let mut buf = Vec::with_capacity(1024);
 
         mavlink::write_v1_msg(&mut buf, header, &message)?;
-        self.sock.send(buf.as_ref()).await?;
+        self.sock.write(buf.as_ref()).await?;
 
         Ok(())
     }
@@ -129,7 +131,7 @@ impl PixhawkClient {
                     res => {
                         trace!("requesting more bytes, magic too close to end ({:?})", res);
 
-                        let n = self.sock.recv(&mut chunk[..]).await?;
+                        let n = self.sock.write(&mut chunk[..]).await?;
                         self.buf.extend(&chunk[..n]);
                         trace!("read {:?} bytes", n);
                     }
@@ -153,7 +155,7 @@ impl PixhawkClient {
                 trace!("requesting more bytes, buffer insufficient");
 
                 let mut chunk = vec![0; 1024];
-                let n = self.sock.recv(&mut chunk[..]).await?;
+                let n = self.sock.write(&mut chunk[..]).await?;
                 self.buf.extend(&chunk[..n]);
             }
 
