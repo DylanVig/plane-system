@@ -242,7 +242,7 @@ impl CameraClient {
 
                 info!("waiting for image event");
 
-                tokio::time::timeout(Duration::from_millis(2000), async {
+                tokio::time::timeout(Duration::from_millis(3000), async {
                     loop {
                         trace!("checking for events");
 
