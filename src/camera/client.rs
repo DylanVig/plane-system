@@ -222,19 +222,19 @@ impl CameraClient {
                 self.iface
                     .execute(CameraControlCode::S1Button, PtpData::UINT16(0x0002))?;
 
-                delay_for(Duration::from_millis(100)).await;
+                delay_for(Duration::from_millis(200)).await;
 
                 // shoot!
                 self.iface
                     .execute(CameraControlCode::S2Button, PtpData::UINT16(0x0002))?;
 
-                delay_for(Duration::from_millis(100)).await;
+                delay_for(Duration::from_millis(200)).await;
 
                 // release
                 self.iface
                     .execute(CameraControlCode::S2Button, PtpData::UINT16(0x0001))?;
 
-                delay_for(Duration::from_millis(100)).await;
+                delay_for(Duration::from_millis(200)).await;
 
                 // hell yeah
                 self.iface
@@ -244,6 +244,8 @@ impl CameraClient {
 
                 tokio::time::timeout(Duration::from_millis(2000), async {
                     loop {
+                        trace!("checking for events");
+
                         if let Ok(event) = self.iface.recv() {
                             // 0xC204 = image taken
                             match event.code {
@@ -252,11 +254,9 @@ impl CameraClient {
                                     Some(2) => bail!("capture failure"),
                                     _ => bail!("unknown capture status"),
                                 },
-                                _ => {}
+                                evt => trace!("received event: {:?}", evt),
                             }
                         }
-
-                        delay_for(Duration::from_millis(100)).await;
                     }
 
                     Ok(())
