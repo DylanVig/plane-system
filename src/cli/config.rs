@@ -17,7 +17,8 @@ pub struct ServerConfig {
 
 #[derive(Debug, Deserialize)]
 pub struct SchedulerConfig {
-    pub gps: Coords2D
+    pub enabled: bool,
+    pub gps: Coords2D,
 }
 
 #[derive(Debug, Deserialize)]

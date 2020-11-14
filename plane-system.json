@@ -6,6 +6,7 @@
     "address": "[::]:8080"
   },
   "scheduler": {
+    "enabled": false,
     "gps": {
       "latitude": -35.3589442144018,
       "longitude": 149.164787599129

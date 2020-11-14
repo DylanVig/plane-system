@@ -190,12 +190,14 @@ async fn main() -> anyhow::Result<()> {
         futures.push(gimbal_task);
     }
     
-    info!("initializing scheduler");
-    let scheduler_task = spawn({
-        let mut scheduler = Scheduler::new(channels.clone(), config.scheduler.gps);
-        async move { scheduler.run().await }
-    });
-    futures.push(scheduler_task);
+    if config.scheduler.enabled {
+        info!("initializing scheduler");
+        let scheduler_task = spawn({
+            let mut scheduler = Scheduler::new(channels.clone(), config.scheduler.gps);
+            async move { scheduler.run().await }
+        });
+        futures.push(scheduler_task);
+    }
 
     info!("initializing server");
     let server_address = config
