@@ -96,7 +96,7 @@ impl<Req, Res, Err> Command<Req, Res, Err> {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    pretty_env_logger::init();
+    pretty_env_logger::init_timed();
 
     let main_args: cli::args::MainArgs = cli::args::MainArgs::from_args();
 
