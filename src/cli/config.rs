@@ -25,6 +25,7 @@ pub struct PlaneSystemConfig {
     pub pixhawk: PixhawkConfig,
     pub server: ServerConfig,
     pub camera: bool,
+    pub gimbal: bool,
     pub scheduler: SchedulerConfig,
 }
 

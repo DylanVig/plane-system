@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use anyhow::Context;
-use camera::{client::CameraClient, state::CameraEvent};
+use camera::{client::CameraClient, state::CameraEvent, command::CameraRequest};
 use gimbal::{client::GimbalClient};
 use ctrlc;
 use pixhawk::{client::PixhawkClient, state::PixhawkEvent};
@@ -9,7 +9,8 @@ use scheduler::Scheduler;
 use state::TelemetryInfo;
 use structopt::StructOpt;
 use telemetry::TelemetryStream;
-use tokio::{spawn, sync::*};
+use tokio::{spawn, sync::*, time::delay_for};
+use std::time::Duration;
 
 #[macro_use]
 extern crate log;
@@ -156,6 +157,21 @@ async fn main() -> anyhow::Result<()> {
     });
     futures.push(telemetry_task);
 
+    info!("initializing continuous capture");
+    let continuous_capture_task = spawn({
+        let channels = channels.clone();
+        async move {
+            loop {
+                let request = CameraRequest::Capture;
+                let (cmd, chan) = Command::new(request);
+                channels.camera_cmd.clone().send(cmd).await?;
+                let _ = chan.await?;
+                delay_for(Duration::from_millis(1000)).await;
+            }
+        }
+    });
+    futures.push(continuous_capture_task);
+
     if config.camera {
         info!("connecting to camera");
         let camera_task = spawn({
@@ -165,14 +181,15 @@ async fn main() -> anyhow::Result<()> {
         futures.push(camera_task);
     }
 
-    // TODO: make this configurable
-    info!("initializing gimbal");
-    let gimbal_task = spawn({
-        let mut gimbal_client = GimbalClient::connect(channels.clone(), gimbal_cmd_receiver)?;
-        async move { gimbal_client.run().await }
-    });
-    futures.push(gimbal_task);
-
+    if config.gimbal {
+        info!("initializing gimbal");
+        let gimbal_task = spawn({
+            let mut gimbal_client = GimbalClient::connect(channels.clone(), gimbal_cmd_receiver)?;
+            async move { gimbal_client.run().await }
+        });
+        futures.push(gimbal_task);
+    }
+    
     info!("initializing scheduler");
     let scheduler_task = spawn({
         let mut scheduler = Scheduler::new(channels.clone(), config.scheduler.gps);

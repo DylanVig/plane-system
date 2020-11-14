@@ -11,5 +11,6 @@
       "longitude": 149.164787599129
     }
   },
-  "camera": false
+  "camera": true,
+  "gimbal": true
 }
