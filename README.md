@@ -8,6 +8,13 @@
   - Ubuntu/Debian: `apt install libusb-1.0-0-dev libudev-dev`
 - `cargo build`
 
+## how to cross-compile
+
+- Install Rust
+- Install Rust Cross: `cargo install cross`
+- Build Docker image: `docker build -t cuair/obc:0.2 .`
+- Cross-compile: `cross build --target=aarch64-unknown-linux-gnu`
+
 ## how to run
 
 - Start the SITL on the `new-plane-system` branch: `./run.sh -S` should work
