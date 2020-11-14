@@ -11,7 +11,7 @@ use bytes::{Buf, BytesMut};
 use tokio::{
     io::AsyncReadExt,
     io::AsyncWriteExt,
-    net::{TcpListener, TcpStream, ToSocketAddrs},
+    net::{UdpSocket, ToSocketAddrs},
     sync::broadcast,
     sync::{mpsc, watch},
 };
@@ -28,7 +28,7 @@ use crate::{
 use super::{state::PixhawkEvent, PixhawkCommand};
 
 pub struct PixhawkClient {
-    sock: TcpStream,
+    sock: UdpSocket,
     buf: BytesMut,
     sequence: AtomicU8,
     channels: Arc<Channels>,
@@ -36,13 +36,13 @@ pub struct PixhawkClient {
 }
 
 impl PixhawkClient {
-    pub async fn connect<A: ToSocketAddrs>(
+    pub async fn connect<A: ToSocketAddrs + Clone>(
         channels: Arc<Channels>,
         cmd: mpsc::Receiver<PixhawkCommand>,
         addr: A,
     ) -> anyhow::Result<Self> {
-        let mut listener = TcpListener::bind(addr).await?;
-        let (sock, _) = listener.accept().await?;
+        let sock = UdpSocket::bind(addr.clone()).await?;
+        sock.connect(addr).await?;
         Ok(PixhawkClient {
             sock,
             buf: BytesMut::with_capacity(1024),
@@ -106,8 +106,7 @@ impl PixhawkClient {
         let mut buf = Vec::with_capacity(1024);
 
         mavlink::write_v1_msg(&mut buf, header, &message)?;
-
-        self.sock.write(buf.as_ref()).await?;
+        self.sock.send(buf.as_ref()).await?;
 
         Ok(())
     }
@@ -130,7 +129,7 @@ impl PixhawkClient {
                     res => {
                         trace!("requesting more bytes, magic too close to end ({:?})", res);
 
-                        let n = self.sock.read(&mut chunk[..]).await?;
+                        let n = self.sock.recv(&mut chunk[..]).await?;
                         self.buf.extend(&chunk[..n]);
                         trace!("read {:?} bytes", n);
                     }
@@ -154,7 +153,7 @@ impl PixhawkClient {
                 trace!("requesting more bytes, buffer insufficient");
 
                 let mut chunk = vec![0; 1024];
-                let n = self.sock.read(&mut chunk[..]).await?;
+                let n = self.sock.recv(&mut chunk[..]).await?;
                 self.buf.extend(&chunk[..n]);
             }
 

@@ -161,7 +161,7 @@ async fn main() -> anyhow::Result<()> {
     let continuous_capture_task = spawn({
         let channels = channels.clone();
         async move {
-            delay_for(Duration::from_millis(45000)).await;
+            delay_for(Duration::from_millis(10000)).await;
             info!("beginning continuous capture");
 
             loop {
