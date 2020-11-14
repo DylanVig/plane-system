@@ -161,12 +161,20 @@ async fn main() -> anyhow::Result<()> {
     let continuous_capture_task = spawn({
         let channels = channels.clone();
         async move {
+            delay_for(Duration::from_millis(45000)).await;
+            info!("beginning continuous capture");
+
             loop {
                 let request = CameraRequest::Capture;
                 let (cmd, chan) = Command::new(request);
                 channels.camera_cmd.clone().send(cmd).await?;
-                let _ = chan.await?;
-                delay_for(Duration::from_millis(1000)).await;
+                let res = chan.await?;
+
+                if let Err(err) = res {
+                    error!("continuous capture error: {:?}", err);
+                }
+
+                delay_for(Duration::from_millis(2000)).await;
             }
         }
     });

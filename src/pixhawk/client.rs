@@ -11,7 +11,7 @@ use bytes::{Buf, BytesMut};
 use tokio::{
     io::AsyncReadExt,
     io::AsyncWriteExt,
-    net::{TcpStream, ToSocketAddrs},
+    net::{TcpListener, TcpStream, ToSocketAddrs},
     sync::broadcast,
     sync::{mpsc, watch},
 };
@@ -41,10 +41,8 @@ impl PixhawkClient {
         cmd: mpsc::Receiver<PixhawkCommand>,
         addr: A,
     ) -> anyhow::Result<Self> {
-        let sock = TcpStream::connect(addr)
-            .await
-            .context("failed to connect to pixhawk")?;
-
+        let mut listener = TcpListener::bind(addr).await?;
+        let (sock, _) = listener.accept().await?;
         Ok(PixhawkClient {
             sock,
             buf: BytesMut::with_capacity(1024),

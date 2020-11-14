@@ -257,6 +257,8 @@ impl CameraClient {
                                 evt => trace!("received event: {:?}", evt),
                             }
                         }
+
+                        tokio::task::yield_now().await;
                     }
 
                     Ok(())
