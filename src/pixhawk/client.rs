@@ -230,9 +230,9 @@ impl PixhawkClient {
             apm::MavMessage::common(common::MavMessage::ATTITUDE(data)) => {
                 let _ = self.channels.pixhawk_event.send(PixhawkEvent::Orientation {
                     attitude: Attitude::new(
-                        data.roll * 180. / PI,
-                        data.pitch * 180. / PI,
-                        data.yaw * 180. / PI,
+                        data.roll.to_degrees(),
+                        data.pitch.to_degrees(),
+                        data.yaw.to_degrees(),
                     ),
                 });
             }
