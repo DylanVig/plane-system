@@ -80,7 +80,7 @@ impl SchedulerBackend {
         let roll = (-vec_x_plane).atan2(vec_z_plane).to_degrees();
         // TODO go back to this
         let pitch = (-vec_y_plane).atan2((vec_z_plane*vec_z_plane + vec_x_plane*vec_x_plane).sqrt()).to_degrees();
-        info!("roll: {:?}, pitch: {:?}", roll, pitch);
+        trace!("roll: {:?}, pitch: {:?}", roll, pitch);
         return (roll, pitch)
     }
 

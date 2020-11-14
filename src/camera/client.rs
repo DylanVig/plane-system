@@ -218,6 +218,8 @@ impl CameraClient {
             CameraRequest::Capture => {
                 self.ensure_mode(0x02).await?;
 
+                info!("capturing image");
+
                 // press shutter button halfway to fix the focus
                 self.iface
                     .execute(CameraControlCode::S1Button, PtpData::UINT16(0x0002))?;
@@ -240,7 +242,7 @@ impl CameraClient {
                 self.iface
                     .execute(CameraControlCode::S1Button, PtpData::UINT16(0x0001))?;
 
-                info!("waiting for image event");
+                info!("waiting for image confirmation");
 
                 tokio::time::timeout(Duration::from_millis(3000), async {
                     loop {
@@ -266,7 +268,7 @@ impl CameraClient {
                 .await
                 .context("timed out while waiting for image confirmation")??;
 
-                info!("received image event");
+                info!("received image confirmation");
 
                 let save_media = self
                     .iface
@@ -483,7 +485,7 @@ impl CameraClient {
 
         image_path.push(shot_info.filename);
 
-        info!("writing image to file '{}'", image_path.to_string_lossy());
+        debug!("writing image to file '{}'", image_path.to_string_lossy());
 
         let mut image_file = tokio::fs::File::create(&image_path)
             .await
