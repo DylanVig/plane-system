@@ -18,7 +18,7 @@ impl GimbalInterface {
             let port = serialport::new(device_name, 115_200)
                 .timeout(Duration::from_millis(10))
                 .open_native()?;
-        
+
             return Ok(Self {
                 port,
             });
@@ -57,6 +57,7 @@ impl GimbalInterface {
 
     pub fn control_angles(&mut self, mut roll: f64, mut pitch: f64) -> anyhow::Result<()> {
         info!("Got request for {}, {}", roll, pitch);
+        return Ok(());
         if roll.abs() > 50.0 || pitch.abs() > 50.0 {
             roll = 0.0;
             pitch = 0.0;

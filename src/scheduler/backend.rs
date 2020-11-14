@@ -54,8 +54,8 @@ impl SchedulerBackend {
         let plane_yaw = self.telemetry.plane_attitude.yaw.to_radians() as f64;
 
         // next we need to get the distance from the plane to the gps location
-        let current_loc = Point::<f64>::new(self.telemetry.position.latitude as f64, self.telemetry.position.longitude as f64);
-        let gps_loc = Point::<f64>::new(self.gps.latitude as f64, self.gps.longitude as f64);
+        let current_loc = Point::<f64>::new(self.telemetry.position.longitude as f64, self.telemetry.position.latitude as f64);
+        let gps_loc = Point::<f64>::new(self.gps.longitude as f64, self.gps.latitude as f64);
 
         // distance is given in m, no conversion needed
         let distance = current_loc.haversine_distance(&gps_loc);
@@ -72,15 +72,15 @@ impl SchedulerBackend {
         // x_plane is right, y_plane is forward
         let vec_x_plane = vec_x_world * plane_yaw.cos() - vec_y_world * plane_yaw.sin();
         let vec_y_plane = vec_x_world * plane_yaw.sin() + vec_y_world * plane_yaw.cos();
-        
+
         // we also compute the z vector, which is pointing straight up
         let vec_z_plane = altitude;
 
         // we now have all the data to compute the angles
         let roll = (-vec_x_plane).atan2(vec_z_plane).to_degrees();
         // TODO go back to this
-        let pitch = vec_y_plane.atan2((vec_z_plane*vec_z_plane + vec_x_plane*vec_x_plane).sqrt()).to_degrees();
-
+        let pitch = (-vec_y_plane).atan2((vec_z_plane*vec_z_plane + vec_x_plane*vec_x_plane).sqrt()).to_degrees();
+        info!("roll: {:?}, pitch: {:?}", roll, pitch);
         return (roll, pitch)
     }
 
