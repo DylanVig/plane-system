@@ -5,6 +5,7 @@ use crate::{
     gimbal::GimbalResponse,
     Channels, 
     Command,
+    state::Coords2D,
 };
 
 use std::sync::Arc;
@@ -25,16 +26,16 @@ pub struct Scheduler {
 }
 
 impl Scheduler {
-    pub fn new(channels: Arc<Channels>) -> Self {
+    pub fn new(channels: Arc<Channels>, gps: Coords2D) -> Self {
         Self {
             channels,
-            backend: SchedulerBackend::new(),
+            backend: SchedulerBackend::new(gps),
         }
     }
 
     pub async fn run(&mut self) -> anyhow::Result<()> {
         let mut telemetry_recv = self.channels.telemetry.clone();
-        let mut interrupt_recv = self.channels.interrupt.clone();
+        let interrupt_recv = self.channels.interrupt.clone();
 
         loop {
             let telemetry = telemetry_recv

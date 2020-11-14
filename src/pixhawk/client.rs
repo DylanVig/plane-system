@@ -77,6 +77,16 @@ impl PixhawkClient {
             [0., 0., 0., 0., 1., 0., 0.],
         )
         .await?;
+        self.send_command(
+            common::MavCmd::MAV_CMD_SET_MESSAGE_INTERVAL,
+            [33., 1000., 0., 0., 0., 0., 0.],
+        )
+        .await?;
+        self.send_command(
+            common::MavCmd::MAV_CMD_SET_MESSAGE_INTERVAL,
+            [30., 1000., 0., 0., 0., 0., 0.],
+        )
+        .await?;
 
         info!("finished initialization");
 
@@ -213,7 +223,7 @@ impl PixhawkClient {
                     coords: Coords3D::new(
                         data.lat as f32 / 1e7,
                         data.lon as f32 / 1e7,
-                        data.alt as f32 / 1e3,
+                        data.relative_alt as f32 / 1e3,
                     ),
                 });
             }

@@ -55,8 +55,12 @@ impl GimbalInterface {
         Ok(cmd)
     }
 
-    pub fn control_angles(&mut self, roll: i16, pitch: i16) -> anyhow::Result<()> {
+    pub fn control_angles(&mut self, mut roll: f64, mut pitch: f64) -> anyhow::Result<()> {
         info!("Got request for {}, {}", roll, pitch);
+        if roll.abs() > 50.0 || pitch.abs() > 50.0 {
+            roll = 0.0;
+            pitch = 0.0;
+        }
         let base: i32 = 2;
         let command = OutgoingCommand::Control(
             ControlData {
@@ -64,12 +68,12 @@ impl GimbalInterface {
                 axes: RollPitchYaw {
                     roll: AxisControlParams {
                         /// unit conversion: SBGC units are 360 / 2^14 degrees
-                        angle: ((roll as i32 * base.pow(14)) as f32 / 360.0) as i16,
+                        angle: ((roll * base.pow(14) as f64) / 360.0) as i16,
                         speed: 1200,
                     },
                     pitch: AxisControlParams {
                         /// unit conversion: SBGC units are 360 / 2^14 degrees
-                        angle: ((pitch as i32 * base.pow(14)) as f32 / 360.0) as i16,
+                        angle: ((pitch * base.pow(14) as f64) / 360.0) as i16,
                         speed: 2400,
                     },
                     yaw: AxisControlParams {

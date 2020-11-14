@@ -175,7 +175,7 @@ async fn main() -> anyhow::Result<()> {
 
     info!("initializing scheduler");
     let scheduler_task = spawn({
-        let mut scheduler = Scheduler::new(channels.clone());
+        let mut scheduler = Scheduler::new(channels.clone(), config.scheduler.gps);
         async move { scheduler.run().await }
     });
     futures.push(scheduler_task);

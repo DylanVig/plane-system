@@ -4,5 +4,12 @@
   },
   "server": {
     "address": "[::]:8080"
-  }
+  },
+  "scheduler": {
+    "gps": {
+      "latitude": -35.3589442144018,
+      "longitude": 149.164787599129
+    }
+  },
+  "camera": false
 }

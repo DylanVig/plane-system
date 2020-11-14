@@ -3,6 +3,8 @@ use std::path::PathBuf;
 use config::{Config, ConfigError};
 use serde::Deserialize;
 
+use crate::state::Coords2D;
+
 #[derive(Debug, Deserialize)]
 pub struct PixhawkConfig {
     pub address: Option<String>,
@@ -14,10 +16,16 @@ pub struct ServerConfig {
 }
 
 #[derive(Debug, Deserialize)]
+pub struct SchedulerConfig {
+    pub gps: Coords2D
+}
+
+#[derive(Debug, Deserialize)]
 pub struct PlaneSystemConfig {
     pub pixhawk: PixhawkConfig,
     pub server: ServerConfig,
     pub camera: bool,
+    pub scheduler: SchedulerConfig,
 }
 
 impl PlaneSystemConfig {
