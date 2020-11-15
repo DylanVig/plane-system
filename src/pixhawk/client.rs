@@ -190,7 +190,7 @@ impl PixhawkClient {
         info!("initializing pixhawk");
         self.init().await?;
 
-        let interrupt = self.channels.interrupt.clone();
+        let mut interrupt_recv = self.channels.interrupt.subscribe();
 
         // no delay b/c this is an I/O-bound loop
 
@@ -201,8 +201,7 @@ impl PixhawkClient {
 
             let _ = self.recv().await?;
 
-            if *interrupt.borrow() {
-                info!("received interrupt, shutting down");
+            if interrupt_recv.try_recv().is_ok() {
                 break;
             }
         }

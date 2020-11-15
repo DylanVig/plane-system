@@ -1,16 +1,16 @@
 use std::sync::Arc;
 
 use anyhow::Context;
-use camera::{client::CameraClient, state::CameraEvent, command::CameraRequest};
-use gimbal::{client::GimbalClient};
+use camera::{client::CameraClient, command::CameraRequest, state::CameraEvent};
 use ctrlc;
+use gimbal::client::GimbalClient;
 use pixhawk::{client::PixhawkClient, state::PixhawkEvent};
 use scheduler::Scheduler;
 use state::TelemetryInfo;
+use std::time::Duration;
 use structopt::StructOpt;
 use telemetry::TelemetryStream;
 use tokio::{spawn, sync::*, time::delay_for};
-use std::time::Duration;
 
 #[macro_use]
 extern crate log;
@@ -33,8 +33,8 @@ mod util;
 
 #[derive(Debug)]
 pub struct Channels {
-    /// Channel for broadcasting a signal when the server should terminate.
-    interrupt: watch::Receiver<bool>,
+    /// Channel for broadcasting a signal when the system should terminate.
+    interrupt: broadcast::Sender<()>,
 
     /// Channel for broadcasting telemetry information gathered from the gimbal and pixhawk
     telemetry: watch::Receiver<Option<TelemetryInfo>>,
@@ -110,7 +110,7 @@ async fn main() -> anyhow::Result<()> {
 
     let config = config.context("failed to read config file")?;
 
-    let (interrupt_sender, interrupt_receiver) = watch::channel(false);
+    let (interrupt_sender, _) = broadcast::channel(1);
     let (telemetry_sender, telemetry_receiver) = watch::channel(None);
     let (pixhawk_event_sender, _) = broadcast::channel(64);
     let (pixhawk_cmd_sender, pixhawk_cmd_receiver) = mpsc::channel(64);
@@ -119,7 +119,7 @@ async fn main() -> anyhow::Result<()> {
     let (gimbal_cmd_sender, gimbal_cmd_receiver) = mpsc::channel(256);
 
     let channels = Arc::new(Channels {
-        interrupt: interrupt_receiver,
+        interrupt: interrupt_sender.clone(),
         telemetry: telemetry_receiver,
         pixhawk_event: pixhawk_event_sender,
         pixhawk_cmd: pixhawk_cmd_sender,
@@ -128,11 +128,15 @@ async fn main() -> anyhow::Result<()> {
         gimbal_cmd: gimbal_cmd_sender,
     });
 
+    let mut task_names = Vec::new();
     let mut futures = Vec::new();
 
-    ctrlc::set_handler(move || {
-        info!("received interrupt, shutting down");
-        let _ = interrupt_sender.broadcast(true);
+    ctrlc::set_handler({
+        let interrupt_sender = interrupt_sender.clone();
+        move || {
+            info!("received interrupt, shutting down");
+            let _ = interrupt_sender.send(());
+        }
     })
     .expect("could not set ctrl+c handler");
 
@@ -145,22 +149,25 @@ async fn main() -> anyhow::Result<()> {
             async move { pixhawk_client.run().await }
         });
         futures.push(pixhawk_task);
+        task_names.push("pixhawk");
 
+        info!("initializing telemetry stream");
+        let telemetry_task = spawn({
+            let telemetry = TelemetryStream::new(channels.clone(), telemetry_sender);
+            async move { telemetry.run().await }
+        });
+        task_names.push("telemetry");
+        futures.push(telemetry_task);
     } else {
         info!("pixhawk address not specified, disabling pixhawk connection and telemetry stream");
     }
 
-    info!("initializing telemetry stream");
-    let telemetry_task = spawn({
-        let telemetry = TelemetryStream::new(channels.clone(), telemetry_sender);
-        async move { telemetry.run().await }
-    });
-    futures.push(telemetry_task);
-
     info!("initializing continuous capture");
     let continuous_capture_task = spawn({
         let channels = channels.clone();
+
         async move {
+            let mut interrupt_recv = channels.interrupt.subscribe();
             delay_for(Duration::from_millis(10000)).await;
             info!("beginning continuous capture");
 
@@ -174,10 +181,17 @@ async fn main() -> anyhow::Result<()> {
                     error!("continuous capture error: {:?}", err);
                 }
 
-                delay_for(Duration::from_millis(2000)).await;
+                delay_for(Duration::from_millis(1000)).await;
+
+                if interrupt_recv.try_recv().is_ok() {
+                    break;
+                }
             }
+
+            Ok(())
         }
     });
+    task_names.push("continuous capture");
     futures.push(continuous_capture_task);
 
     if config.camera {
@@ -186,6 +200,7 @@ async fn main() -> anyhow::Result<()> {
             let mut camera_client = CameraClient::connect(channels.clone(), camera_cmd_receiver)?;
             async move { camera_client.run().await }
         });
+        task_names.push("camera");
         futures.push(camera_task);
     }
 
@@ -195,15 +210,17 @@ async fn main() -> anyhow::Result<()> {
             let mut gimbal_client = GimbalClient::connect(channels.clone(), gimbal_cmd_receiver)?;
             async move { gimbal_client.run().await }
         });
+        task_names.push("gimbal");
         futures.push(gimbal_task);
     }
-    
+
     if config.scheduler.enabled {
         info!("initializing scheduler");
         let scheduler_task = spawn({
             let mut scheduler = Scheduler::new(channels.clone(), config.scheduler.gps);
             async move { scheduler.run().await }
         });
+        task_names.push("scheduler");
         futures.push(scheduler_task);
     }
 
@@ -217,6 +234,7 @@ async fn main() -> anyhow::Result<()> {
         let channels = channels.clone();
         server::serve(channels, server_address)
     });
+    task_names.push("server");
     futures.push(server_task);
 
     info!("intializing cli");
@@ -224,17 +242,44 @@ async fn main() -> anyhow::Result<()> {
         let channels = channels.clone();
         cli::repl::run(channels)
     });
+    task_names.push("cli");
     futures.push(cli_task);
 
     while futures.len() > 0 {
         // wait for each task to end
-        let (result, _, remaining) = futures::future::select_all(futures).await;
+        let (result, i, remaining) = futures::future::select_all(futures).await;
+        let task_name = task_names.remove(i);
+
+        info!(
+            "{} ({}) task ended, {} remaining",
+            task_name,
+            i,
+            remaining.len()
+        );
 
         // if a task ended with an error or did not join properly, end the process
-        result??;
+        // with an interrupt
+        if let Err(err) = result? {
+            error!(
+                "got error from {} task, sending interrupt: {:?}",
+                task_name, err
+            );
+
+            info!("remaining tasks: {:?}", task_names.join(", "));
+
+            let _ = interrupt_sender.send(());
+
+            tokio::task::spawn(async {
+                tokio::time::delay_for(Duration::from_secs(5)).await;
+                warn!("tasks did not end after 5 seconds, force-quitting");
+                std::process::exit(1);
+            });
+        }
 
         futures = remaining;
     }
+
+    info!("exit");
 
     Ok(())
 }

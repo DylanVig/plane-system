@@ -8,12 +8,8 @@ use structopt::StructOpt;
 use tokio::sync::mpsc;
 
 use crate::{
-    camera::CameraRequest, 
-    camera::CameraResponse, 
-    gimbal::GimbalRequest, 
-    gimbal::GimbalResponse,
-    Channels, 
-    Command,
+    camera::CameraRequest, camera::CameraResponse, gimbal::GimbalRequest, gimbal::GimbalResponse,
+    Channels, Command,
 };
 
 #[derive(StructOpt, Debug)]
@@ -32,9 +28,16 @@ pub async fn run(channels: Arc<Channels>) -> anyhow::Result<()> {
     loop {
         let current_prompt = format!("\n{}\nplane-system> ", current_directory).bright_white();
 
-        let line = rl
-            .readline(&current_prompt)
-            .context("failed to read line")?;
+        let line = match rl.readline(&current_prompt) {
+            Ok(line) => line,
+            Err(err) => match err {
+                rustyline::error::ReadlineError::Interrupted => {
+                    let _ = channels.interrupt.send(());
+                    break;
+                }
+                _ => return Err(err.into()),
+            },
+        };
 
         trace!("got line: {:#?}", line);
 
@@ -59,13 +62,16 @@ pub async fn run(channels: Arc<Channels>) -> anyhow::Result<()> {
                     Ok(response) => format_camera_response(response),
                     Err(err) => println!("{}", format!("error: {}", err).red()),
                 };
-            },
+            }
             ReplRequest::Gimbal(request) => {
                 let (cmd, chan) = Command::new(request);
                 channels.gimbal_cmd.clone().send(cmd).await?;
                 let _ = chan.await?;
-            },
-            ReplRequest::Exit => break,
+            }
+            ReplRequest::Exit => {
+                let _ = channels.interrupt.send(());
+                break;
+            }
         };
     }
 

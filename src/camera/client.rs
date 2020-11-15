@@ -61,7 +61,7 @@ impl CameraClient {
     pub async fn run(&mut self) -> anyhow::Result<()> {
         self.init()?;
 
-        let interrupt = self.channels.interrupt.clone();
+        let mut interrupt_recv = self.channels.interrupt.subscribe();
 
         loop {
             match self.cmd.try_recv() {
@@ -76,7 +76,7 @@ impl CameraClient {
                 trace!("received event: {:?}", event);
             }
 
-            if *interrupt.borrow() {
+            if interrupt_recv.try_recv().is_ok() {
                 break;
             }
 
@@ -96,7 +96,7 @@ impl CameraClient {
 
                 self.iface.reset().context("error while resetting camera")?;
 
-                tokio::time::delay_for(Duration::from_secs(1)).await;
+                tokio::time::delay_for(Duration::from_secs(3)).await;
 
                 self.iface = CameraInterface::new().context("failed to create camera interface")?;
                 self.init()?;

@@ -36,7 +36,7 @@ impl TelemetryCollector {
 
     async fn run(&self) -> anyhow::Result<()> {
         let mut pixhawk_recv = self.channels.pixhawk_event.subscribe();
-        let interrupt_recv = self.channels.interrupt.clone();
+        let mut interrupt_recv = self.channels.interrupt.subscribe();
 
         loop {
             let message = pixhawk_recv
@@ -52,7 +52,7 @@ impl TelemetryCollector {
                 _ => {}
             }
 
-            if *interrupt_recv.borrow() {
+            if interrupt_recv.try_recv().is_ok() {
                 break;
             }
         }
@@ -76,7 +76,7 @@ impl TelemetryPublisher {
 
     async fn run(&self) -> anyhow::Result<()> {
         let telemetry_sender = self.channels.telemetry.clone();
-        let interrupt_recv = self.channels.interrupt.clone();
+        let mut interrupt_recv = self.channels.interrupt.subscribe();
 
         let mut interval = interval(Duration::from_millis(5));
 
@@ -87,7 +87,7 @@ impl TelemetryPublisher {
                 }
             }
 
-            if *interrupt_recv.borrow() {
+            if interrupt_recv.try_recv().is_ok() {
                 break;
             }
 

@@ -35,7 +35,7 @@ impl Scheduler {
 
     pub async fn run(&mut self) -> anyhow::Result<()> {
         let mut telemetry_recv = self.channels.telemetry.clone();
-        let interrupt_recv = self.channels.interrupt.clone();
+        let mut interrupt_recv = self.channels.interrupt.subscribe();
 
         loop {
             let telemetry = telemetry_recv
@@ -59,7 +59,7 @@ impl Scheduler {
             let (cmd, _) = Command::new(request);
             self.channels.gimbal_cmd.clone().send(cmd).await?;
 
-            if *interrupt_recv.borrow() {
+            if interrupt_recv.try_recv().is_ok() {
                 break;
             }
         }
