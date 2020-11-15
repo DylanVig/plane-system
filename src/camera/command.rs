@@ -27,6 +27,9 @@ pub enum CameraRequest {
 
     SaveMode(CameraSaveModeRequest),
 
+    #[structopt(name = "cc")]
+    ContinuousCapture(CameraContinuousCaptureRequest),
+
     Reset,
 }
 
@@ -119,6 +122,13 @@ pub enum CameraZoomModeRequest {
 pub enum CameraPowerRequest {
     Up,
     Down,
+}
+
+#[derive(StructOpt, Debug, Clone)]
+pub enum CameraContinuousCaptureRequest {
+    Start,
+    Stop,
+    Interval { interval: f32 },
 }
 
 #[derive(Debug, Clone, Serialize)]

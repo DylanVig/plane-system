@@ -174,45 +174,6 @@ async fn main() -> anyhow::Result<()> {
         });
         task_names.push("camera");
         futures.push(camera_task);
-
-        info!("initializing continuous capture");
-        let continuous_capture_task = spawn({
-            let channels = channels.clone();
-
-            async move {
-                let mut interrupt_recv = channels.interrupt.subscribe();
-                delay_for(Duration::from_millis(10000)).await;
-                info!("beginning continuous capture");
-
-                loop {
-                    let request = CameraRequest::Capture;
-                    let (cmd, chan) = Command::new(request);
-
-                    channels
-                        .camera_cmd
-                        .clone()
-                        .send(cmd)
-                        .await
-                        .context("could not send command to camera")?;
-
-                    let res = chan.await?;
-
-                    if let Err(err) = res {
-                        error!("continuous capture error: {:?}", err);
-                    }
-
-                    delay_for(Duration::from_millis(1000)).await;
-
-                    if interrupt_recv.try_recv().is_ok() {
-                        break;
-                    }
-                }
-
-                Ok(())
-            }
-        });
-        task_names.push("continuous capture");
-        futures.push(continuous_capture_task);
     }
 
     if config.gimbal {

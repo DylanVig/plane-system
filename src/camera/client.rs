@@ -11,10 +11,18 @@ use crate::{util::*, Channels};
 use super::interface::*;
 use super::*;
 
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+enum CameraClientMode {
+    Idle,
+    ContinuousCapture,
+}
+
 pub struct CameraClient {
     iface: CameraInterface,
     channels: Arc<Channels>,
     cmd: mpsc::Receiver<CameraCommand>,
+    error: Option<CameraErrorMode>,
+    mode: CameraClientMode,
 }
 
 impl CameraClient {
@@ -28,6 +36,8 @@ impl CameraClient {
             iface,
             channels,
             cmd,
+            error: None,
+            mode: CameraClientMode::Idle,
         })
     }
 
@@ -64,6 +74,10 @@ impl CameraClient {
         let mut interrupt_recv = self.channels.interrupt.subscribe();
 
         loop {
+            self.iface
+                .update()
+                .context("failed to update camera state")?;
+
             match self.cmd.try_recv() {
                 Ok(cmd) => {
                     let result = self.exec(cmd.request()).await;
@@ -74,6 +88,46 @@ impl CameraClient {
 
             if let Ok(event) = self.iface.recv() {
                 trace!("received event: {:?}", event);
+
+                // in CC mode, if we receive an image capture event we should
+                // automatically download the image
+                match self.mode {
+                    CameraClientMode::ContinuousCapture => match event.code {
+                        ptp::EventCode::Vendor(0xC204) => {
+                            info!("received image during continuous capture");
+
+                            let save_media = self
+                                .iface
+                                .get(CameraPropertyCode::SaveMedia)
+                                .context("unknown whether image is saved to host or device")?
+                                .current;
+
+                            match save_media {
+                                PtpData::UINT16(save_media) => {
+                                    match CameraSaveMode::from_u16(save_media) {
+                                        Some(save_media) => match save_media {
+                                            CameraSaveMode::HostDevice => {
+                                                let shot_handle = ObjectHandle::from(0xFFFFC001);
+
+                                                let image_path = self.download_image(shot_handle).await?;
+                                            }
+
+                                            CameraSaveMode::MemoryCard1 => warn!("continuous capture images are being saved to camera; this is not supported"),
+                                        },
+                                        None => bail!("invalid save media"),
+                                    }
+                                }
+                                _ => bail!("invalid save media"),
+                            }
+                        }
+                        _ => {}
+                    },
+                    _ => {}
+                }
+            }
+
+            if let Err(camera_error) = self.check_error() {
+                error!("detected camera error: {:?}", camera_error);
             }
 
             if interrupt_recv.try_recv().is_ok() {
@@ -184,7 +238,7 @@ impl CameraClient {
                 CameraFileRequest::Get { handle } => {
                     let shot_handle = ObjectHandle::from(*handle);
 
-                    let image_path = self.download_object(shot_handle).await?;
+                    let image_path = self.download_image(shot_handle).await?;
 
                     Ok(CameraResponse::File { path: image_path })
                 }
@@ -291,7 +345,7 @@ impl CameraClient {
 
                 let shot_handle = ObjectHandle::from(0xFFFFC001);
 
-                let image_path = self.download_object(shot_handle).await?;
+                let image_path = self.download_image(shot_handle).await?;
 
                 Ok(CameraResponse::File { path: image_path })
             }
@@ -386,7 +440,94 @@ impl CameraClient {
                     bail!("invalid save media");
                 }
             },
+
+            CameraRequest::ContinuousCapture(req) => match req {
+                CameraContinuousCaptureRequest::Start => {
+                    self.iface
+                        .execute(
+                            CameraControlCode::IntervalStillRecording,
+                            PtpData::UINT16(0x0002),
+                        )
+                        .context("failed to start interval recording")?;
+                    self.mode = CameraClientMode::ContinuousCapture;
+
+                    Ok(CameraResponse::Unit)
+                }
+                CameraContinuousCaptureRequest::Stop => {
+                    self.iface
+                        .execute(
+                            CameraControlCode::IntervalStillRecording,
+                            PtpData::UINT16(0x0001),
+                        )
+                        .context("failed to stop interval recording")?;
+
+                    self.mode = CameraClientMode::ContinuousCapture;
+
+                    Ok(CameraResponse::Unit)
+                }
+                CameraContinuousCaptureRequest::Interval { interval } => {
+                    let interval  = (interval * 10.) as u16;
+
+                    if interval < 10 {
+                        bail!("minimum interval is 1 second");
+                    }
+
+                    if interval > 300 {
+                        bail!("maximum interval is 30 seconds");
+                    }
+
+                    if interval % 5 != 0 {
+                        bail!("valid intervals are in increments of 0.5 seconds");
+                    }
+
+                    self.ensure_setting(
+                        CameraPropertyCode::IntervalTime,
+                        PtpData::UINT16(interval),
+                    )
+                    .await
+                    .context("failed to set camera interval")?;
+
+                    Ok(CameraResponse::Unit)
+                }
+            },
         }
+    }
+
+    /// Checks if the camera registers a new error. Will return a given error
+    /// only once, and then returns Ok until the error changes.
+    fn check_error(&mut self) -> Result<(), CameraErrorMode> {
+        let caution_prop = self.iface.get(CameraPropertyCode::Caution);
+
+        if let Some(caution_prop) = caution_prop {
+            if let PtpData::UINT16(caution_value) = caution_prop.current {
+                if caution_value != 0x0000 {
+                    match CameraErrorMode::from_u16(caution_value) {
+                        Some(caution_mode) => {
+                            let already_reported = if let Some(current_caution_mode) = self.error {
+                                current_caution_mode == caution_mode
+                            } else {
+                                false
+                            };
+
+                            if !already_reported {
+                                self.error = Some(caution_mode);
+                                return Err(caution_mode);
+                            }
+                        }
+                        None => {
+                            warn!(
+                                "encountered unknown camera error status: 0x{:04x}",
+                                caution_value
+                            );
+                        }
+                    }
+                }
+            }
+        }
+
+        self.error = None;
+
+        Ok(())
     }
 
     async fn ensure_mode(&mut self, mode: u8) -> anyhow::Result<()> {
@@ -470,7 +611,7 @@ impl CameraClient {
         .await
     }
 
-    async fn download_object(&mut self, handle: ObjectHandle) -> anyhow::Result<PathBuf> {
+    async fn download_image(&mut self, handle: ObjectHandle) -> anyhow::Result<PathBuf> {
         let shot_info = self
             .iface
             .object_info(handle)
