@@ -461,7 +461,7 @@ impl CameraClient {
                         )
                         .context("failed to stop interval recording")?;
 
-                    self.mode = CameraClientMode::ContinuousCapture;
+                    self.mode = CameraClientMode::Idle;
 
                     Ok(CameraResponse::Unit)
                 }
