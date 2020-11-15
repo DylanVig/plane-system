@@ -33,8 +33,32 @@ Try this if the fast method fails.
 
 ## how to run
 
-- Start the SITL on the `new-plane-system` branch: `./run.sh -S` should work
-- Start the plane server: `RUST_LOG=info cargo run`
+- If you want to test with the SITL:
+  - Start the SITL on the `new-plane-system` branch: `./run.sh -S -O 172.18.0.1` in the MAVProxy repo
+    - The `-O 172.18.0.1` instructs MAVProxy to forward MAVLink packets to
+      `172.18.0.1`, which should be the IP address of your Docker network's
+      gateway. This way they will show up at port 14551 on the host machine.
+  - Make sure you have the following in `plane-system.json`:
+    ```json
+    "pixhawk": {
+      "address": "0.0.0.0:14551",
+      "mavlink": { "type": "V2" }
+    }
+    ```
+- If you want to test with the camera:
+  - Ensure that the camera is plugged in and the current user has permissions to
+    control the camera. You can either run as root (not ideal) or create a
+    `udev` rule to give your user access to the camera.
+  - Make sure you have `"camera": true` in `plane-system.json`
+- If you want to test with the gimbal:
+  - Ensure that the gimbal is plugged in.
+  - Make sure you have `"gimbal": true` in `plane-system.json`
+- Start the plane server:
+  - In development mode, w/ source code available: `RUST_LOG=debug cargo run`
+  - In production, w/ just the binary: `RUST_LOG=info ./plane-system --config=plane-system.json`
+    - The binary and the config file are both called `plane-system`, which
+      causes some issues if they are in the same directory and you don't
+      explicitly specify the JSON file
 
 ## faq
 
