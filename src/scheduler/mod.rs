@@ -1,12 +1,6 @@
 use anyhow::Context;
 
-use crate::{
-    gimbal::GimbalRequest, 
-    gimbal::GimbalResponse,
-    Channels, 
-    Command,
-    state::Coords2D,
-};
+use crate::{gimbal::GimbalRequest, gimbal::GimbalResponse, state::Coords2D, Channels, Command};
 
 use std::sync::Arc;
 
@@ -34,35 +28,43 @@ impl Scheduler {
     }
 
     pub async fn run(&mut self) -> anyhow::Result<()> {
-        let mut telemetry_recv = self.channels.telemetry.clone();
+        // telemetry_recv can hang indefinitely if there is no pixhawk, so we
+        // need to do a select() to avoid this
+
         let mut interrupt_recv = self.channels.interrupt.subscribe();
+        let interrupt_fut = interrupt_recv.recv();
 
-        loop {
-            let telemetry = telemetry_recv
-                .recv()
-                .await
-                .context("telemetry channel closed")?;
+        let mut telemetry_recv = self.channels.telemetry.clone();
+        let loop_fut = async move {
+            loop {
+                let telemetry = telemetry_recv
+                    .recv()
+                    .await
+                    .context("telemetry channel closed")?;
 
-            if let Some(telemetry) = telemetry {
-                self.backend.update_telemetry(telemetry);
+                if let Some(telemetry) = telemetry {
+                    self.backend.update_telemetry(telemetry);
+                }
+
+                if let Some(capture_request) = self.backend.get_capture_request() {
+                    debug!("Got a capture request: {:?}", capture_request);
+                }
+
+                let (roll, pitch) = self.backend.get_target_gimbal_angles();
+                let request = GimbalRequest::Control { roll, pitch };
+                let (cmd, _) = Command::new(request);
+                self.channels.gimbal_cmd.clone().send(cmd).await?;
             }
 
-            if let Some(capture_request) = self.backend.get_capture_request() {
-                debug!("Got a capture request: {:?}", capture_request);
-            }
+            // this is necessary so that Rust can figure out what the return
+            // type of the async block is
+            #[allow(unreachable_code)]
+            Result::<(), anyhow::Error>::Ok(())
+        };
 
-            let (roll, pitch) = self.backend.get_target_gimbal_angles();
-            let request = GimbalRequest::Control {
-                roll,
-                pitch,
-            };
-            let (cmd, _) = Command::new(request);
-            self.channels.gimbal_cmd.clone().send(cmd).await?;
-
-            if interrupt_recv.try_recv().is_ok() {
-                break;
-            }
-        }
+        futures::pin_mut!(loop_fut);
+        futures::pin_mut!(interrupt_fut);
+        futures::future::select(interrupt_fut, loop_fut).await;
 
         Ok(())
     }

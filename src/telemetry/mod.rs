@@ -35,33 +35,38 @@ impl TelemetryCollector {
     }
 
     async fn run(&self) -> anyhow::Result<()> {
-        let mut pixhawk_recv = self.channels.pixhawk_event.subscribe();
         let mut interrupt_recv = self.channels.interrupt.subscribe();
+        let interrupt_fut = interrupt_recv.recv();
 
-        loop {
-            let pixhawk_fut = pixhawk_recv.recv_skip();
-            let interrupt_fut = interrupt_recv.recv();
+        // pixhawk_recv can block indefinitely if the pixhawk is disabled; there
+        // is no cleanup for telemetry stream so we can just do a select
+        let loop_fut = async {
+            let mut pixhawk_recv = self.channels.pixhawk_event.subscribe();
 
-            futures::pin_mut!(pixhawk_fut);
-            futures::pin_mut!(interrupt_fut);
+            loop {
+                let message = pixhawk_recv
+                    .recv_skip()
+                    .await
+                    .context("pixhawk stream closed")?;
 
-            let message = match futures::future::select(pixhawk_fut, interrupt_fut).await {
-                futures::future::Either::Left(result) => result.context("pixhawk stream closed")?,
-                futures::future::Either::Right(interrupt) => break,
-            };
-
-            match message {
-                PixhawkEvent::Gps { coords } => self.state.lock().unwrap().position = coords,
-                PixhawkEvent::Orientation { attitude } => {
-                    self.state.lock().unwrap().plane_attitude = attitude
+                match message {
+                    PixhawkEvent::Gps { coords } => self.state.lock().unwrap().position = coords,
+                    PixhawkEvent::Orientation { attitude } => {
+                        self.state.lock().unwrap().plane_attitude = attitude
+                    }
+                    _ => {}
                 }
-                _ => {}
             }
 
-            if interrupt_recv.try_recv().is_ok() {
-                break;
-            }
-        }
+            // this is necessary so that Rust can figure out what the return
+            // type of the async block is
+            #[allow(unreachable_code)]
+            Result::<(), anyhow::Error>::Ok(())
+        };
+
+        futures::pin_mut!(loop_fut);
+        futures::pin_mut!(interrupt_fut);
+        futures::future::select(interrupt_fut, loop_fut).await;
 
         Ok(())
     }
