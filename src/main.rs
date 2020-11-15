@@ -174,7 +174,14 @@ async fn main() -> anyhow::Result<()> {
             loop {
                 let request = CameraRequest::Capture;
                 let (cmd, chan) = Command::new(request);
-                channels.camera_cmd.clone().send(cmd).await?;
+
+                channels
+                    .camera_cmd
+                    .clone()
+                    .send(cmd)
+                    .await
+                    .context("could not send command to camera")?;
+
                 let res = chan.await?;
 
                 if let Err(err) = res {
