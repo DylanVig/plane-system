@@ -22,7 +22,6 @@
   ```
 - Cross-compile: `cargo build --target=aarch64-unknown-linux-gnu`
 
-
 ## how to cross-compile (slow, but easy)
 Try this if the fast method fails.
 
@@ -54,8 +53,8 @@ Try this if the fast method fails.
   - Ensure that the gimbal is plugged in.
   - Make sure you have `"gimbal": true` in `plane-system.json`
 - Start the plane server:
-  - In development mode, w/ source code available: `RUST_LOG=debug cargo run`
-  - In production, w/ just the binary: `RUST_LOG=info ./plane-system --config=plane-system.json`
+  - In development mode, w/ source code available: `RUST_LOG=plane_system=debug cargo run`
+  - In production, w/ just the binary: `RUST_LOG=plane_system=info ./plane-system --config=plane-system.json`
     - The binary and the config file are both called `plane-system`, which
       causes some issues if they are in the same directory and you don't
       explicitly specify the JSON file
@@ -64,8 +63,4 @@ Try this if the fast method fails.
 
 >  Why don't I see any output?
 
-You probably forgot to set the [`RUST_LOG`](https://docs.rs/env_logger/latest/env_logger/) environment variable
-
-> Why isn't the pixhawk telemetry stream being parsed successfully?
-
-Ensure that the pixhawk is reporting telemetry in MAVLink v1.
+You probably forgot to set the [`RUST_LOG`](https://docs.rs/env_logger/latest/env_logger/) environment variable.
