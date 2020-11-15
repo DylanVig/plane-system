@@ -11,7 +11,15 @@
 ## how to cross-compile (fast)
 
 - Install Rust
-- Install Raspberry Pi toolchain: `rustup install aarch64-unknown-linux-gnu`
+- Install Raspberry Pi toolchain: `rustup target add aarch64-unknown-linux-gnu`
+- Install `aarch64` version of GCC:
+  - Arch/Manjaro: `pacman -S aarch64-linux-gnu-gcc`
+  - Ubuntu/Debian: `apt install gcc-aarch64-linux-gnu`
+- Tell `cargo` to use the `aarch64` linker for cross-compilation by adding this to the end of `~/.cargo/config`:
+  ```toml
+  [target.aarch64-unknown-linux-gnu]
+  linker = "aarch64-linux-gnu-gcc"
+  ```
 - Cross-compile: `cargo build --target=aarch64-unknown-linux-gnu`
 
 
