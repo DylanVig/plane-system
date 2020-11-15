@@ -39,10 +39,16 @@ impl TelemetryCollector {
         let mut interrupt_recv = self.channels.interrupt.subscribe();
 
         loop {
-            let message = pixhawk_recv
-                .recv_skip()
-                .await
-                .context("pixhawk stream closed")?;
+            let pixhawk_fut = pixhawk_recv.recv_skip();
+            let interrupt_fut = interrupt_recv.recv();
+
+            futures::pin_mut!(pixhawk_fut);
+            futures::pin_mut!(interrupt_fut);
+
+            let message = match futures::future::select(pixhawk_fut, interrupt_fut).await {
+                futures::future::Either::Left(result) => result.context("pixhawk stream closed")?,
+                futures::future::Either::Right(interrupt) => break,
+            };
 
             match message {
                 PixhawkEvent::Gps { coords } => self.state.lock().unwrap().position = coords,
