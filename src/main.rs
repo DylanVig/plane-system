@@ -143,9 +143,13 @@ async fn main() -> anyhow::Result<()> {
     if let Some(pixhawk_address) = config.pixhawk.address {
         info!("connecting to pixhawk at {}", pixhawk_address);
         let pixhawk_task = spawn({
-            let mut pixhawk_client =
-                PixhawkClient::connect(channels.clone(), pixhawk_cmd_receiver, pixhawk_address)
-                    .await?;
+            let mut pixhawk_client = PixhawkClient::connect(
+                channels.clone(),
+                pixhawk_cmd_receiver,
+                pixhawk_address,
+                config.pixhawk.mavlink,
+            )
+            .await?;
             async move { pixhawk_client.run().await }
         });
         futures.push(pixhawk_task);
@@ -162,45 +166,6 @@ async fn main() -> anyhow::Result<()> {
         info!("pixhawk address not specified, disabling pixhawk connection and telemetry stream");
     }
 
-    info!("initializing continuous capture");
-    let continuous_capture_task = spawn({
-        let channels = channels.clone();
-
-        async move {
-            let mut interrupt_recv = channels.interrupt.subscribe();
-            delay_for(Duration::from_millis(10000)).await;
-            info!("beginning continuous capture");
-
-            loop {
-                let request = CameraRequest::Capture;
-                let (cmd, chan) = Command::new(request);
-
-                channels
-                    .camera_cmd
-                    .clone()
-                    .send(cmd)
-                    .await
-                    .context("could not send command to camera")?;
-
-                let res = chan.await?;
-
-                if let Err(err) = res {
-                    error!("continuous capture error: {:?}", err);
-                }
-
-                delay_for(Duration::from_millis(1000)).await;
-
-                if interrupt_recv.try_recv().is_ok() {
-                    break;
-                }
-            }
-
-            Ok(())
-        }
-    });
-    task_names.push("continuous capture");
-    futures.push(continuous_capture_task);
-
     if config.camera {
         info!("connecting to camera");
         let camera_task = spawn({
@@ -209,6 +174,45 @@ async fn main() -> anyhow::Result<()> {
         });
         task_names.push("camera");
         futures.push(camera_task);
+
+        info!("initializing continuous capture");
+        let continuous_capture_task = spawn({
+            let channels = channels.clone();
+
+            async move {
+                let mut interrupt_recv = channels.interrupt.subscribe();
+                delay_for(Duration::from_millis(10000)).await;
+                info!("beginning continuous capture");
+
+                loop {
+                    let request = CameraRequest::Capture;
+                    let (cmd, chan) = Command::new(request);
+
+                    channels
+                        .camera_cmd
+                        .clone()
+                        .send(cmd)
+                        .await
+                        .context("could not send command to camera")?;
+
+                    let res = chan.await?;
+
+                    if let Err(err) = res {
+                        error!("continuous capture error: {:?}", err);
+                    }
+
+                    delay_for(Duration::from_millis(1000)).await;
+
+                    if interrupt_recv.try_recv().is_ok() {
+                        break;
+                    }
+                }
+
+                Ok(())
+            }
+        });
+        task_names.push("continuous capture");
+        futures.push(continuous_capture_task);
     }
 
     if config.gimbal {
@@ -289,4 +293,32 @@ async fn main() -> anyhow::Result<()> {
     info!("exit");
 
     Ok(())
+}
+
+mod test {
+    use anyhow::Context;
+
+    #[test]
+    fn parse() -> anyhow::Result<()> {
+        let hex = r"fd 2b 00 00
+        5f ff 00 86 00 00 43 87 ed ea 67 0f ec 58 64 00
+        3e 02 45 02 4a 02 4c 02 3e 02 44 02 47 02 48 02
+        3d 02 41 02 45 02 45 02 41 02 43 02 46 02 48 02
+        2a ea d4";
+
+        let hex = hex
+            .split_ascii_whitespace()
+            .map(|b| u8::from_str_radix(b, 16))
+            .collect::<Result<Vec<_>, _>>()
+            .context("failed to parse bytes")?;
+
+        let mut cursor = std::io::Cursor::new(hex);
+
+        let (_, m): (mavlink::MavHeader, mavlink::ardupilotmega::MavMessage) =
+            mavlink::read_v2_msg(&mut cursor).context("failed to parse msg")?;
+
+        println!("got message: {:?}", m);
+
+        Ok(())
+    }
 }

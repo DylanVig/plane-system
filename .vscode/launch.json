@@ -20,7 +20,7 @@
         }
       },
       "env": {
-        "RUST_LOG": "plane_system=debug",
+        "RUST_LOG": "plane_system=trace",
         "RUST_LOG_STYLE": "always",
         "RUST_BACKTRACE": "1"
       },

@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 
 use config::{Config, ConfigError};
+use mavlink::MavlinkVersion;
 use serde::Deserialize;
 
 use crate::state::Coords2D;
@@ -8,6 +9,7 @@ use crate::state::Coords2D;
 #[derive(Debug, Deserialize)]
 pub struct PixhawkConfig {
     pub address: Option<String>,
+    pub mavlink: MavlinkVersion,
 }
 
 #[derive(Debug, Deserialize)]
