@@ -186,7 +186,7 @@ impl PixhawkClient {
 
             trace!("need {:?} bytes", msg_body_size);
 
-            while magic_position + msg_body_size >= self.buf.len() {
+            while magic_position + msg_body_size > self.buf.len() {
                 trace!("requesting more bytes, buffer insufficient");
 
                 let mut chunk = vec![0; 1024];
