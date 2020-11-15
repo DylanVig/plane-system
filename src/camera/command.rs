@@ -11,40 +11,57 @@ pub type CameraCommand = Command<CameraRequest, CameraResponse>;
 
 #[derive(StructOpt, Debug, Clone)]
 pub enum CameraRequest {
+    /// view information about the storage media inside of the camera
     Storage(CameraStorageRequest),
 
+    /// view information about the files stored on the camera; download files
     File(CameraFileRequest),
 
+    /// capture an image
     Capture,
 
+    /// power off the camera
     Power(CameraPowerRequest),
 
+    /// disconnect and reconnect to the camera
     Reconnect,
 
+    /// control the camera's zoom lens
     Zoom(CameraZoomRequest),
 
+    /// control the camera's exposure mode
     Exposure(CameraExposureRequest),
 
+    /// control whether the camera saves to its internal storage or to the host 
     SaveMode(CameraSaveModeRequest),
 
+    /// control continuous capture
     #[structopt(name = "cc")]
     ContinuousCapture(CameraContinuousCaptureRequest),
 
+    /// perform a usb reset and reconnect
     Reset,
 }
 
 #[derive(StructOpt, Debug, Clone)]
 pub enum CameraStorageRequest {
+    /// list the storage volumes available on the camera
     List,
 }
 
 #[derive(StructOpt, Debug, Clone)]
 pub enum CameraFileRequest {
+    /// list the files available on the camera
     List {
+        /// the hexadecimal file handle of a folder; if provided, the contents
+        /// of the folder will be listed
         #[structopt(parse(try_from_str = crate::util::parse_hex_u32))]
         parent: Option<u32>,
     },
+
+    /// download a file from the camera
     Get {
+        /// the hexadecimal file handle of a file
         #[structopt(parse(try_from_str = crate::util::parse_hex_u32))]
         handle: u32,
     },
@@ -57,7 +74,10 @@ pub enum CameraExposureRequest {
 
 #[derive(StructOpt, Debug, Clone)]
 pub enum CameraExposureModeRequest {
+    /// get the current exposure mode
     Get,
+
+    /// set the current exposure mode
     Set { mode: CameraExposureMode },
 }
 
@@ -84,7 +104,10 @@ impl std::str::FromStr for CameraExposureMode {
 
 #[derive(StructOpt, Debug, Clone)]
 pub enum CameraSaveModeRequest {
+    /// get the current save mode
     Get,
+
+    /// set the current save mode
     Set { mode: CameraSaveMode },
 }
 
