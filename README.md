@@ -2,20 +2,34 @@
 
 ## how to compile
 
+The plane system was designed to run on Linux. It might run on macOS, but it
+also might not. Don't even think about running it on Windows.
+
 - Install [Rust 1.46.0 or higher](https://rustup.rs/)
+  - The minimum supported Rust version is probably lower than this, but this is
+    the version we started developing on
 - Install `libusb`
   - Arch/Manjaro: `pacman -S libusb`
   - Ubuntu/Debian: `apt install libusb-1.0-0-dev`
+  - macOS: `brew install libusb`
 - `cargo build`
 
 ## how to cross-compile (fast)
+
+In practice, our on-board computer is a Raspberry Pi with an ARM processor, so
+unless your laptop is also a Linux ARM laptop you'll need to cross compile. 
+
+If you're not running Linux, you might just want to skip to the next section,
+b/c getting macOS -> Linux cross-compilation to work is tedious, and Windows ->
+Linux is probably close to impossible.
 
 - Install Rust
 - Install Raspberry Pi toolchain: `rustup target add aarch64-unknown-linux-gnu`
 - Install `aarch64` version of GCC:
   - Arch/Manjaro: `pacman -S aarch64-linux-gnu-gcc`
   - Ubuntu/Debian: `apt install gcc-aarch64-linux-gnu`
-- Tell `cargo` to use the `aarch64` linker for cross-compilation by adding this to the end of `~/.cargo/config`:
+- Tell `cargo` to use the `aarch64` linker for cross-compilation by adding this
+  to the end of `~/.cargo/config`:
   ```toml
   [target.aarch64-unknown-linux-gnu]
   linker = "aarch64-linux-gnu-gcc"
@@ -23,6 +37,7 @@
 - Cross-compile: `cargo build --target=aarch64-unknown-linux-gnu`
 
 ## how to cross-compile (slow, but easy)
+
 Try this if the fast method fails.
 
 - Install Rust
