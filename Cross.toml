@@ -1,0 +1,2 @@
+[target.aarch64-unknown-linux-gnu]
+image = "cuair/obc:0.2"

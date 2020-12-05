@@ -36,7 +36,8 @@ impl GimbalClient {
 
     pub async fn run(&mut self) -> anyhow::Result<()> {
         self.init()?;
-        let interrupt = self.channels.interrupt.clone();
+        
+        let mut interrupt_recv = self.channels.interrupt.subscribe();
 
         loop {
             if let Ok(cmd) = self.cmd.try_recv() {
@@ -44,7 +45,7 @@ impl GimbalClient {
                 let _ = cmd.respond(result);
             }
             
-            if *interrupt.borrow() {
+            if interrupt_recv.try_recv().is_ok() {
                 break;
             }
 

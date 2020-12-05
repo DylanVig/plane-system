@@ -55,10 +55,9 @@ pub async fn serve(channels: Arc<Channels>, address: SocketAddr) -> anyhow::Resu
     info!("initialized server");
     info!("listening at {:?}", address);
 
-    let mut interrupt_recv = channels.interrupt.clone();
     let (_, server) = warp::serve(api).bind_with_graceful_shutdown(address, async move {
         debug!("server recv interrupt");
-        interrupt_recv.recv().await;
+        channels.interrupt.subscribe().recv().await;
     });
 
     server.await;

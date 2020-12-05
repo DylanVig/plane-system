@@ -18,6 +18,19 @@
 		},
 		{
 			"type": "shell",
+			"command": "cross",
+			"problemMatcher": [
+				"$rustc"
+			],
+			"group": "build",
+			"label": "rust: cross build",
+			"args": [
+				"build",
+				"--target=aarch64-unknown-linux-gnu"
+			]
+		},
+		{
+			"type": "shell",
 			"command": "scp target/aarch64-unknown-linux-gnu/debug/plane-system ubuntu@68.175.147.222:/home/ubuntu/plane-system",
 			"label": "copy to pi",
 			"problemMatcher": []

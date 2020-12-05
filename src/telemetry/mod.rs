@@ -35,27 +35,38 @@ impl TelemetryCollector {
     }
 
     async fn run(&self) -> anyhow::Result<()> {
-        let mut pixhawk_recv = self.channels.pixhawk_event.subscribe();
-        let interrupt_recv = self.channels.interrupt.clone();
+        let mut interrupt_recv = self.channels.interrupt.subscribe();
+        let interrupt_fut = interrupt_recv.recv();
 
-        loop {
-            let message = pixhawk_recv
-                .recv_skip()
-                .await
-                .context("pixhawk stream closed")?;
+        // pixhawk_recv can block indefinitely if the pixhawk is disabled; there
+        // is no cleanup for telemetry stream so we can just do a select
+        let loop_fut = async {
+            let mut pixhawk_recv = self.channels.pixhawk_event.subscribe();
 
-            match message {
-                PixhawkEvent::Gps { coords } => self.state.lock().unwrap().position = coords,
-                PixhawkEvent::Orientation { attitude } => {
-                    self.state.lock().unwrap().plane_attitude = attitude
+            loop {
+                let message = pixhawk_recv
+                    .recv_skip()
+                    .await
+                    .context("pixhawk stream closed")?;
+
+                match message {
+                    PixhawkEvent::Gps { coords } => self.state.lock().unwrap().position = coords,
+                    PixhawkEvent::Orientation { attitude } => {
+                        self.state.lock().unwrap().plane_attitude = attitude
+                    }
+                    _ => {}
                 }
-                _ => {}
             }
 
-            if *interrupt_recv.borrow() {
-                break;
-            }
-        }
+            // this is necessary so that Rust can figure out what the return
+            // type of the async block is
+            #[allow(unreachable_code)]
+            Result::<(), anyhow::Error>::Ok(())
+        };
+
+        futures::pin_mut!(loop_fut);
+        futures::pin_mut!(interrupt_fut);
+        futures::future::select(interrupt_fut, loop_fut).await;
 
         Ok(())
     }
@@ -76,7 +87,7 @@ impl TelemetryPublisher {
 
     async fn run(&self) -> anyhow::Result<()> {
         let telemetry_sender = self.channels.telemetry.clone();
-        let interrupt_recv = self.channels.interrupt.clone();
+        let mut interrupt_recv = self.channels.interrupt.subscribe();
 
         let mut interval = interval(Duration::from_millis(5));
 
@@ -87,7 +98,7 @@ impl TelemetryPublisher {
                 }
             }
 
-            if *interrupt_recv.borrow() {
+            if interrupt_recv.try_recv().is_ok() {
                 break;
             }
 

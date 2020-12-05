@@ -11,8 +11,8 @@ pub type GimbalCommand = Command<GimbalRequest, GimbalResponse>;
 #[structopt(rename_all = "kebab-case")]
 pub enum GimbalRequest {
     Control {
-        roll: i16,
-        pitch: i16,
+        roll: f64,
+        pitch: f64,
     }
 }
 

@@ -1,11 +1,15 @@
 use std::path::PathBuf;
 
 use config::{Config, ConfigError};
+use mavlink::MavlinkVersion;
 use serde::Deserialize;
+
+use crate::state::Coords2D;
 
 #[derive(Debug, Deserialize)]
 pub struct PixhawkConfig {
     pub address: Option<String>,
+    pub mavlink: MavlinkVersion,
 }
 
 #[derive(Debug, Deserialize)]
@@ -14,10 +18,18 @@ pub struct ServerConfig {
 }
 
 #[derive(Debug, Deserialize)]
+pub struct SchedulerConfig {
+    pub enabled: bool,
+    pub gps: Coords2D,
+}
+
+#[derive(Debug, Deserialize)]
 pub struct PlaneSystemConfig {
     pub pixhawk: PixhawkConfig,
     pub server: ServerConfig,
     pub camera: bool,
+    pub gimbal: bool,
+    pub scheduler: SchedulerConfig,
 }
 
 impl PlaneSystemConfig {

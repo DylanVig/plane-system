@@ -1,8 +1,18 @@
 {
   "pixhawk": {
-    "address": "[::]:5763"
+    "address": "0.0.0.0:14551",
+    "mavlink": { "type": "V2" }
   },
   "server": {
     "address": "[::]:8080"
-  }
+  },
+  "scheduler": {
+    "enabled": false,
+    "gps": {
+      "latitude": -35.3589442144018,
+      "longitude": 149.164787599129
+    }
+  },
+  "camera": false,
+  "gimbal": false
 }

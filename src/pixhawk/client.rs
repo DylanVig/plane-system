@@ -18,6 +18,7 @@ use tokio::{
 
 use mavlink::{
     ardupilotmega as apm, common, error::MessageReadError, error::ParserError, MavHeader,
+    MavlinkVersion,
 };
 
 use crate::{
@@ -28,22 +29,46 @@ use crate::{
 use super::{state::PixhawkEvent, PixhawkCommand};
 
 pub struct PixhawkClient {
-    sock: TcpStream,
+    sock: tokio::net::UdpSocket,
     buf: BytesMut,
     sequence: AtomicU8,
     channels: Arc<Channels>,
     cmd: mpsc::Receiver<PixhawkCommand>,
+    version: MavlinkVersion,
 }
 
 impl PixhawkClient {
-    pub async fn connect<A: ToSocketAddrs>(
+    pub async fn connect<A: ToSocketAddrs + Clone>(
         channels: Arc<Channels>,
         cmd: mpsc::Receiver<PixhawkCommand>,
         addr: A,
+        version: MavlinkVersion,
     ) -> anyhow::Result<Self> {
-        let sock = TcpStream::connect(addr)
+        let mut sock = tokio::net::UdpSocket::bind(addr)
             .await
             .context("failed to connect to pixhawk")?;
+
+        debug!("waiting for packet from mavproxy");
+
+        let (_, remote_addr) =
+            tokio::time::timeout(Duration::from_secs(60), sock.recv_from(&mut []))
+                .await
+                .context("timed out while waiting for packet from mavproxy")?
+                .context("error retrieving packet from mavproxy")?;
+
+        info!(
+            "received packet from {:?}, locking to this address",
+            remote_addr
+        );
+
+        sock.connect(remote_addr)
+            .await
+            .context("failed to lock to address")?;
+
+        match version {
+            MavlinkVersion::V1 => debug!("using mavlink v1"),
+            MavlinkVersion::V2 => debug!("using mavlink v2"),
+        };
 
         Ok(PixhawkClient {
             sock,
@@ -51,6 +76,7 @@ impl PixhawkClient {
             sequence: AtomicU8::default(),
             channels,
             cmd,
+            version,
         })
     }
 
@@ -77,6 +103,16 @@ impl PixhawkClient {
             [0., 0., 0., 0., 1., 0., 0.],
         )
         .await?;
+        self.send_command(
+            common::MavCmd::MAV_CMD_SET_MESSAGE_INTERVAL,
+            [33., 1000., 0., 0., 0., 0., 0.],
+        )
+        .await?;
+        self.send_command(
+            common::MavCmd::MAV_CMD_SET_MESSAGE_INTERVAL,
+            [30., 1000., 0., 0., 0., 0., 0.],
+        )
+        .await?;
 
         info!("finished initialization");
 
@@ -87,7 +123,7 @@ impl PixhawkClient {
     pub async fn send(&mut self, message: apm::MavMessage) -> anyhow::Result<()> {
         let sequence = self.sequence.fetch_add(1, Ordering::SeqCst);
 
-        trace!("sending message: {:?}", &message);
+        debug!("sending message: {:?}", &message);
 
         let header = MavHeader {
             sequence,
@@ -97,9 +133,8 @@ impl PixhawkClient {
 
         let mut buf = Vec::with_capacity(1024);
 
-        mavlink::write_v1_msg(&mut buf, header, &message)?;
-
-        self.sock.write(buf.as_ref()).await?;
+        mavlink::write_versioned_msg(&mut buf, self.version, header, &message)?;
+        self.sock.send(buf.as_ref()).await?;
 
         Ok(())
     }
@@ -109,10 +144,15 @@ impl PixhawkClient {
         loop {
             let mut chunk = vec![0; 1024];
 
+            let magic = match self.version {
+                MavlinkVersion::V1 => 0xFE,
+                MavlinkVersion::V2 => 0xFD,
+            };
+
             trace!("buf is {:?} bytes long", self.buf.len());
 
             let magic_position = loop {
-                let magic_position = self.buf.iter().position(|&b| b == 0xFE);
+                let magic_position = self.buf.iter().position(|&b| b == magic);
 
                 match magic_position {
                     // we need at least two bytes after the magic in the buffer
@@ -122,9 +162,9 @@ impl PixhawkClient {
                     res => {
                         trace!("requesting more bytes, magic too close to end ({:?})", res);
 
-                        let n = self.sock.read(&mut chunk[..]).await?;
+                        let (n, addr) = self.sock.recv_from(&mut chunk[..]).await?;
                         self.buf.extend(&chunk[..n]);
-                        trace!("read {:?} bytes", n);
+                        trace!("read {:?} bytes from {:?}", n, addr);
                     }
                 };
             };
@@ -137,23 +177,28 @@ impl PixhawkClient {
 
             let payload_len = self.buf[magic_position + 1];
 
-            // in v1: 1 byte magic + 1 byte payload + 4 byte header + 2 byte checksum
-            let msg_body_size = payload_len as usize + 8;
+            let msg_body_size = match self.version {
+                // in v1: 1 byte magic + 1 byte payload len + 4 byte header + 2 byte checksum
+                MavlinkVersion::V1 => payload_len as usize + 8,
+                // in v2: 1 byte magic + 1 byte payload len + 8 byte header + 2 byte checksum
+                MavlinkVersion::V2 => payload_len as usize + 12,
+            };
 
             trace!("need {:?} bytes", msg_body_size);
 
-            while magic_position + msg_body_size >= self.buf.len() {
+            while magic_position + msg_body_size > self.buf.len() {
                 trace!("requesting more bytes, buffer insufficient");
 
                 let mut chunk = vec![0; 1024];
-                let n = self.sock.read(&mut chunk[..]).await?;
+                let (n, addr) = self.sock.recv_from(&mut chunk[..]).await?;
                 self.buf.extend(&chunk[..n]);
+                trace!("read {:?} bytes from {:?}", n, addr);
             }
 
             let msg_content = &self.buf[magic_position..magic_position + msg_body_size];
 
             // if we get a bad checksum, just drop the message and try again
-            let msg = match mavlink::read_v1_msg(&mut &msg_content[..]) {
+            let msg = match mavlink::read_versioned_msg(&mut &msg_content[..], self.version) {
                 Ok((header, msg)) => {
                     let skip = magic_position + msg_body_size;
                     trace!("parsed message, success, skipping {:?} bytes", skip);
@@ -181,7 +226,7 @@ impl PixhawkClient {
         info!("initializing pixhawk");
         self.init().await?;
 
-        let interrupt = self.channels.interrupt.clone();
+        let mut interrupt_recv = self.channels.interrupt.subscribe();
 
         // no delay b/c this is an I/O-bound loop
 
@@ -192,8 +237,7 @@ impl PixhawkClient {
 
             let _ = self.recv().await?;
 
-            if *interrupt.borrow() {
-                info!("received interrupt, shutting down");
+            if interrupt_recv.try_recv().is_ok() {
                 break;
             }
         }
@@ -202,7 +246,7 @@ impl PixhawkClient {
     }
 
     async fn exec(&mut self, cmd: PixhawkCommand) -> anyhow::Result<()> {
-        Ok(())
+        unimplemented!()
     }
 
     /// Reacts to a message received from the Pixhawk.
@@ -213,16 +257,16 @@ impl PixhawkClient {
                     coords: Coords3D::new(
                         data.lat as f32 / 1e7,
                         data.lon as f32 / 1e7,
-                        data.alt as f32 / 1e3,
+                        data.relative_alt as f32 / 1e3,
                     ),
                 });
             }
             apm::MavMessage::common(common::MavMessage::ATTITUDE(data)) => {
                 let _ = self.channels.pixhawk_event.send(PixhawkEvent::Orientation {
                     attitude: Attitude::new(
-                        data.roll * 180. / PI,
-                        data.pitch * 180. / PI,
-                        data.yaw * 180. / PI,
+                        data.roll.to_degrees(),
+                        data.pitch.to_degrees(),
+                        data.yaw.to_degrees(),
                     ),
                 });
             }
