@@ -23,10 +23,9 @@ enum ReplRequest {
 
 pub async fn run(channels: Arc<Channels>) -> anyhow::Result<()> {
     let mut rl = rustyline::Editor::<()>::new();
-    let mut current_directory = "/".to_owned();
 
     loop {
-        let current_prompt = format!("\n{}\nplane-system> ", current_directory).bright_white();
+        let current_prompt = "\n\nplane-system> ".bright_white();
 
         let line = match rl.readline(&current_prompt) {
             Ok(line) => line,

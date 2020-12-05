@@ -1,14 +1,10 @@
 use anyhow::Context;
 use serde::{Deserialize, Serialize};
-use std::{convert::Infallible, net::SocketAddr, sync::Arc, time::SystemTime};
-use tokio::sync::RwLock;
+use std::{convert::Infallible, net::SocketAddr, sync::Arc};
 use warp::{self, Filter};
 
+use crate::state::RegionOfInterest;
 use crate::Channels;
-use crate::{
-    pixhawk::state::PixhawkEvent, pixhawk::state::Telemetry, state::RegionOfInterest,
-    util::ReceiverExt,
-};
 
 #[derive(Clone)]
 struct ServerState {}
@@ -31,6 +27,7 @@ enum ClientType {
 }
 
 pub async fn serve(channels: Arc<Channels>, address: SocketAddr) -> anyhow::Result<()> {
+    use tokio_compat_02::FutureExt;
     info!("initializing server");
 
     let telemetry_receiver = Arc::new(channels.telemetry.clone());
@@ -53,14 +50,19 @@ pub async fn serve(channels: Arc<Channels>, address: SocketAddr) -> anyhow::Resu
     let api = route_roi.or(route_telem);
 
     info!("initialized server");
-    info!("listening at {:?}", address);
 
-    let (_, server) = warp::serve(api).bind_with_graceful_shutdown(address, async move {
-        debug!("server recv interrupt");
-        channels.interrupt.subscribe().recv().await;
-    });
+    async {
+        let (_, server) = warp::serve(api).bind_with_graceful_shutdown(address, async move {
+            channels.interrupt.subscribe().recv().await;
+            debug!("server recv interrupt");
+        });
 
-    server.await;
+        info!("listening at {:?}", address);
+
+        server.await;
+    }
+    .compat()
+    .await;
 
     Ok(())
 }

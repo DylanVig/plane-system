@@ -1,9 +1,6 @@
-use crate::state::{
-    RegionOfInterest,
-    Image,
-};
-use std::sync::atomic::{AtomicUsize, Ordering};
+use crate::state::{Image, RegionOfInterest};
 use serde::{Deserialize, Serialize};
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 #[derive(Copy, Clone, Eq, PartialEq, Debug, Serialize, Deserialize)]
 pub struct CaptureRequestId(usize);

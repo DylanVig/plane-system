@@ -4,7 +4,7 @@ use anyhow::Context;
 use humansize::{file_size_opts, FileSize};
 use num_traits::{FromPrimitive, ToPrimitive};
 use ptp::{ObjectHandle, PtpData, StorageId};
-use tokio::{io::AsyncWriteExt, sync::mpsc, time::delay_for};
+use tokio::{io::AsyncWriteExt, sync::mpsc, time::sleep};
 
 use crate::{util::*, Channels};
 
@@ -134,7 +134,7 @@ impl CameraClient {
                 break;
             }
 
-            tokio::time::delay_for(Duration::from_secs(1)).await;
+            tokio::time::sleep(Duration::from_secs(1)).await;
         }
 
         info!("disconnecting from camera");
@@ -150,7 +150,7 @@ impl CameraClient {
 
                 self.iface.reset().context("error while resetting camera")?;
 
-                tokio::time::delay_for(Duration::from_secs(3)).await;
+                tokio::time::sleep(Duration::from_secs(3)).await;
 
                 self.iface = CameraInterface::new().context("failed to create camera interface")?;
                 self.init()?;
@@ -278,19 +278,19 @@ impl CameraClient {
                 self.iface
                     .execute(CameraControlCode::S1Button, PtpData::UINT16(0x0002))?;
 
-                delay_for(Duration::from_millis(200)).await;
+                sleep(Duration::from_millis(200)).await;
 
                 // shoot!
                 self.iface
                     .execute(CameraControlCode::S2Button, PtpData::UINT16(0x0002))?;
 
-                delay_for(Duration::from_millis(200)).await;
+                sleep(Duration::from_millis(200)).await;
 
                 // release
                 self.iface
                     .execute(CameraControlCode::S2Button, PtpData::UINT16(0x0001))?;
 
-                delay_for(Duration::from_millis(200)).await;
+                sleep(Duration::from_millis(200)).await;
 
                 // hell yeah
                 self.iface
@@ -466,7 +466,7 @@ impl CameraClient {
                     Ok(CameraResponse::Unit)
                 }
                 CameraContinuousCaptureRequest::Interval { interval } => {
-                    let interval  = (interval * 10.) as u16;
+                    let interval = (interval * 10.) as u16;
 
                     if interval < 10 {
                         bail!("minimum interval is 1 second");

@@ -37,13 +37,13 @@ impl Scheduler {
         let mut telemetry_recv = self.channels.telemetry.clone();
         let loop_fut = async move {
             loop {
-                let telemetry = telemetry_recv
-                    .recv()
+                telemetry_recv
+                    .changed()
                     .await
                     .context("telemetry channel closed")?;
 
-                if let Some(telemetry) = telemetry {
-                    self.backend.update_telemetry(telemetry);
+                if let Some(telemetry) = telemetry_recv.borrow().as_ref() {
+                    self.backend.update_telemetry(telemetry.clone());
                 }
 
                 if let Some(capture_request) = self.backend.get_capture_request() {

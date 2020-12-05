@@ -1,7 +1,7 @@
 use std::{num::ParseIntError, time::Duration};
 
 use futures::Future;
-use tokio::sync::broadcast::{self, RecvError};
+use tokio::sync::broadcast::{self, error::RecvError};
 
 pub fn parse_hex_u32(src: &str) -> Result<u32, ParseIntError> {
     u32::from_str_radix(src, 16)
@@ -69,7 +69,7 @@ pub async fn retry_delay<F: FnMut() -> Result<T, E>, T, E>(
     while tries < times && result.is_err() {
         result = op();
 
-        tokio::time::delay_for(spacing).await;
+        tokio::time::sleep(spacing).await;
 
         tries += 1;
     }
@@ -93,7 +93,7 @@ pub async fn retry_async<F: FnMut() -> Fut, Fut: Future<Output = Result<T, E>>, 
         result = op().await;
 
         if let Some(spacing) = spacing {
-            tokio::time::delay_for(spacing).await;
+            tokio::time::sleep(spacing).await;
         }
 
         tries += 1;
