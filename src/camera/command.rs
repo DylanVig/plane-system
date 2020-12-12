@@ -32,7 +32,7 @@ pub enum CameraRequest {
     /// control the camera's exposure mode
     Exposure(CameraExposureRequest),
 
-    /// control whether the camera saves to its internal storage or to the host 
+    /// control whether the camera saves to its internal storage or to the host
     SaveMode(CameraSaveModeRequest),
 
     /// control continuous capture

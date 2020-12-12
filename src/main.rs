@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{sync::Arc, process::exit};
 
 use anyhow::Context;
 use camera::{client::CameraClient, command::CameraRequest, state::CameraEvent};
@@ -10,7 +10,7 @@ use state::TelemetryInfo;
 use std::time::Duration;
 use structopt::StructOpt;
 use telemetry::TelemetryStream;
-use tokio::{spawn, sync::*, time::delay_for};
+use tokio::{spawn, sync::*, time::sleep};
 
 #[macro_use]
 extern crate log;
@@ -241,10 +241,10 @@ async fn main() -> anyhow::Result<()> {
 
             let _ = interrupt_sender.send(());
 
-            tokio::task::spawn(async {
-                tokio::time::delay_for(Duration::from_secs(5)).await;
+            spawn(async {
+                sleep(Duration::from_secs(5)).await;
                 warn!("tasks did not end after 5 seconds, force-quitting");
-                std::process::exit(1);
+                exit(1);
             });
         }
 

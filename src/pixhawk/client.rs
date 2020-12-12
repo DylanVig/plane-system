@@ -1,5 +1,4 @@
 use std::{
-    f32::consts::PI,
     sync::atomic::AtomicU8,
     sync::atomic::Ordering,
     sync::Arc,
@@ -8,13 +7,7 @@ use std::{
 
 use anyhow::Context;
 use bytes::{Buf, BytesMut};
-use tokio::{
-    io::AsyncReadExt,
-    io::AsyncWriteExt,
-    net::{TcpStream, ToSocketAddrs},
-    sync::broadcast,
-    sync::{mpsc, watch},
-};
+use tokio::{net::ToSocketAddrs, sync::mpsc};
 
 use mavlink::{
     ardupilotmega as apm, common, error::MessageReadError, error::ParserError, MavHeader,
@@ -44,7 +37,7 @@ impl PixhawkClient {
         addr: A,
         version: MavlinkVersion,
     ) -> anyhow::Result<Self> {
-        let mut sock = tokio::net::UdpSocket::bind(addr)
+        let sock = tokio::net::UdpSocket::bind(addr)
             .await
             .context("failed to connect to pixhawk")?;
 

@@ -12,7 +12,7 @@ use super::*;
 pub struct GimbalClient {
     iface: GimbalInterface,
     channels: Arc<Channels>,
-    cmd: mpsc::Receiver<GimbalCommand>
+    cmd: mpsc::Receiver<GimbalCommand>,
 }
 
 impl GimbalClient {
@@ -30,13 +30,13 @@ impl GimbalClient {
     }
 
     pub fn init(&self) -> anyhow::Result<()> {
-        trace!("initializing gimbal");        
+        trace!("initializing gimbal");
         Ok(())
     }
 
     pub async fn run(&mut self) -> anyhow::Result<()> {
         self.init()?;
-        
+
         let mut interrupt_recv = self.channels.interrupt.subscribe();
 
         loop {
@@ -44,21 +44,19 @@ impl GimbalClient {
                 let result = self.exec(cmd.request()).await;
                 let _ = cmd.respond(result);
             }
-            
+
             if interrupt_recv.try_recv().is_ok() {
                 break;
             }
 
-            tokio::time::delay_for(Duration::from_millis(10)).await;
+            tokio::time::sleep(Duration::from_millis(10)).await;
         }
         Ok(())
     }
 
     async fn exec(&mut self, cmd: &GimbalRequest) -> anyhow::Result<GimbalResponse> {
         match cmd {
-            GimbalRequest::Control { roll, pitch } => {
-                self.iface.control_angles(*roll, *pitch)?
-            },
+            GimbalRequest::Control { roll, pitch } => self.iface.control_angles(*roll, *pitch)?,
         }
         Ok(GimbalResponse::Unit)
     }

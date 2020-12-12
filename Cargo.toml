@@ -17,7 +17,8 @@ simplebgc = { git = "https://github.com/laptou/simplebgc-rs" }
 ptp = { git = "https://github.com/CUAir/rust-ptp" }
 futures = "0.3.5"
 bytes = "0.6"
-tokio = { version = "0.2", features = ["full"] }
+tokio = { version = "0.3", features = ["full"] }
+tokio-compat-02 = "0.1"
 serde = "1.0"
 ctrlc = "3.1"
 warp = "0.2"
@@ -25,7 +26,7 @@ serde_millis = "0.1.1"
 structopt = "0.3"
 clap = "2"
 config = "0.10.1"
-rustyline = "6.3.0"
+rustyline = "7.0"
 async-trait = "0.1.41"
 rusb = "0.6"
 prettytable-rs = "0.8"
@@ -33,4 +34,4 @@ humansize = "1.1"
 chrono = "0.4"
 colored = "2"
 serialport = { git = "https://github.com/Susurrus/serialport-rs.git", default-features = false }
-geo = "0.15.0"
+geo = "0.16.0"

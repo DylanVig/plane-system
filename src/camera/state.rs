@@ -2,7 +2,7 @@ use serde::Serialize;
 
 #[derive(Debug, Clone)]
 pub enum CameraEvent {
-    Error(CameraErrorMode)
+    Error(CameraErrorMode),
 }
 
 #[repr(u16)]

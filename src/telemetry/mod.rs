@@ -93,7 +93,7 @@ impl TelemetryPublisher {
 
         loop {
             if let Ok(telemetry) = self.state.lock() {
-                if let Err(_) = self.sender.broadcast(Some(telemetry.clone())) {
+                if let Err(_) = self.sender.send(Some(telemetry.clone())) {
                     break;
                 }
             }
