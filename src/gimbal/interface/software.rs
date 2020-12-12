@@ -5,13 +5,9 @@ use std::time::Duration;
 
 use super::GimbalInterface;
 
+pub struct SoftwareGimbalInterface {}
 
-pub struct SoftwareGimbalInterface {
-}
-
-impl SoftwareGimbalInterface {
-    
-}
+impl SoftwareGimbalInterface {}
 
 impl GimbalInterface for SoftwareGimbalInterface {
     fn new() -> anyhow::Result<Self> {
@@ -19,7 +15,6 @@ impl GimbalInterface for SoftwareGimbalInterface {
     }
 
     fn control_angles(&mut self, mut roll: f64, mut pitch: f64) -> anyhow::Result<()> {
-      unimplemented!()
-
+        unimplemented!()
     }
 }

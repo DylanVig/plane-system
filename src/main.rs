@@ -1,4 +1,4 @@
-use std::{sync::Arc, process::exit};
+use std::{process::exit, sync::Arc};
 
 use anyhow::Context;
 use camera::{client::CameraClient, state::CameraEvent};
@@ -176,10 +176,11 @@ async fn main() -> anyhow::Result<()> {
         futures.push(camera_task);
     }
 
-    if config.gimbal {
+    if let Some(gimbal_kind) = config.gimbal {
         info!("initializing gimbal");
         let gimbal_task = spawn({
-            let mut gimbal_client = GimbalClient::connect_hardware(channels.clone(), gimbal_cmd_receiver)?;
+            let mut gimbal_client =
+                GimbalClient::connect(channels.clone(), gimbal_cmd_receiver, gimbal_kind)?;
             async move { gimbal_client.run().await }
         });
         task_names.push("gimbal");

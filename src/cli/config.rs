@@ -4,7 +4,7 @@ use config::{Config, ConfigError};
 use mavlink::MavlinkVersion;
 use serde::Deserialize;
 
-use crate::state::Coords2D;
+use crate::{gimbal::GimbalKind, state::Coords2D};
 
 #[derive(Debug, Deserialize)]
 pub struct PixhawkConfig {
@@ -28,7 +28,7 @@ pub struct PlaneSystemConfig {
     pub pixhawk: PixhawkConfig,
     pub server: ServerConfig,
     pub camera: bool,
-    pub gimbal: bool,
+    pub gimbal: Option<GimbalKind>,
     pub scheduler: SchedulerConfig,
 }
 

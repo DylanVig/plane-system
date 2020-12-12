@@ -7,7 +7,7 @@ use tokio::sync::mpsc;
 use crate::Channels;
 
 use super::{
-    interface::{GimbalInterface, HardwareGimbalInterface, SoftwareGimbalInterface},
+    interface::{GimbalInterface, GimbalKind, HardwareGimbalInterface, SoftwareGimbalInterface},
     GimbalCommand, GimbalRequest, GimbalResponse,
 };
 
@@ -19,28 +19,24 @@ pub struct GimbalClient {
 
 impl GimbalClient {
     /// Connects to a physical hardware gimbal.
-    pub fn connect_hardware(
+    pub fn connect(
         channels: Arc<Channels>,
         cmd: mpsc::Receiver<GimbalCommand>,
+        kind: GimbalKind,
     ) -> anyhow::Result<Self> {
-        let iface = HardwareGimbalInterface::new().context("failed to create gimbal interface")?;
+        let iface: Box<dyn GimbalInterface + Send> = match kind {
+            GimbalKind::Hardware => Box::new(
+                HardwareGimbalInterface::new()
+                    .context("failed to create hardware gimbal interface")?,
+            ),
+            GimbalKind::Software => Box::new(
+                SoftwareGimbalInterface::new()
+                    .context("failed to create software gimbal interface")?,
+            ),
+        };
 
         Ok(Self {
-            iface: Box::new(iface),
-            channels,
-            cmd,
-        })
-    }
-
-    /// Connects to a software virtual gimbal.
-    pub fn connect_software(
-        channels: Arc<Channels>,
-        cmd: mpsc::Receiver<GimbalCommand>,
-    ) -> anyhow::Result<Self> {
-        let iface = SoftwareGimbalInterface::new().context("failed to create gimbal interface")?;
-
-        Ok(Self {
-            iface: Box::new(iface),
+            iface,
             channels,
             cmd,
         })

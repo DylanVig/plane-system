@@ -14,5 +14,5 @@
     }
   },
   "camera": false,
-  "gimbal": false
+  "gimbal": "software"
 }
