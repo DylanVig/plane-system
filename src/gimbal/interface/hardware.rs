@@ -3,38 +3,17 @@ use simplebgc::*;
 use std::io::{Read, Write};
 use std::time::Duration;
 
+use super::GimbalInterface;
+
 const SBGC_VID: u16 = 0x10C4;
 const SBGC_PID: u16 = 0xEA60;
 
-pub struct GimbalInterface {
+pub struct HardwareGimbalInterface {
     port: serialport::TTYPort,
 }
 
-impl GimbalInterface {
-    pub fn new() -> anyhow::Result<Self> {
-        if let Some(device_name) = Self::find_usb_device_name()? {
-            let port = serialport::new(device_name, 115_200)
-                .timeout(Duration::from_millis(10))
-                .open_native()?;
-
-            return Ok(Self { port });
-        } else {
-            return Err(anyhow!("SimpleBGC usb device not found"));
-        }
-    }
-
+impl HardwareGimbalInterface {
     fn find_usb_device_name() -> anyhow::Result<Option<String>> {
-        let ports = serialport::available_ports()?;
-        for port in ports {
-            match port.port_type {
-                serialport::SerialPortType::UsbPort(info) => {
-                    if info.vid == SBGC_VID && info.pid == SBGC_PID {
-                        return Ok(Some(port.port_name));
-                    }
-                }
-                _ => continue,
-            }
-        }
         Ok(None)
     }
 
@@ -50,9 +29,34 @@ impl GimbalInterface {
         let (cmd, _) = IncomingCommand::from_v1_bytes(&buf[..marker])?;
         Ok(cmd)
     }
+}
 
-    pub fn control_angles(&mut self, mut roll: f64, mut pitch: f64) -> anyhow::Result<()> {
+impl GimbalInterface for HardwareGimbalInterface {
+    fn new() -> anyhow::Result<Self> {
+        // find USB device name
+        let device_name = serialport::available_ports()?
+            .into_iter()
+            .filter_map(|port| match port.port_type {
+                serialport::SerialPortType::UsbPort(info) => {
+                    if info.vid == SBGC_VID && info.pid == SBGC_PID {
+                        return Some(port.port_name);
+                    }
+                }
+                _ => None,
+            })
+            .next()
+            .context("simplebgc usb device not found")?;
+
+        let port = serialport::new(device_name, 115_200)
+            .timeout(Duration::from_millis(10))
+            .open_native()?;
+
+        return Ok(Self { port });
+    }
+
+    fn control_angles(&mut self, mut roll: f64, mut pitch: f64) -> anyhow::Result<()> {
         info!("Got request for {}, {}", roll, pitch);
+
         if roll.abs() > 50.0 || pitch.abs() > 50.0 {
             roll = 0.0;
             pitch = 0.0;
