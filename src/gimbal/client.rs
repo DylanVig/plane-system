@@ -12,7 +12,7 @@ use super::{
 };
 
 pub struct GimbalClient {
-    iface: Box<dyn GimbalInterface>,
+    iface: Box<dyn GimbalInterface + Send>,
     channels: Arc<Channels>,
     cmd: mpsc::Receiver<GimbalCommand>,
 }
