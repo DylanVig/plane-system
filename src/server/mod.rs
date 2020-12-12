@@ -1,9 +1,10 @@
 use anyhow::Context;
 use serde::{Deserialize, Serialize};
 use std::{convert::Infallible, net::SocketAddr, sync::Arc};
+use tokio::stream::{Stream, StreamExt};
 use warp::{self, Filter};
 
-use crate::state::RegionOfInterest;
+use crate::state::{RegionOfInterest, TelemetryInfo};
 use crate::Channels;
 
 #[derive(Clone)]
@@ -41,14 +42,38 @@ pub async fn serve(channels: Arc<Channels>, address: SocketAddr) -> anyhow::Resu
             warp::reply()
         });
 
-    let route_telem = warp::path!("api" / "telemetry").and(warp::get()).and_then({
-        move || {
+    let route_telem = warp::path!("api" / "telemetry" / "now")
+        .and(warp::get())
+        .and_then({
             let telemetry = telemetry_receiver.clone().borrow().clone();
-            async move { Result::<_, Infallible>::Ok(warp::reply::json(&telemetry)) }
-        }
-    });
+            move || async move { Ok::<_, Infallible>(warp::reply::json(&telemetry)) }
+        });
 
-    let api = route_roi.or(route_telem);
+    let route_telem_stream = warp::path!("api" / "telemetry" / "stream")
+        .and(warp::get())
+        .map({
+            let telemetry_receiver = channels.telemetry.clone();
+
+            move || {
+                let telemetry_stream = futures::stream::unfold(
+                    telemetry_receiver.clone(),
+                    |mut telemetry_receiver| async move {
+                        let res = telemetry_receiver.changed().await;
+            
+                        let telemetry = telemetry_receiver.borrow().clone();
+            
+                        Some((res.map(|_| telemetry), telemetry_receiver))
+                    },
+                );
+                
+                warp::sse::reply(
+                    telemetry_stream
+                        .map(|res| res.map(|telemetry| warp::sse::json(telemetry))),
+                )
+            }
+        });
+
+    let api = route_roi.or(route_telem).or(route_telem_stream);
 
     info!("initialized server");
 
