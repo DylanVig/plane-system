@@ -1,7 +1,7 @@
 use std::{sync::Arc, process::exit};
 
 use anyhow::Context;
-use camera::{client::CameraClient, command::CameraRequest, state::CameraEvent};
+use camera::{client::CameraClient, state::CameraEvent};
 use ctrlc;
 use gimbal::client::GimbalClient;
 use pixhawk::{client::PixhawkClient, state::PixhawkEvent};

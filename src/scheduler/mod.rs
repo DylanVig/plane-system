@@ -1,6 +1,6 @@
 use anyhow::Context;
 
-use crate::{gimbal::GimbalRequest, gimbal::GimbalResponse, state::Coords2D, Channels, Command};
+use crate::{gimbal::GimbalRequest, state::Coords2D, Channels, Command};
 
 use std::sync::Arc;
 

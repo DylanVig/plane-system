@@ -1,4 +1,4 @@
-use crate::state::{Image, RegionOfInterest};
+use crate::state::RegionOfInterest;
 use serde::{Deserialize, Serialize};
 use std::sync::atomic::{AtomicUsize, Ordering};
 

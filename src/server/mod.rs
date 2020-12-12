@@ -28,6 +28,7 @@ enum ClientType {
 
 pub async fn serve(channels: Arc<Channels>, address: SocketAddr) -> anyhow::Result<()> {
     use tokio_compat_02::FutureExt;
+
     info!("initializing server");
 
     let telemetry_receiver = Arc::new(channels.telemetry.clone());
@@ -53,7 +54,13 @@ pub async fn serve(channels: Arc<Channels>, address: SocketAddr) -> anyhow::Resu
 
     async {
         let (_, server) = warp::serve(api).bind_with_graceful_shutdown(address, async move {
-            channels.interrupt.subscribe().recv().await;
+            channels
+                .interrupt
+                .subscribe()
+                .recv()
+                .await
+                .expect("error while waiting on interrupt channel");
+
             debug!("server recv interrupt");
         });
 

@@ -5,11 +5,9 @@ use colored::Colorize;
 use humansize::FileSize;
 use prettytable::{cell, row, Table};
 use structopt::StructOpt;
-use tokio::sync::mpsc;
 
 use crate::{
-    camera::CameraRequest, camera::CameraResponse, gimbal::GimbalRequest, gimbal::GimbalResponse,
-    Channels, Command,
+    camera::CameraRequest, camera::CameraResponse, gimbal::GimbalRequest, Channels, Command,
 };
 
 #[derive(StructOpt, Debug)]

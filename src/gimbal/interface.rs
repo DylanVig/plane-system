@@ -2,7 +2,6 @@ use num_traits::FromPrimitive;
 use simplebgc::*;
 use std::io::{Read, Write};
 use std::time::Duration;
-use tokio::time::*;
 
 const SBGC_VID: u16 = 0x10C4;
 const SBGC_PID: u16 = 0xEA60;
@@ -58,18 +57,20 @@ impl GimbalInterface {
             roll = 0.0;
             pitch = 0.0;
         }
-        let base: i32 = 2;
+
+        let factor: f64 = (2 ^ 14) as f64 / 360.0;
+
         let command = OutgoingCommand::Control(ControlData {
             mode: ControlFormat::Legacy(AxisControlState::from_u8(0x02).unwrap()),
             axes: RollPitchYaw {
                 roll: AxisControlParams {
                     /// unit conversion: SBGC units are 360 / 2^14 degrees
-                    angle: ((roll * base.pow(14) as f64) / 360.0) as i16,
+                    angle: (roll * factor) as i16,
                     speed: 1200,
                 },
                 pitch: AxisControlParams {
                     /// unit conversion: SBGC units are 360 / 2^14 degrees
-                    angle: ((pitch * base.pow(14) as f64) / 360.0) as i16,
+                    angle: (pitch * factor) as i16,
                     speed: 2400,
                 },
                 yaw: AxisControlParams { angle: 0, speed: 0 },

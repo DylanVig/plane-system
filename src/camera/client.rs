@@ -1,7 +1,6 @@
 use std::{collections::HashMap, path::PathBuf, sync::Arc, time::Duration};
 
 use anyhow::Context;
-use humansize::{file_size_opts, FileSize};
 use num_traits::{FromPrimitive, ToPrimitive};
 use ptp::{ObjectHandle, PtpData, StorageId};
 use tokio::{io::AsyncWriteExt, sync::mpsc, time::sleep};
@@ -94,7 +93,7 @@ impl CameraClient {
                 match self.mode {
                     CameraClientMode::ContinuousCapture => match event.code {
                         ptp::EventCode::Vendor(0xC204) => {
-                            info!("received image during continuous capture");
+                            debug!("received image during continuous capture");
 
                             let save_media = self
                                 .iface
@@ -110,6 +109,8 @@ impl CameraClient {
                                                 let shot_handle = ObjectHandle::from(0xFFFFC001);
 
                                                 let image_path = self.download_image(shot_handle).await?;
+
+                                                info!("saved continuous capture image to {:?}", image_path);
                                             }
 
                                             CameraSaveMode::MemoryCard1 => warn!("continuous capture images are being saved to camera; this is not supported"),
@@ -378,7 +379,7 @@ impl CameraClient {
                         bail!("invalid zoom level");
                     }
                 },
-                CameraZoomRequest::Mode(req) => bail!("unimplemented"),
+                CameraZoomRequest::Mode(_req) => bail!("unimplemented"),
             },
 
             CameraRequest::Exposure(req) => match req {

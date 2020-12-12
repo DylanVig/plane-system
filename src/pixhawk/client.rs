@@ -192,7 +192,7 @@ impl PixhawkClient {
 
             // if we get a bad checksum, just drop the message and try again
             let msg = match mavlink::read_versioned_msg(&mut &msg_content[..], self.version) {
-                Ok((header, msg)) => {
+                Ok((_, msg)) => {
                     let skip = magic_position + msg_body_size;
                     trace!("parsed message, success, skipping {:?} bytes", skip);
                     self.buf.advance(skip);
@@ -238,7 +238,7 @@ impl PixhawkClient {
         Ok(())
     }
 
-    async fn exec(&mut self, cmd: PixhawkCommand) -> anyhow::Result<()> {
+    async fn exec(&mut self, _cmd: PixhawkCommand) -> anyhow::Result<()> {
         unimplemented!()
     }
 
@@ -323,7 +323,7 @@ impl PixhawkClient {
 
         self.wait_for_message(
             |message| match message {
-                apm::MavMessage::common(common::MavMessage::PING(data)) => {
+                apm::MavMessage::common(common::MavMessage::PING(_)) => {
                     debug!("received ping back");
                     true
                 }
