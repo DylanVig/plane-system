@@ -1,3 +1,4 @@
+use anyhow::Context;
 use num_traits::FromPrimitive;
 use simplebgc::*;
 use std::io::{Read, Write};
@@ -39,7 +40,9 @@ impl GimbalInterface for HardwareGimbalInterface {
             .filter_map(|port| match port.port_type {
                 serialport::SerialPortType::UsbPort(info) => {
                     if info.vid == SBGC_VID && info.pid == SBGC_PID {
-                        return Some(port.port_name);
+                        Some(port.port_name)
+                    } else {
+                        None
                     }
                 }
                 _ => None,

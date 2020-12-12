@@ -4,6 +4,9 @@ pub mod hardware;
 // virtual gimbal
 pub mod software;
 
+pub use hardware::*;
+pub use software::*;
+
 pub trait GimbalInterface {
     fn new() -> anyhow::Result<Self> where Self: Sized;
 

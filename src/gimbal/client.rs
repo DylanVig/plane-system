@@ -6,24 +6,41 @@ use tokio::sync::mpsc;
 
 use crate::Channels;
 
-use super::interface::*;
-use super::*;
+use super::{
+    interface::{GimbalInterface, HardwareGimbalInterface, SoftwareGimbalInterface},
+    GimbalCommand, GimbalRequest, GimbalResponse,
+};
 
 pub struct GimbalClient {
-    iface: GimbalInterface,
+    iface: Box<dyn GimbalInterface>,
     channels: Arc<Channels>,
     cmd: mpsc::Receiver<GimbalCommand>,
 }
 
 impl GimbalClient {
-    pub fn connect(
+    /// Connects to a physical hardware gimbal.
+    pub fn connect_hardware(
         channels: Arc<Channels>,
         cmd: mpsc::Receiver<GimbalCommand>,
     ) -> anyhow::Result<Self> {
-        let iface = GimbalInterface::new().context("failed to create gimbal interface")?;
+        let iface = HardwareGimbalInterface::new().context("failed to create gimbal interface")?;
 
         Ok(Self {
-            iface,
+            iface: Box::new(iface),
+            channels,
+            cmd,
+        })
+    }
+
+    /// Connects to a software virtual gimbal.
+    pub fn connect_software(
+        channels: Arc<Channels>,
+        cmd: mpsc::Receiver<GimbalCommand>,
+    ) -> anyhow::Result<Self> {
+        let iface = SoftwareGimbalInterface::new().context("failed to create gimbal interface")?;
+
+        Ok(Self {
+            iface: Box::new(iface),
             channels,
             cmd,
         })
@@ -58,6 +75,7 @@ impl GimbalClient {
         match cmd {
             GimbalRequest::Control { roll, pitch } => self.iface.control_angles(*roll, *pitch)?,
         }
+
         Ok(GimbalResponse::Unit)
     }
 }

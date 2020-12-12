@@ -179,7 +179,7 @@ async fn main() -> anyhow::Result<()> {
     if config.gimbal {
         info!("initializing gimbal");
         let gimbal_task = spawn({
-            let mut gimbal_client = GimbalClient::connect(channels.clone(), gimbal_cmd_receiver)?;
+            let mut gimbal_client = GimbalClient::connect_hardware(channels.clone(), gimbal_cmd_receiver)?;
             async move { gimbal_client.run().await }
         });
         task_names.push("gimbal");
