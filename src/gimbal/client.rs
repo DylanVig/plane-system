@@ -1,8 +1,10 @@
 use anyhow::Context;
+use num_traits::FromPrimitive;
+use simplebgc::*;
 use std::sync::Arc;
 use std::time::Duration;
 
-use tokio::sync::mpsc;
+use tokio::{sync::mpsc, time::sleep};
 
 use crate::Channels;
 
@@ -58,18 +60,54 @@ impl GimbalClient {
                 let _ = cmd.respond(result);
             }
 
+            self.iface.recv_command();
+
             if interrupt_recv.try_recv().is_ok() {
                 break;
             }
 
-            tokio::time::sleep(Duration::from_millis(10)).await;
+            sleep(Duration::from_millis(10)).await;
         }
+
         Ok(())
     }
 
     async fn exec(&mut self, cmd: &GimbalRequest) -> anyhow::Result<GimbalResponse> {
         match cmd {
-            GimbalRequest::Control { roll, pitch } => self.iface.control_angles(*roll, *pitch)?,
+            GimbalRequest::Control { roll, pitch } => {
+                let mut roll = *roll;
+                let mut pitch = *pitch;
+
+                info!("got request for {}, {}", roll, pitch);
+
+                if roll.abs() > 50.0 || pitch.abs() > 50.0 {
+                    roll = 0.0;
+                    pitch = 0.0;
+                }
+
+                let factor: f64 = (2 ^ 14) as f64 / 360.0;
+
+                let command = OutgoingCommand::Control(ControlData {
+                    mode: ControlFormat::Legacy(AxisControlState::from_u8(0x02).unwrap()),
+                    axes: RollPitchYaw {
+                        roll: AxisControlParams {
+                            /// unit conversion: SBGC units are 360 / 2^14 degrees
+                            angle: (roll * factor) as i16,
+                            speed: 1200,
+                        },
+                        pitch: AxisControlParams {
+                            /// unit conversion: SBGC units are 360 / 2^14 degrees
+                            angle: (pitch * factor) as i16,
+                            speed: 2400,
+                        },
+                        yaw: AxisControlParams { angle: 0, speed: 0 },
+                    },
+                });
+
+                self.iface.send_command(command)?;
+                // TODO: we need to implement CMD_CONFIRM in the simplebgc-rs crate
+                // let response = self.get_response()?;
+            }
         }
 
         Ok(GimbalResponse::Unit)
