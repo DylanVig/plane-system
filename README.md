@@ -42,7 +42,6 @@ Try this if the fast method fails.
 
 - Install Rust
 - Install Rust Cross: `cargo install cross`
-- Build Docker image: `docker build -t cuair/obc:0.2 .`
 - Cross-compile: `cross build --target=aarch64-unknown-linux-gnu`
 
 ## how to run
