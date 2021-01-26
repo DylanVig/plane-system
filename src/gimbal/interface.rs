@@ -1,11 +1,11 @@
+use futures::{Sink, SinkExt, Stream, StreamExt};
 use num_traits::FromPrimitive;
 use simplebgc::*;
 use std::io::{Read, Write};
 use std::time::Duration;
-use tokio_serial::{SerialPortSettings, Serial};
-use tokio_util::codec::{Decoder, Encoder, Framed};
 use tokio::io::{AsyncRead, AsyncWrite};
-use futures::{Sink, SinkExt, Stream, StreamExt};
+use tokio_serial::{Serial, SerialPortSettings};
+use tokio_util::codec::{Decoder, Encoder, Framed};
 
 const SBGC_VID: u16 = 0x10C4;
 const SBGC_PID: u16 = 0xEA60;
@@ -23,7 +23,9 @@ impl GimbalInterface {
             let settings = SerialPortSettings::default();
             let port = Serial::from_path(device_path, &settings)?;
 
-            return Ok(Self { inner: V1Codec.framed(port) });
+            return Ok(Self {
+                inner: V1Codec.framed(port),
+            });
         } else {
             return Err(anyhow!("SimpleBGC usb device not found"));
         }
@@ -35,7 +37,9 @@ impl GimbalInterface {
         for port in ports {
             match port.port_type {
                 serialport::SerialPortType::UsbPort(info) => {
-                    if (info.vid == SBGC_VID && info.pid == SBGC_PID) || (info.vid == FTDI_VID && info.pid == FTDI_PID) {
+                    if (info.vid == SBGC_VID && info.pid == SBGC_PID)
+                        || (info.vid == FTDI_VID && info.pid == FTDI_PID)
+                    {
                         return Ok(Some(port.port_name));
                     }
                 }
@@ -59,34 +63,37 @@ impl GimbalInterface {
         Ok(None)
     }
 
-    // pub fn control_angles(&mut self, mut roll: f64, mut pitch: f64) -> anyhow::Result<()> {
-    //     info!("Got request for {}, {}", roll, pitch);
-    //     if roll.abs() > 50.0 || pitch.abs() > 50.0 {
-    //         roll = 0.0;
-    //         pitch = 0.0;
-    //     }
+    pub async fn control_angles(&mut self, mut roll: f64, mut pitch: f64) -> anyhow::Result<()> {
+        info!("Got request for {}, {}", roll, pitch);
+        if roll.abs() > 50.0 || pitch.abs() > 50.0 {
+            roll = 0.0;
+            pitch = 0.0;
+        }
 
-    //     let factor: f64 = (2 ^ 14) as f64 / 360.0;
+        let factor: f64 = (2 ^ 14) as f64 / 360.0;
 
-    //     let command = OutgoingCommand::Control(ControlData {
-    //         mode: ControlFormat::Legacy(AxisControlState::from_u8(0x02).unwrap()),
-    //         axes: RollPitchYaw {
-    //             roll: AxisControlParams {
-    //                 /// unit conversion: SBGC units are 360 / 2^14 degrees
-    //                 angle: (roll * factor) as i16,
-    //                 speed: 1200,
-    //             },
-    //             pitch: AxisControlParams {
-    //                 /// unit conversion: SBGC units are 360 / 2^14 degrees
-    //                 angle: (pitch * factor) as i16,
-    //                 speed: 2400,
-    //             },
-    //             yaw: AxisControlParams { angle: 0, speed: 0 },
-    //         },
-    //     });
-    //     self.send_command(command)?;
-    //     // TODO: we need to implement CMD_CONFIRM in the simplebgc-rs crate
-    //     // let response = self.get_response()?;
-    //     Ok(())
-    // }
+        let command = OutgoingCommand::Control(ControlData {
+            mode: ControlFormat::Legacy(AxisControlState::from_u8(0x02).unwrap()),
+            axes: RollPitchYaw {
+                roll: AxisControlParams {
+                    /// unit conversion: SBGC units are 360 / 2^14 degrees
+                    angle: (roll * factor) as i16,
+                    speed: 1200,
+                },
+                pitch: AxisControlParams {
+                    /// unit conversion: SBGC units are 360 / 2^14 degrees
+                    angle: (pitch * factor) as i16,
+                    speed: 2400,
+                },
+                yaw: AxisControlParams { angle: 0, speed: 0 },
+            },
+        });
+
+        self.send_command(command).await?;
+
+        // TODO: we need to implement CMD_CONFIRM in the simplebgc-rs crate
+        // let response = self.get_response()?;
+
+        Ok(())
+    }
 }

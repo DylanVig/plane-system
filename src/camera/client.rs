@@ -77,8 +77,8 @@ impl CameraClient {
                 .update()
                 .context("failed to update camera state")?;
 
-            match self.cmd.try_recv() {
-                Ok(cmd) => {
+            match self.cmd.recv().await {
+                Some(cmd) => {
                     let result = self.exec(cmd.request()).await;
                     let _ = cmd.respond(result);
                 }

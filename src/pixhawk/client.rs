@@ -224,7 +224,7 @@ impl PixhawkClient {
         // no delay b/c this is an I/O-bound loop
 
         loop {
-            if let Ok(cmd) = self.cmd.try_recv() {
+            if let Some(cmd) = self.cmd.recv().await {
                 self.exec(cmd).await?;
             }
 

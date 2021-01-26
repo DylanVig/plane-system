@@ -40,7 +40,7 @@ impl GimbalClient {
         let mut interrupt_recv = self.channels.interrupt.subscribe();
 
         loop {
-            if let Ok(cmd) = self.cmd.try_recv() {
+            if let Some(cmd) = self.cmd.recv().await {
                 let result = self.exec(cmd.request()).await;
                 let _ = cmd.respond(result);
             }
@@ -56,7 +56,9 @@ impl GimbalClient {
 
     async fn exec(&mut self, cmd: &GimbalRequest) -> anyhow::Result<GimbalResponse> {
         match cmd {
-            GimbalRequest::Control { roll, pitch } => self.iface.control_angles(*roll, *pitch)?,
+            GimbalRequest::Control { roll, pitch } => {
+                self.iface.control_angles(*roll, *pitch).await?
+            }
         }
         Ok(GimbalResponse::Unit)
     }
