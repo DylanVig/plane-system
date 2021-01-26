@@ -50,7 +50,6 @@ impl GimbalInterface {
     }
 
     async fn send_command(&mut self, cmd: OutgoingCommand) -> anyhow::Result<()> {
-        let bytes = cmd.to_v1_bytes();
         self.inner.send(cmd).await?;
         Ok(())
     }
