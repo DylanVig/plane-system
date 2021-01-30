@@ -48,7 +48,14 @@ pub async fn serve(channels: Arc<Channels>, address: SocketAddr) -> anyhow::Resu
         }
     });
 
-    let api = route_roi.or(route_telem);
+    let route_test = warp::path!("api" / "test").and(warp::fs::file("src/images/2.jpg"));
+
+    let cors = warp::cors()
+        .allow_any_origin()
+        .allow_headers(vec!["User-Agent", "Sec-Fetch-Mode", "Referer", "Origin", "Access-Control-Request-Method", "Access-Control-Request-Headers", "content-type", "x-requested-with"])
+        .allow_methods(vec!["GET", "POST", "DELETE", "PUT"]);
+
+    let api = route_roi.or(route_telem).or(route_test).with(cors);
 
     info!("initialized server");
 

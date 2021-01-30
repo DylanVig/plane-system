@@ -1,6 +1,5 @@
 {
   "pixhawk": {
-    "address": "0.0.0.0:14551",
     "mavlink": { "type": "V2" }
   },
   "server": {
