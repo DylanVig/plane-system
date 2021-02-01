@@ -56,7 +56,7 @@ pub async fn serve(channels: Arc<Channels>, address: SocketAddr) -> anyhow::Resu
      * warp::fs::file function. The general format of the route will look somewhat similar to the
      * two routes defined above (route_roi and route_telem), but can be shorter and less complex.
      */
-    let route_image = ;
+    let route_image = _________;
 
     let cors = warp::cors()
         .allow_any_origin()
@@ -70,7 +70,7 @@ pub async fn serve(channels: Arc<Channels>, address: SocketAddr) -> anyhow::Resu
      * being added. The .with(cors) bit at deals with some annoying shenanigans, but basically
      * allows you to access the plane system from the frontend running locally on your computer.
      */
-    let api = route_roi.or(route_telem).with(cors);
+    let api = route_roi.or(route_telem)_________.with(cors);
 
     info!("initialized server");
 
