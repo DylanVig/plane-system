@@ -48,6 +48,11 @@ pub async fn serve(channels: Arc<Channels>, address: SocketAddr) -> anyhow::Resu
         }
     });
 
+    let route_test = warp::path!("api" / "test").and(warp::get()).map( || {
+        let response = "hi";
+        warp::reply::json(&response)
+    });
+
     /*
      * This is the main thing you will be adding: The new route. You'll need to specificy the route,
      * which basically means specifying the URL that can be used to reach this point of the plane
@@ -56,7 +61,7 @@ pub async fn serve(channels: Arc<Channels>, address: SocketAddr) -> anyhow::Resu
      * warp::fs::file function. The general format of the route will look somewhat similar to the
      * two routes defined above (route_roi and route_telem), but can be shorter and less complex.
      */
-    let route_image = _________;
+    
 
     let cors = warp::cors()
         .allow_any_origin()
@@ -70,7 +75,7 @@ pub async fn serve(channels: Arc<Channels>, address: SocketAddr) -> anyhow::Resu
      * being added. The .with(cors) bit at deals with some annoying shenanigans, but basically
      * allows you to access the plane system from the frontend running locally on your computer.
      */
-    let api = route_roi.or(route_telem)_________.with(cors);
+    let api = route_roi.or(route_telem).or(route_test).with(cors);
 
     info!("initialized server");
 
