@@ -21,7 +21,7 @@ tokio = { version = "1.2.0", features = ["full"] }
 tokio-compat-02 = "0.2"
 serde = "1.0"
 ctrlc = "3.1"
-warp = "0.2"
+warp = "0.3"
 serde_millis = "0.1.1"
 structopt = "0.3"
 clap = "2"
@@ -33,10 +33,11 @@ prettytable-rs = "0.8"
 humansize = "1.1"
 chrono = "0.4"
 colored = "2"
+serialport = { git = "https://github.com/Susurrus/serialport-rs.git", default-features = false }
 tokio-serial = { git = "https://github.com/CUAir/tokio-serial.git", default-features = false }
 tokio-util = { version = "0.6.2", features = ["codec"] }
 geo = "0.17.0"
 
 [features]
 default = []
-libudev = ["tokio-serial/libudev"]
+libudev = ["tokio-serial/libudev", "serialport/libudev"]

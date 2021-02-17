@@ -32,20 +32,24 @@ impl GimbalInterface {
     }
 
     fn find_usb_device_path() -> anyhow::Result<Option<String>> {
-        let ports = serialport::available_ports()?;
-        info!("{:?}", ports);
-        for port in ports {
-            match port.port_type {
-                serialport::SerialPortType::UsbPort(info) => {
-                    if (info.vid == SBGC_VID && info.pid == SBGC_PID)
-                        || (info.vid == FTDI_VID && info.pid == FTDI_PID)
-                    {
-                        return Ok(Some(port.port_name));
+        #[cfg(feature = "udev")]
+        {
+            let ports = serialport::available_ports()?;
+            info!("{:?}", ports);
+            for port in ports {
+                match port.port_type {
+                    serialport::SerialPortType::UsbPort(info) => {
+                        if (info.vid == SBGC_VID && info.pid == SBGC_PID)
+                            || (info.vid == FTDI_VID && info.pid == FTDI_PID)
+                        {
+                            return Ok(Some(port.port_name));
+                        }
                     }
+                    _ => continue,
                 }
-                _ => continue,
             }
         }
+
         Ok(None)
     }
 
