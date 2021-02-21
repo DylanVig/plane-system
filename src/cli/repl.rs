@@ -289,5 +289,9 @@ fn format_camera_response(response: CameraResponse) -> () {
         CameraResponse::ExposureMode { exposure_mode } => {
             println!("new exposure mode: {:?}", exposure_mode);
         }
+        
+        CameraResponse::OperatingMode { operating_mode } => {
+            println!("new operating mode: {:?}", operating_mode);
+        }
     }
 }

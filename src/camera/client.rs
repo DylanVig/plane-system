@@ -491,6 +491,47 @@ impl CameraClient {
                     Ok(CameraResponse::Unit)
                 }
             },
+
+            CameraRequest::OperationMode(req) => match req {
+                CameraOperationModeRequest::Set { mode } => {
+                    self.ensure_setting(
+                        CameraPropertyCode::OperatingMode,
+                        PtpData::UINT8(mode.to_u8().unwrap()),
+                    )
+                    .await?;
+
+                    return Ok(CameraResponse::OperatingMode { operating_mode: *mode });
+                }
+                CameraOperationModeRequest::Get => {
+                    let prop = self
+                        .iface
+                        .update()
+                        .context("failed to query camera properties")?
+                        .get(&CameraPropertyCode::OperatingMode)
+                        .context("failed to query operating mode")?;
+
+                    if let PtpData::UINT8(mode) = prop.current {
+                        if let Some(operating_mode) = CameraOperatingMode::from_u8(mode) {
+                            return Ok(CameraResponse::OperatingMode { operating_mode });
+                        }
+                    }
+
+                    bail!("invalid operating mode: {:?}", prop.current);
+                }
+            }
+
+            CameraRequest::Record(req) => match req {
+                CameraRecordRequest::Start => {
+                    self.iface.execute(CameraControlCode::MovieRecording, PtpData::UINT16(0x0002))?;
+
+                    return Ok(CameraResponse::Unit);
+                }
+                CameraRecordRequest::Stop => {
+                    self.iface.execute(CameraControlCode::MovieRecording, PtpData::UINT16(0x0001))?;
+
+                    return Ok(CameraResponse::Unit);
+                }
+            }
         }
     }
 

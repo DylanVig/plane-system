@@ -1,4 +1,4 @@
-use std::{sync::Arc, process::exit};
+use std::{process::exit, sync::Arc};
 
 use anyhow::Context;
 use camera::{client::CameraClient, state::CameraEvent};
@@ -23,6 +23,7 @@ extern crate async_trait;
 
 mod camera;
 mod cli;
+mod client;
 mod gimbal;
 mod pixhawk;
 mod scheduler;
@@ -241,10 +242,15 @@ async fn main() -> anyhow::Result<()> {
 
             let _ = interrupt_sender.send(());
 
-            spawn(async {
-                sleep(Duration::from_secs(5)).await;
-                warn!("tasks did not end after 5 seconds, force-quitting");
-                exit(1);
+            spawn({
+                let task_names = task_names.clone();
+
+                async move {
+                    info!("remaining tasks: {:?}", task_names.join(", "));
+                    sleep(Duration::from_secs(5)).await;
+                    warn!("tasks did not end after 5 seconds, force-quitting");
+                    exit(1);
+                }
             });
         }
 

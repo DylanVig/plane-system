@@ -3,6 +3,7 @@ use num_traits::{FromPrimitive, ToPrimitive};
 use ptp::{ObjectHandle, PtpRead, StorageId};
 use std::io::Cursor;
 use std::{collections::HashMap, collections::HashSet, fmt::Debug, time::Duration};
+use serde::{Serialize, Deserialize};
 
 /// Sony's USB vendor ID
 const SONY_USB_VID: u16 = 0x054C;
@@ -113,6 +114,15 @@ pub enum CameraControlCode {
     ZoomControlTeleOneShot = 0xD614,
     ZoomControlWide = 0xD63E,
     ZoomControlWideOneShot = 0xD613,
+}
+
+#[repr(u8)]
+#[derive(ToPrimitive, FromPrimitive, Debug, Copy, Clone, Eq, PartialEq, Hash, Serialize, Deserialize)]
+pub enum CameraOperatingMode {
+    Standby = 0x01,
+    StillRec,
+    MovieRec,
+    ContentsTransfer
 }
 
 pub struct CameraInterface {
