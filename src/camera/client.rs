@@ -77,12 +77,11 @@ impl CameraClient {
                 .update()
                 .context("failed to update camera state")?;
 
-            match self.cmd.recv().await {
-                Some(cmd) => {
+            if let Ok(res) = tokio::time::timeout(Duration::from_secs(1), self.cmd.recv()).await {
+                if let Some(cmd) = res {
                     let result = self.exec(cmd.request()).await;
                     let _ = cmd.respond(result);
                 }
-                _ => {}
             }
 
             if let Ok(event) = self.iface.recv() {
@@ -500,7 +499,9 @@ impl CameraClient {
                     )
                     .await?;
 
-                    return Ok(CameraResponse::OperatingMode { operating_mode: *mode });
+                    return Ok(CameraResponse::OperatingMode {
+                        operating_mode: *mode,
+                    });
                 }
                 CameraOperationModeRequest::Get => {
                     let prop = self
@@ -518,20 +519,22 @@ impl CameraClient {
 
                     bail!("invalid operating mode: {:?}", prop.current);
                 }
-            }
+            },
 
             CameraRequest::Record(req) => match req {
                 CameraRecordRequest::Start => {
-                    self.iface.execute(CameraControlCode::MovieRecording, PtpData::UINT16(0x0002))?;
+                    self.iface
+                        .execute(CameraControlCode::MovieRecording, PtpData::UINT16(0x0002))?;
 
                     return Ok(CameraResponse::Unit);
                 }
                 CameraRecordRequest::Stop => {
-                    self.iface.execute(CameraControlCode::MovieRecording, PtpData::UINT16(0x0001))?;
+                    self.iface
+                        .execute(CameraControlCode::MovieRecording, PtpData::UINT16(0x0001))?;
 
                     return Ok(CameraResponse::Unit);
                 }
-            }
+            },
         }
     }
 
