@@ -43,16 +43,16 @@ pub struct Channels {
     pixhawk_event: broadcast::Sender<PixhawkEvent>,
 
     /// Channel for sending instructions to the Pixhawk.
-    pixhawk_cmd: mpsc::Sender<pixhawk::PixhawkCommand>,
+    pixhawk_cmd: flume::Sender<pixhawk::PixhawkCommand>,
 
     /// Channel for broadcasting updates to the state of the camera.
     camera_event: broadcast::Sender<CameraEvent>,
 
     /// Channel for sending instructions to the camera.
-    camera_cmd: mpsc::Sender<camera::CameraCommand>,
+    camera_cmd: flume::Sender<camera::CameraCommand>,
 
     /// Channel for sending instructions to the gimbal.
-    gimbal_cmd: mpsc::Sender<gimbal::GimbalCommand>,
+    gimbal_cmd: flume::Sender<gimbal::GimbalCommand>,
 }
 
 #[derive(Debug)]
@@ -113,10 +113,10 @@ async fn main() -> anyhow::Result<()> {
     let (interrupt_sender, _) = broadcast::channel(1);
     let (telemetry_sender, telemetry_receiver) = watch::channel(None);
     let (pixhawk_event_sender, _) = broadcast::channel(64);
-    let (pixhawk_cmd_sender, pixhawk_cmd_receiver) = mpsc::channel(64);
+    let (pixhawk_cmd_sender, pixhawk_cmd_receiver) = flume::bounded(64);
     let (camera_event_sender, _) = broadcast::channel(256);
-    let (camera_cmd_sender, camera_cmd_receiver) = mpsc::channel(256);
-    let (gimbal_cmd_sender, gimbal_cmd_receiver) = mpsc::channel(256);
+    let (camera_cmd_sender, camera_cmd_receiver) = flume::bounded(256);
+    let (gimbal_cmd_sender, gimbal_cmd_receiver) = flume::bounded(256);
 
     let channels = Arc::new(Channels {
         interrupt: interrupt_sender.clone(),

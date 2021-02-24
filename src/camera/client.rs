@@ -19,7 +19,7 @@ enum CameraClientMode {
 pub struct CameraClient {
     iface: CameraInterface,
     channels: Arc<Channels>,
-    cmd: mpsc::Receiver<CameraCommand>,
+    cmd: flume::Receiver<CameraCommand>,
     error: Option<CameraErrorMode>,
     mode: CameraClientMode,
 }
@@ -27,7 +27,7 @@ pub struct CameraClient {
 impl CameraClient {
     pub fn connect(
         channels: Arc<Channels>,
-        cmd: mpsc::Receiver<CameraCommand>,
+        cmd: flume::Receiver<CameraCommand>,
     ) -> anyhow::Result<Self> {
         let iface = CameraInterface::new().context("failed to create camera interface")?;
 
@@ -77,12 +77,9 @@ impl CameraClient {
                 .update()
                 .context("failed to update camera state")?;
 
-            match self.cmd.recv().await {
-                Some(cmd) => {
-                    let result = self.exec(cmd.request()).await;
-                    let _ = cmd.respond(result);
-                }
-                _ => {}
+            if let Ok(cmd) = self.cmd.try_recv() {
+                let result = self.exec(cmd.request()).await;
+                let _ = cmd.respond(result);
             }
 
             if let Ok(event) = self.iface.recv() {
