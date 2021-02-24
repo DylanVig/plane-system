@@ -23,12 +23,34 @@ pub struct SchedulerConfig {
     pub gps: Coords2D,
 }
 
+#[derive(Copy, Clone, Eq, PartialEq, Debug, Deserialize)]
+pub enum GimbalKind {
+    SimpleBGC,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct GimbalConfig {
+    pub kind: GimbalKind,
+    pub path: Option<String>,
+}
+
+#[derive(Copy, Clone, Eq, PartialEq, Debug, Deserialize)]
+pub enum CameraKind {
+    R10C,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CameraConfig {
+    pub kind: CameraKind,
+    pub path: Option<String>,
+}
+
 #[derive(Debug, Deserialize)]
 pub struct PlaneSystemConfig {
     pub pixhawk: PixhawkConfig,
     pub server: ServerConfig,
-    pub camera: bool,
-    pub gimbal: bool,
+    pub camera: Option<CameraConfig>,
+    pub gimbal: Option<GimbalConfig>,
     pub scheduler: SchedulerConfig,
 }
 

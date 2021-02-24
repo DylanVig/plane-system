@@ -18,7 +18,7 @@ ptp = { git = "https://github.com/CUAir/rust-ptp" }
 futures = "0.3.5"
 bytes = "1.0"
 tokio = { version = "1.2.0", features = ["full"] }
-tokio-compat-02 = "0.2"
+flume = "0.10"
 serde = "1.0"
 ctrlc = "3.1"
 warp = "0.3"

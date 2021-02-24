@@ -1,5 +1,5 @@
 use anyhow::Context;
-use std::sync::Arc;
+use std::{path::Path, sync::Arc};
 use std::time::Duration;
 
 use tokio::sync::mpsc;
@@ -12,13 +12,27 @@ use super::*;
 pub struct GimbalClient {
     iface: GimbalInterface,
     channels: Arc<Channels>,
-    cmd: mpsc::Receiver<GimbalCommand>,
+    cmd: flume::Receiver<GimbalCommand>,
 }
 
 impl GimbalClient {
+    pub fn connect_with_path<P: AsRef<Path>>(
+        channels: Arc<Channels>,
+        cmd: flume::Receiver<GimbalCommand>,
+        path: P
+    ) -> anyhow::Result<Self> {
+        let iface = GimbalInterface::with_path(path).context("failed to create gimbal interface")?;
+
+        Ok(Self {
+            iface,
+            channels,
+            cmd,
+        })
+    }
+
     pub fn connect(
         channels: Arc<Channels>,
-        cmd: mpsc::Receiver<GimbalCommand>,
+        cmd: flume::Receiver<GimbalCommand>,
     ) -> anyhow::Result<Self> {
         let iface = GimbalInterface::new().context("failed to create gimbal interface")?;
 
@@ -40,7 +54,7 @@ impl GimbalClient {
         let mut interrupt_recv = self.channels.interrupt.subscribe();
 
         loop {
-            if let Some(cmd) = self.cmd.recv().await {
+            if let Ok(cmd) = self.cmd.try_recv() {
                 let result = self.exec(cmd.request()).await;
                 let _ = cmd.respond(result);
             }

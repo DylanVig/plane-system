@@ -26,14 +26,14 @@ pub struct PixhawkClient {
     buf: BytesMut,
     sequence: AtomicU8,
     channels: Arc<Channels>,
-    cmd: mpsc::Receiver<PixhawkCommand>,
+    cmd: flume::Receiver<PixhawkCommand>,
     version: MavlinkVersion,
 }
 
 impl PixhawkClient {
     pub async fn connect<A: ToSocketAddrs + Clone>(
         channels: Arc<Channels>,
-        cmd: mpsc::Receiver<PixhawkCommand>,
+        cmd: flume::Receiver<PixhawkCommand>,
         addr: A,
         version: MavlinkVersion,
     ) -> anyhow::Result<Self> {
@@ -224,7 +224,7 @@ impl PixhawkClient {
         // no delay b/c this is an I/O-bound loop
 
         loop {
-            if let Some(cmd) = self.cmd.recv().await {
+            if let Ok(cmd) = self.cmd.try_recv() {
                 self.exec(cmd).await?;
             }
 

@@ -53,7 +53,7 @@ impl Scheduler {
                 let (roll, pitch) = self.backend.get_target_gimbal_angles();
                 let request = GimbalRequest::Control { roll, pitch };
                 let (cmd, _) = Command::new(request);
-                self.channels.gimbal_cmd.clone().send(cmd).await?;
+                self.channels.gimbal_cmd.clone().send(cmd)?;
             }
 
             // this is necessary so that Rust can figure out what the return
