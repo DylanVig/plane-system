@@ -1,8 +1,12 @@
+use anyhow::Context;
 use futures::{Sink, SinkExt, Stream, StreamExt};
 use num_traits::FromPrimitive;
 use simplebgc::*;
-use std::io::{Read, Write};
 use std::time::Duration;
+use std::{
+    io::{Read, Write},
+    path::Path,
+};
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio_serial::{Serial, SerialPortSettings};
 use tokio_util::codec::{Decoder, Encoder, Framed};
@@ -18,17 +22,19 @@ pub struct GimbalInterface {
 }
 
 impl GimbalInterface {
-    pub fn new() -> anyhow::Result<Self> {
-        if let Some(device_path) = Self::find_usb_device_path()? {
-            let settings = SerialPortSettings::default();
-            let port = Serial::from_path(device_path, &settings)?;
+    pub fn with_path<P: AsRef<Path>>(device_path: P) -> anyhow::Result<Self> {
+        let settings = SerialPortSettings::default();
+        let port = Serial::from_path(device_path, &settings)?;
 
-            return Ok(Self {
-                inner: V1Codec.framed(port),
-            });
-        } else {
-            return Err(anyhow!("SimpleBGC usb device not found"));
-        }
+        return Ok(Self {
+            inner: V1Codec.framed(port),
+        });
+    }
+
+    pub fn new() -> anyhow::Result<Self> {
+        Self::with_path(
+            Self::find_usb_device_path()?.context("could not find SimpleBGC USB device")?,
+        )
     }
 
     fn find_usb_device_path() -> anyhow::Result<Option<String>> {
@@ -48,6 +54,11 @@ impl GimbalInterface {
                     _ => continue,
                 }
             }
+        }
+
+        #[cfg(not(feature = "udev"))]
+        {
+            warn!("USB serial devices cannot be automatically detected because this executable was not compiled with libudev enabled");
         }
 
         Ok(None)

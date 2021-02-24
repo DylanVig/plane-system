@@ -1,4 +1,4 @@
-use std::{sync::Arc, process::exit};
+use std::{process::exit, sync::Arc};
 
 use anyhow::Context;
 use camera::{client::CameraClient, state::CameraEvent};
@@ -152,6 +152,7 @@ async fn main() -> anyhow::Result<()> {
             .await?;
             async move { pixhawk_client.run().await }
         });
+
         futures.push(pixhawk_task);
         task_names.push("pixhawk");
 
@@ -160,28 +161,44 @@ async fn main() -> anyhow::Result<()> {
             let telemetry = TelemetryStream::new(channels.clone(), telemetry_sender);
             async move { telemetry.run().await }
         });
+
         task_names.push("telemetry");
         futures.push(telemetry_task);
     } else {
         info!("pixhawk address not specified, disabling pixhawk connection and telemetry stream");
     }
 
-    if config.camera {
+    if let Some(camera_config) = config.camera {
+        match camera_config.kind {
+            cli::config::CameraKind::R10C => trace!("camera kind set to Sony R10C"),
+        }
+
         info!("connecting to camera");
         let camera_task = spawn({
             let mut camera_client = CameraClient::connect(channels.clone(), camera_cmd_receiver)?;
             async move { camera_client.run().await }
         });
+
         task_names.push("camera");
         futures.push(camera_task);
     }
 
-    if config.gimbal {
+    if let Some(gimbal_config) = config.gimbal {
+        match gimbal_config.kind {
+            cli::config::GimbalKind::SimpleBGC => trace!("gimbal kind set to SimpleBGC"),
+        }
+
         info!("initializing gimbal");
         let gimbal_task = spawn({
-            let mut gimbal_client = GimbalClient::connect(channels.clone(), gimbal_cmd_receiver)?;
+            let mut gimbal_client = if let Some(gimbal_path) = gimbal_config.path {
+                GimbalClient::connect_with_path(channels.clone(), gimbal_cmd_receiver, gimbal_path)?
+            } else {
+                GimbalClient::connect(channels.clone(), gimbal_cmd_receiver)?
+            };
+
             async move { gimbal_client.run().await }
         });
+
         task_names.push("gimbal");
         futures.push(gimbal_task);
     }
@@ -192,6 +209,7 @@ async fn main() -> anyhow::Result<()> {
             let mut scheduler = Scheduler::new(channels.clone(), config.scheduler.gps);
             async move { scheduler.run().await }
         });
+
         task_names.push("scheduler");
         futures.push(scheduler_task);
     }
@@ -202,10 +220,12 @@ async fn main() -> anyhow::Result<()> {
         .address
         .parse()
         .context("invalid server address")?;
+
     let server_task = spawn({
         let channels = channels.clone();
         server::serve(channels, server_address)
     });
+
     task_names.push("server");
     futures.push(server_task);
 
@@ -214,6 +234,7 @@ async fn main() -> anyhow::Result<()> {
         let channels = channels.clone();
         cli::repl::run(channels)
     });
+
     task_names.push("cli");
     futures.push(cli_task);
 
