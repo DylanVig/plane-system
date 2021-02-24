@@ -23,6 +23,7 @@ extern crate async_trait;
 
 mod camera;
 mod cli;
+mod client;
 mod gimbal;
 mod pixhawk;
 mod scheduler;
