@@ -13,13 +13,17 @@ pub struct PixhawkConfig {
 }
 
 #[derive(Debug, Deserialize)]
-pub struct ServerConfig {
+pub struct PlaneServerConfig {
+    pub address: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct GroundServerConfig {
     pub address: String,
 }
 
 #[derive(Debug, Deserialize)]
 pub struct SchedulerConfig {
-    pub enabled: bool,
     pub gps: Coords2D,
 }
 
@@ -48,10 +52,11 @@ pub struct CameraConfig {
 #[derive(Debug, Deserialize)]
 pub struct PlaneSystemConfig {
     pub pixhawk: PixhawkConfig,
-    pub server: ServerConfig,
+    pub plane_server: PlaneServerConfig,
+    pub ground_server: Option<GroundServerConfig>,
     pub camera: Option<CameraConfig>,
     pub gimbal: Option<GimbalConfig>,
-    pub scheduler: SchedulerConfig,
+    pub scheduler: Option<SchedulerConfig>,
 }
 
 impl PlaneSystemConfig {

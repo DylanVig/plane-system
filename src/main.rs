@@ -1,4 +1,4 @@
-use std::{process::exit, sync::Arc};
+use std::{process::exit, str::FromStr, sync::Arc};
 
 use anyhow::Context;
 use camera::{client::CameraClient, state::CameraEvent};
@@ -23,8 +23,8 @@ extern crate async_trait;
 
 mod camera;
 mod cli;
-mod client;
 mod gimbal;
+mod gs;
 mod pixhawk;
 mod scheduler;
 mod server;
@@ -204,10 +204,26 @@ async fn main() -> anyhow::Result<()> {
         futures.push(gimbal_task);
     }
 
-    if config.scheduler.enabled {
+    if let Some(gs_config) = config.ground_server {
+        info!("initializing ground server client");
+        let gs_task = spawn({
+            let mut gs_client = GroundServerClient::connect(
+                channels.clone(),
+                reqwest::Url::from_str(&gs_config.address)
+                    .context("invalid ground server address")?,
+            );
+            
+            async move { gs_client.run().await }
+        });
+
+        task_names.push("ground server client");
+        futures.push(gs_task);
+    }
+
+    if let Some(scheduler_config) = config.scheduler {
         info!("initializing scheduler");
         let scheduler_task = spawn({
-            let mut scheduler = Scheduler::new(channels.clone(), config.scheduler.gps);
+            let mut scheduler = Scheduler::new(channels.clone(), scheduler_config.gps);
             async move { scheduler.run().await }
         });
 
@@ -215,9 +231,9 @@ async fn main() -> anyhow::Result<()> {
         futures.push(scheduler_task);
     }
 
-    info!("initializing server");
+    info!("initializing plane server");
     let server_address = config
-        .server
+        .plane_server
         .address
         .parse()
         .context("invalid server address")?;
