@@ -20,6 +20,7 @@ async-trait = "0.1.41"
 # protocols + serialization
 serde = "1.0"
 serde_millis = "0.1.1"
+serde_json = "1.0"
 mavlink = { features = ["ardupilotmega", "uavionix", "icarous"], git = "https://github.com/laptou/rust-mavlink" }
 simplebgc = { git = "https://github.com/laptou/simplebgc-rs", branch = "serial-codec" }
 ptp = { git = "https://github.com/CUAir/rust-ptp" }
@@ -28,7 +29,7 @@ num-derive = "0.3"
 
 # http
 warp = "0.3"
-isahc = "1.1"
+reqwest = { version = "0.11", features = ["rustls-tls", "json", "multipart"], default-features = false }
 
 # utility
 bytes = "1.0"
