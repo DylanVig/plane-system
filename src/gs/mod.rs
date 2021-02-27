@@ -1,23 +1,21 @@
-use std::sync::Arc;
+use std::{borrow::Borrow, sync::Arc, time::Instant};
 
 use clap::AppSettings;
+use futures::{select, FutureExt};
 ///! Functions for interfacing with the ground server.
 use structopt::StructOpt;
 
 use reqwest;
 
-use crate::state::TelemetryInfo;
+use crate::state::*;
 use serde_json::json;
 
-use crate::{
-    Channels,
-};
+use crate::{CameraEvent, Channels};
 
 #[derive(StructOpt, Debug, Clone)]
 #[structopt(setting(AppSettings::NoBinaryName))]
 #[structopt(rename_all = "kebab-case")]
-pub enum GroundServerRequest {
-}
+pub enum GroundServerRequest {}
 
 pub struct GroundServerClient {
     channels: Arc<Channels>,
@@ -34,13 +32,62 @@ impl GroundServerClient {
         })
     }
 
-    pub async fn run() {
+    pub async fn run(mut self) -> anyhow::Result<()> {
+        let mut interrupt_recv = self.channels.interrupt.subscribe();
+        let mut camera_recv = self.channels.camera_event.subscribe();
 
+        let interrupt_fut = interrupt_recv.recv().fuse();
+        let telemetry_info = TelemetryInfo {
+            plane_attitude: Attitude {
+                roll: 30.0,
+                pitch: 10.0,
+                yaw: -20.0,
+            },
+            gimbal_attitude: Attitude {
+                roll: 60.0,
+                pitch: 70.0,
+                yaw: -90.0,
+            },
+            position: Coords3D {
+                latitude: -10.0,
+                longitude: 30.0,
+                altitude: 400.0,
+            },
+        };
+
+        futures::pin_mut!(interrupt_fut);
+
+        loop {
+            select! {
+                camera_evt = camera_recv.recv().fuse() => {
+                    if let Ok(camera_evt) = camera_evt {
+                        match camera_evt {
+                            CameraEvent::Download { image_name, image_data, file_name } => {
+                                info!("image download detected, uploading file to ground server");
+                                self.upload_image(
+                                    image_data.as_ref(),
+                                    image_name,
+                                    "image/jpeg",
+                                    telemetry_info.clone()
+                                ).await?;
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+                _ = interrupt_fut => {
+                    break;
+                }
+            }
+        }
+
+        Ok(())
     }
 
     pub async fn upload_image(
         &self,
-        data: Vec<u8>,
+        data: &[u8],
+        image_name: String,
         mime_type: &str,
         telemetry: TelemetryInfo,
     ) -> anyhow::Result<()> {
@@ -49,8 +96,10 @@ impl GroundServerClient {
             .join("/api/v1/image")
             .expect("could not create image upload url");
 
+        let timestamp = chrono::Utc::now().timestamp_millis();
+
         let json = json!({
-            "timestamp": 0,
+            "timestamp": timestamp,
             "imgMode": "fixed",
             "fov": 60.0,
             "telemetry": {
@@ -71,10 +120,14 @@ impl GroundServerClient {
             .part("json", reqwest::multipart::Part::text(json.to_string()))
             .part(
                 "files",
-                reqwest::multipart::Part::bytes(data).mime_str(mime_type)?,
+                reqwest::multipart::Part::bytes(Vec::from(data))
+                    .file_name(image_name)
+                    .mime_str(mime_type)?,
             );
 
         self.http.post(endpoint).multipart(form).send().await?;
+
+        debug!("uploaded image and telemetry to ground server");
 
         Ok(())
     }

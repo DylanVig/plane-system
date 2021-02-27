@@ -1,16 +1,17 @@
-use std::{process::exit, str::FromStr, sync::Arc};
+use std::{process::exit, str::FromStr, sync::Arc, time::Duration};
 
 use anyhow::Context;
-use camera::{client::CameraClient, state::CameraEvent};
 use ctrlc;
+use structopt::StructOpt;
+use tokio::{spawn, sync::*, time::sleep};
+
+use camera::{client::CameraClient, state::CameraEvent};
 use gimbal::client::GimbalClient;
+use gs::GroundServerClient;
 use pixhawk::{client::PixhawkClient, state::PixhawkEvent};
 use scheduler::Scheduler;
 use state::TelemetryInfo;
-use std::time::Duration;
-use structopt::StructOpt;
 use telemetry::TelemetryStream;
-use tokio::{spawn, sync::*, time::sleep};
 
 #[macro_use]
 extern crate log;
@@ -211,8 +212,8 @@ async fn main() -> anyhow::Result<()> {
                 channels.clone(),
                 reqwest::Url::from_str(&gs_config.address)
                     .context("invalid ground server address")?,
-            );
-            
+            )?;
+
             async move { gs_client.run().await }
         });
 
