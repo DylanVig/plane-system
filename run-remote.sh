@@ -15,4 +15,4 @@ cargo build --target=${TARGET_ARCH} || exit
 echo "copying executable"
 scp ./target/${TARGET_ARCH}/debug/plane-system ubuntu@${TARGET_IP}:/home/ubuntu/plane-system
 echo "running executable"
-ssh ubuntu@${TARGET_IP} "plane-system --config plane-system.json" 
+ssh ubuntu@${TARGET_IP} "RUST_LOG=plane_system=debug /home/ubuntu/plane-system --config plane-system.json" 
