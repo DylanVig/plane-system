@@ -14,7 +14,10 @@ while getopts "a:" arg; do
   esac
 done
 
-cargo build --target=${TARGET_ARCH} || exit
+echo "building executable"
+cargo build --target=${TARGET_ARCH} --release|| exit
+echo "reducing executable size"
+strip ./target/${TARGET_ARCH}/debug/plane-system
 echo "copying executable"
 scp ./target/${TARGET_ARCH}/debug/plane-system ubuntu@${TARGET_IP}:/home/ubuntu/plane-system
 echo "running executable"
