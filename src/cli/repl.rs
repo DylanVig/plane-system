@@ -7,7 +7,7 @@ use prettytable::{cell, row, Table};
 use structopt::StructOpt;
 
 use crate::{
-    camera::CameraRequest, camera::CameraResponse, gimbal::GimbalRequest, Channels, Command,
+    camera::CameraRequest, camera::CameraResponse, gimbal::GimbalRequest, gs::GroundServerRequest, Channels, Command,
 };
 
 #[derive(StructOpt, Debug)]
@@ -16,6 +16,7 @@ use crate::{
 enum ReplRequest {
     Camera(CameraRequest),
     Gimbal(GimbalRequest),
+    GroundServer(GroundServerRequest),
     Exit,
 }
 
@@ -52,7 +53,7 @@ pub async fn run(channels: Arc<Channels>) -> anyhow::Result<()> {
         match request {
             ReplRequest::Camera(request) => {
                 let (cmd, chan) = Command::new(request);
-                channels.camera_cmd.clone().send(cmd).await?;
+                channels.camera_cmd.clone().send(cmd)?;
                 let result = chan.await?;
 
                 match result {
@@ -62,8 +63,11 @@ pub async fn run(channels: Arc<Channels>) -> anyhow::Result<()> {
             }
             ReplRequest::Gimbal(request) => {
                 let (cmd, chan) = Command::new(request);
-                channels.gimbal_cmd.clone().send(cmd).await?;
+                channels.gimbal_cmd.clone().send(cmd)?;
                 let _ = chan.await?;
+            }
+            ReplRequest::GroundServer(request) => match request {
+                
             }
             ReplRequest::Exit => {
                 let _ = channels.interrupt.send(());

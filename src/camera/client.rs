@@ -1,4 +1,4 @@
-use std::{collections::HashMap, path::PathBuf, sync::Arc, time::Duration};
+use std::{collections::HashMap, path::PathBuf, rc::Rc, sync::Arc, time::Duration};
 
 use anyhow::Context;
 use num_traits::{FromPrimitive, ToPrimitive};
@@ -19,7 +19,7 @@ enum CameraClientMode {
 pub struct CameraClient {
     iface: CameraInterface,
     channels: Arc<Channels>,
-    cmd: mpsc::Receiver<CameraCommand>,
+    cmd: flume::Receiver<CameraCommand>,
     error: Option<CameraErrorMode>,
     mode: CameraClientMode,
 }
@@ -27,7 +27,7 @@ pub struct CameraClient {
 impl CameraClient {
     pub fn connect(
         channels: Arc<Channels>,
-        cmd: mpsc::Receiver<CameraCommand>,
+        cmd: flume::Receiver<CameraCommand>,
     ) -> anyhow::Result<Self> {
         let iface = CameraInterface::new().context("failed to create camera interface")?;
 
@@ -71,18 +71,22 @@ impl CameraClient {
         self.init()?;
 
         let mut interrupt_recv = self.channels.interrupt.subscribe();
+        let interrupt_fut = interrupt_recv.recv().fuse();
+        futures::pin_mut!(interrupt_fut);
 
         loop {
             self.iface
                 .update()
                 .context("failed to update camera state")?;
 
-            match self.cmd.try_recv() {
-                Ok(cmd) => {
-                    let result = self.exec(cmd.request()).await;
-                    let _ = cmd.respond(result);
+            futures::select! {
+                cmd = self.cmd.recv_async().fuse() => {
+                    if let Ok(cmd) = cmd {
+                        let result = self.exec(cmd.request()).await;
+                        let _ = cmd.respond(result);
+                    }
                 }
-                _ => {}
+                _ = interrupt_fut => break,
             }
 
             if let Ok(event) = self.iface.recv() {
@@ -130,12 +134,6 @@ impl CameraClient {
             if let Err(camera_error) = self.check_error() {
                 error!("detected camera error: {:?}", camera_error);
             }
-
-            if interrupt_recv.try_recv().is_ok() {
-                break;
-            }
-
-            tokio::time::sleep(Duration::from_secs(1)).await;
         }
 
         info!("disconnecting from camera");
@@ -625,7 +623,7 @@ impl CameraClient {
 
         let mut image_path = std::env::current_dir().context("failed to get current directory")?;
 
-        image_path.push(shot_info.filename);
+        image_path.push(&shot_info.filename);
 
         debug!("writing image to file '{}'", image_path.to_string_lossy());
 
@@ -639,6 +637,12 @@ impl CameraClient {
             .context("failed to save image")?;
 
         info!("wrote image to file '{}'", image_path.to_string_lossy());
+
+        let _ = self.channels.camera_event.send(CameraEvent::Download {
+            file_name: Some(image_path.clone()),
+            image_name: shot_info.filename,
+            image_data: Arc::new(shot_data)
+        });
 
         Ok(image_path)
     }

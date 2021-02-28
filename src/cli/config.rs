@@ -13,23 +13,50 @@ pub struct PixhawkConfig {
 }
 
 #[derive(Debug, Deserialize)]
-pub struct ServerConfig {
+pub struct PlaneServerConfig {
+    pub address: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct GroundServerConfig {
     pub address: String,
 }
 
 #[derive(Debug, Deserialize)]
 pub struct SchedulerConfig {
-    pub enabled: bool,
     pub gps: Coords2D,
+}
+
+#[derive(Copy, Clone, Eq, PartialEq, Debug, Deserialize)]
+pub enum GimbalKind {
+    SimpleBGC,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct GimbalConfig {
+    pub kind: GimbalKind,
+    pub path: Option<String>,
+}
+
+#[derive(Copy, Clone, Eq, PartialEq, Debug, Deserialize)]
+pub enum CameraKind {
+    R10C,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CameraConfig {
+    pub kind: CameraKind,
+    pub path: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
 pub struct PlaneSystemConfig {
     pub pixhawk: PixhawkConfig,
-    pub server: ServerConfig,
-    pub camera: bool,
-    pub gimbal: Option<GimbalKind>,
-    pub scheduler: SchedulerConfig,
+    pub plane_server: PlaneServerConfig,
+    pub ground_server: Option<GroundServerConfig>,
+    pub camera: Option<CameraConfig>,
+    pub gimbal: Option<GimbalConfig>,
+    pub scheduler: Option<SchedulerConfig>,
 }
 
 impl PlaneSystemConfig {
