@@ -4,7 +4,7 @@ TARGET_PREFIX="aarch64-linux-gnu-"
 TARGET_ARCH="aarch64-unknown-linux-gnu"
 TARGET_IP="192.168.1.239"
 
-while getopts "a:" arg; do
+while getopts "a:i:p:" arg; do
   case "${arg}" in
     a)
       TARGET_ARCH=$OPTARG
