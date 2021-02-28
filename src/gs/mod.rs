@@ -24,7 +24,7 @@ pub struct GroundServerClient {
 }
 
 impl GroundServerClient {
-    pub fn connect(channels: Arc<Channels>, base_url: reqwest::Url) -> anyhow::Result<Self> {
+    pub fn new(channels: Arc<Channels>, base_url: reqwest::Url) -> anyhow::Result<Self> {
         Ok(GroundServerClient {
             channels,
             base_url,
@@ -32,7 +32,7 @@ impl GroundServerClient {
         })
     }
 
-    pub async fn run(mut self) -> anyhow::Result<()> {
+    pub async fn run(self) -> anyhow::Result<()> {
         let mut interrupt_recv = self.channels.interrupt.subscribe();
         let mut camera_recv = self.channels.camera_event.subscribe();
 

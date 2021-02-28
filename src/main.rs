@@ -208,7 +208,7 @@ async fn main() -> anyhow::Result<()> {
     if let Some(gs_config) = config.ground_server {
         info!("initializing ground server client");
         let gs_task = spawn({
-            let mut gs_client = GroundServerClient::connect(
+            let gs_client = GroundServerClient::new(
                 channels.clone(),
                 reqwest::Url::from_str(&gs_config.address)
                     .context("invalid ground server address")?,
