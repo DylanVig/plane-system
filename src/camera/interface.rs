@@ -312,7 +312,7 @@ impl CameraInterface {
     /// Sets the value of a camera property. This should be followed by a call
     /// to update() and a check to make sure that the intended result was
     /// achieved.
-    pub fn set(&mut self, code: CameraPropertyCode, new_value: ptp::PtpData) -> anyhow::Result<()> {
+    pub fn set(&self, code: CameraPropertyCode, new_value: ptp::PtpData) -> anyhow::Result<()> {
         let state = if let Some(ref state) = self.state {
             state
         } else {
@@ -345,7 +345,7 @@ impl CameraInterface {
     /// Executes a command on the camera. This should be followed by a call to
     /// update() and a check to make sure that the intended result was achieved.
     pub fn execute(
-        &mut self,
+        &self,
         code: CameraControlCode,
         payload: ptp::PtpData,
     ) -> anyhow::Result<()> {
@@ -368,27 +368,27 @@ impl CameraInterface {
     }
 
     /// Receives an event from the camera.
-    pub fn recv(&mut self) -> anyhow::Result<ptp::PtpEvent> {
+    pub fn recv(&self) -> anyhow::Result<ptp::PtpEvent> {
         let event = self.camera.event(Some(Duration::from_secs(1)))?;
 
         trace!("received event: {:#?}", &event);
         Ok(event)
     }
 
-    pub fn device_info(&mut self) -> anyhow::Result<ptp::PtpDeviceInfo> {
+    pub fn device_info(&self) -> anyhow::Result<ptp::PtpDeviceInfo> {
         Ok(self.camera.get_device_info(self.timeout())?)
     }
 
-    pub fn storage_ids(&mut self) -> anyhow::Result<Vec<StorageId>> {
+    pub fn storage_ids(&self) -> anyhow::Result<Vec<StorageId>> {
         Ok(self.camera.get_storage_ids(self.timeout())?)
     }
 
-    pub fn storage_info(&mut self, storage_id: StorageId) -> anyhow::Result<ptp::PtpStorageInfo> {
+    pub fn storage_info(&self, storage_id: StorageId) -> anyhow::Result<ptp::PtpStorageInfo> {
         Ok(self.camera.get_storage_info(storage_id, self.timeout())?)
     }
 
     pub fn object_handles(
-        &mut self,
+        &self,
         storage_id: StorageId,
         parent_id: Option<ObjectHandle>,
     ) -> anyhow::Result<Vec<ObjectHandle>> {
@@ -397,11 +397,11 @@ impl CameraInterface {
             .get_object_handles(storage_id, None, parent_id, self.timeout())?)
     }
 
-    pub fn object_info(&mut self, object_id: ObjectHandle) -> anyhow::Result<ptp::PtpObjectInfo> {
+    pub fn object_info(&self, object_id: ObjectHandle) -> anyhow::Result<ptp::PtpObjectInfo> {
         Ok(self.camera.get_object_info(object_id, self.timeout())?)
     }
 
-    pub fn object_data(&mut self, object_id: ObjectHandle) -> anyhow::Result<Vec<u8>> {
+    pub fn object_data(&self, object_id: ObjectHandle) -> anyhow::Result<Vec<u8>> {
         Ok(self.camera.get_object(object_id, self.timeout())?)
     }
 }
