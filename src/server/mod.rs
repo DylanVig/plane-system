@@ -27,8 +27,6 @@ enum ClientType {
 }
 
 pub async fn serve(channels: Arc<Channels>, address: SocketAddr) -> anyhow::Result<()> {
-    use tokio_compat_02::FutureExt;
-
     info!("initializing server");
 
     let telemetry_receiver = Arc::new(channels.telemetry.clone());
@@ -68,7 +66,6 @@ pub async fn serve(channels: Arc<Channels>, address: SocketAddr) -> anyhow::Resu
 
         server.await;
     }
-    .compat()
     .await;
 
     Ok(())

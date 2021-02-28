@@ -13,15 +13,15 @@ anyhow = "1.0"
 mavlink = { features = ["ardupilotmega", "uavionix", "icarous"], git = "https://github.com/laptou/rust-mavlink" }
 num-traits = "0.2"
 num-derive = "0.3"
-simplebgc = { git = "https://github.com/laptou/simplebgc-rs" }
+simplebgc = { git = "https://github.com/laptou/simplebgc-rs", branch = "serial-codec" }
 ptp = { git = "https://github.com/CUAir/rust-ptp" }
 futures = "0.3.5"
-bytes = "0.6"
-tokio = { version = "0.3", features = ["full"] }
-tokio-compat-02 = "0.1"
+bytes = "1.0"
+tokio = { version = "1.2.0", features = ["full"] }
+flume = "0.10"
 serde = "1.0"
 ctrlc = "3.1"
-warp = "0.2"
+warp = "0.3"
 serde_millis = "0.1.1"
 structopt = "0.3"
 clap = "2"
@@ -34,4 +34,10 @@ humansize = "1.1"
 chrono = "0.4"
 colored = "2"
 serialport = { git = "https://github.com/Susurrus/serialport-rs.git", default-features = false }
-geo = "0.16.0"
+tokio-serial = { git = "https://github.com/CUAir/tokio-serial.git", default-features = false }
+tokio-util = { version = "0.6.2", features = ["codec"] }
+geo = "0.17.0"
+
+[features]
+default = []
+libudev = ["tokio-serial/libudev", "serialport/libudev"]
