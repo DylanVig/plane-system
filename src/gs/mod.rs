@@ -65,12 +65,14 @@ impl GroundServerClient {
                             CameraEvent::Download { image_name, image_data, .. } => {
                                 debug!("image download detected, uploading file to ground server");
 
-                                let image_mime = if let Some(image_ext) = Path::new(&image_name).extension().and_then(OsStr::to_str) { 
-                                    match image_ext.to_lowercase().as_str() {
+                                let image_mime = if let Some(image_ext) = Path::new(&image_name).extension().and_then(OsStr::to_str) {
+                                    let image_ext = image_ext.to_lowercase();
+
+                                    match image_ext.as_str() {
                                         "jpg" | "jpeg" => "image/jpeg",
                                         "mp4" => "video/mp4",
                                         ext => {
-                                            error!("unknown mime type for image file received from camera with extension '{:?}'", ext);
+                                            error!("unknown mime type for image file received from camera with extension {:?}", ext);
                                             continue;
                                         }
                                     }
