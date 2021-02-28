@@ -1,4 +1,4 @@
-use std::{collections::HashMap, path::PathBuf, sync::Arc, time::Duration};
+use std::{collections::HashMap, path::PathBuf, rc::Rc, sync::Arc, time::Duration};
 
 use anyhow::Context;
 use num_traits::{FromPrimitive, ToPrimitive};
@@ -623,7 +623,7 @@ impl CameraClient {
 
         let mut image_path = std::env::current_dir().context("failed to get current directory")?;
 
-        image_path.push(shot_info.filename);
+        image_path.push(&shot_info.filename);
 
         debug!("writing image to file '{}'", image_path.to_string_lossy());
 
@@ -637,6 +637,12 @@ impl CameraClient {
             .context("failed to save image")?;
 
         info!("wrote image to file '{}'", image_path.to_string_lossy());
+
+        let _ = self.channels.camera_event.send(CameraEvent::Download {
+            file_name: Some(image_path.clone()),
+            image_name: shot_info.filename,
+            image_data: Arc::new(shot_data)
+        });
 
         Ok(image_path)
     }

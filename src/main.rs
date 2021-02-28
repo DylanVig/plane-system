@@ -1,16 +1,17 @@
-use std::{process::exit, sync::Arc};
+use std::{process::exit, str::FromStr, sync::Arc, time::Duration};
 
 use anyhow::Context;
-use camera::{client::CameraClient, state::CameraEvent};
 use ctrlc;
+use structopt::StructOpt;
+use tokio::{spawn, sync::*, time::sleep};
+
+use camera::{client::CameraClient, state::CameraEvent};
 use gimbal::client::GimbalClient;
+use gs::GroundServerClient;
 use pixhawk::{client::PixhawkClient, state::PixhawkEvent};
 use scheduler::Scheduler;
 use state::TelemetryInfo;
-use std::time::Duration;
-use structopt::StructOpt;
 use telemetry::TelemetryStream;
-use tokio::{spawn, sync::*, time::sleep};
 
 #[macro_use]
 extern crate log;
@@ -24,6 +25,7 @@ extern crate async_trait;
 mod camera;
 mod cli;
 mod gimbal;
+mod gs;
 mod pixhawk;
 mod scheduler;
 mod server;
@@ -203,10 +205,26 @@ async fn main() -> anyhow::Result<()> {
         futures.push(gimbal_task);
     }
 
-    if config.scheduler.enabled {
+    if let Some(gs_config) = config.ground_server {
+        info!("initializing ground server client");
+        let gs_task = spawn({
+            let gs_client = GroundServerClient::new(
+                channels.clone(),
+                reqwest::Url::from_str(&gs_config.address)
+                    .context("invalid ground server address")?,
+            )?;
+
+            async move { gs_client.run().await }
+        });
+
+        task_names.push("ground server client");
+        futures.push(gs_task);
+    }
+
+    if let Some(scheduler_config) = config.scheduler {
         info!("initializing scheduler");
         let scheduler_task = spawn({
-            let mut scheduler = Scheduler::new(channels.clone(), config.scheduler.gps);
+            let mut scheduler = Scheduler::new(channels.clone(), scheduler_config.gps);
             async move { scheduler.run().await }
         });
 
@@ -214,9 +232,9 @@ async fn main() -> anyhow::Result<()> {
         futures.push(scheduler_task);
     }
 
-    info!("initializing server");
+    info!("initializing plane server");
     let server_address = config
-        .server
+        .plane_server
         .address
         .parse()
         .context("invalid server address")?;

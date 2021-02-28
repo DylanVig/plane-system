@@ -2,8 +2,11 @@
   "pixhawk": {
     "mavlink": { "type": "V2" }
   },
-  "server": {
+  "plane_server": {
     "address": "[::]:8080"
+  },
+  "ground_server": {
+    "address": "192.168.1.133:9000"
   },
   "scheduler": {
     "enabled": false,
