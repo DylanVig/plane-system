@@ -3,9 +3,12 @@
 TARGET_ARCH="aarch64-unknown-linux-gnu"
 TARGET_IP="192.168.1.239"
 
-while getopts "h:s:" arg; do
+while getopts "a:" arg; do
   case "${arg}" in
     a)
+      TARGET_ARCH=$OPTARG
+      ;;
+    i)
       TARGET_ARCH=$OPTARG
       ;;
   esac
