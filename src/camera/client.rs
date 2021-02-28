@@ -71,15 +71,22 @@ impl CameraClient {
         self.init()?;
 
         let mut interrupt_recv = self.channels.interrupt.subscribe();
+        let interrupt_fut = interrupt_recv.recv().fuse();
+        futures::pin_mut!(interrupt_fut);
 
         loop {
             self.iface
                 .update()
                 .context("failed to update camera state")?;
 
-            if let Ok(cmd) = self.cmd.try_recv() {
-                let result = self.exec(cmd.request()).await;
-                let _ = cmd.respond(result);
+            futures::select! {
+                cmd = self.cmd.recv_async().fuse() => {
+                    if let Ok(cmd) = cmd {
+                        let result = self.exec(cmd.request()).await;
+                        let _ = cmd.respond(result);
+                    }
+                }
+                _ = interrupt_fut => break,
             }
 
             if let Ok(event) = self.iface.recv() {
@@ -127,12 +134,6 @@ impl CameraClient {
             if let Err(camera_error) = self.check_error() {
                 error!("detected camera error: {:?}", camera_error);
             }
-
-            if interrupt_recv.try_recv().is_ok() {
-                break;
-            }
-
-            tokio::time::sleep(Duration::from_secs(1)).await;
         }
 
         info!("disconnecting from camera");
