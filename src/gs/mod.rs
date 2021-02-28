@@ -1,4 +1,4 @@
-use std::{borrow::Borrow, sync::Arc, time::Instant};
+use std::{ffi::OsStr, path::Path, sync::Arc};
 
 use clap::AppSettings;
 use futures::{select, FutureExt};
@@ -62,12 +62,28 @@ impl GroundServerClient {
                 camera_evt = camera_recv.recv().fuse() => {
                     if let Ok(camera_evt) = camera_evt {
                         match camera_evt {
-                            CameraEvent::Download { image_name, image_data, file_name } => {
-                                info!("image download detected, uploading file to ground server");
-                                self.upload_image(
+                            CameraEvent::Download { image_name, image_data, .. } => {
+                                debug!("image download detected, uploading file to ground server");
+
+                                let image_mime = if let Some(image_ext) = Path::new(&image_name).extension().and_then(OsStr::to_str) { 
+                                    match image_ext.to_lowercase().as_str() {
+                                        "jpg" | "jpeg" => "image/jpeg",
+                                        "mp4" => "video/mp4",
+                                        ext => {
+                                            error!("unknown mime type for image file received from camera with extension '{:?}'", ext);
+                                            continue;
+                                        }
+                                    }
+                                } else {
+
+                                    error!("unknown mime type for image file received from camera");
+                                    continue;
+                                };
+
+                                self.send_image(
                                     image_data.as_ref(),
                                     image_name,
-                                    "image/jpeg",
+                                    image_mime,
                                     telemetry_info.clone()
                                 ).await?;
                             }
@@ -84,7 +100,8 @@ impl GroundServerClient {
         Ok(())
     }
 
-    pub async fn upload_image(
+    /// Sends an image to the ground server.
+    pub async fn send_image(
         &self,
         data: &[u8],
         image_name: String,
