@@ -27,11 +27,6 @@ pub struct SchedulerConfig {
     pub gps: Coords2D,
 }
 
-#[derive(Copy, Clone, Eq, PartialEq, Debug, Deserialize)]
-pub enum GimbalKind {
-    SimpleBGC,
-}
-
 #[derive(Debug, Deserialize)]
 pub struct GimbalConfig {
     pub kind: GimbalKind,

@@ -186,16 +186,14 @@ async fn main() -> anyhow::Result<()> {
     }
 
     if let Some(gimbal_config) = config.gimbal {
-        match gimbal_config.kind {
-            cli::config::GimbalKind::SimpleBGC => trace!("gimbal kind set to SimpleBGC"),
-        }
+        trace!("gimbal kind set to {:?}", gimbal_config.kind);
 
         info!("initializing gimbal");
         let gimbal_task = spawn({
             let mut gimbal_client = if let Some(gimbal_path) = gimbal_config.path {
                 GimbalClient::connect_with_path(channels.clone(), gimbal_cmd_receiver, gimbal_path)?
             } else {
-                GimbalClient::connect(channels.clone(), gimbal_cmd_receiver)?
+                GimbalClient::connect(channels.clone(), gimbal_cmd_receiver, gimbal_config.kind)?
             };
 
             async move { gimbal_client.run().await }

@@ -1,7 +1,7 @@
 use anyhow::Context;
+use futures::StreamExt;
 use serde::{Deserialize, Serialize};
 use std::{convert::Infallible, net::SocketAddr, sync::Arc};
-use tokio::stream::{Stream, StreamExt};
 use warp::{self, Filter};
 
 use crate::state::{RegionOfInterest, TelemetryInfo};
@@ -57,17 +57,16 @@ pub async fn serve(channels: Arc<Channels>, address: SocketAddr) -> anyhow::Resu
                     telemetry_receiver.clone(),
                     |mut telemetry_receiver| async move {
                         let res = telemetry_receiver.changed().await;
-            
+
                         let telemetry = telemetry_receiver.borrow().clone();
-            
+
                         Some((res.map(|_| telemetry), telemetry_receiver))
                     },
                 );
-                
-                warp::sse::reply(
-                    telemetry_stream
-                        .map(|res| res.map(|telemetry| warp::sse::json(telemetry))),
-                )
+
+                warp::sse::reply(telemetry_stream.map(|res| {
+                    res.map(|telemetry| warp::sse::Event::default().json_data(telemetry).unwrap())
+                }))
             }
         });
 

@@ -16,6 +16,7 @@ pub struct SoftwareGimbalInterface {
 
 impl SoftwareGimbalInterface {}
 
+#[async_trait]
 impl GimbalInterface for SoftwareGimbalInterface {
     fn new() -> anyhow::Result<Self> {
         let (tx_out, rx_out) = broadcast::channel(64);
@@ -31,20 +32,14 @@ impl GimbalInterface for SoftwareGimbalInterface {
         })
     }
 
-    fn send_command(&mut self, cmd: OutgoingCommand) -> anyhow::Result<()> {
+    async fn send_command(&mut self, cmd: OutgoingCommand) -> anyhow::Result<()> {
         self.tx.send(cmd).context("could not send gimbal command")?;
 
         Ok(())
     }
 
-    fn recv_command(&mut self) -> anyhow::Result<Option<IncomingCommand>> {
-        match self.rx.try_recv() {
-            Ok(command) => Ok(Some(command)),
-            Err(err) => match err {
-                broadcast::error::TryRecvError::Empty => Ok(None),
-                err => Err(anyhow!(err)),
-            },
-        }
+    async fn recv_command(&mut self) -> anyhow::Result<Option<IncomingCommand>> {
+        Ok(Some(self.rx.recv().await?))
     }
 }
 

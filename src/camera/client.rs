@@ -1,5 +1,5 @@
 use std::{collections::HashMap, path::PathBuf, rc::Rc, sync::Arc, time::Duration};
-
+use futures::FutureExt;
 use anyhow::Context;
 use num_traits::{FromPrimitive, ToPrimitive};
 use ptp::{ObjectHandle, PtpData, StorageId};
