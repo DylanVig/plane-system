@@ -20,26 +20,25 @@ pub enum GimbalProtocol {
 #[derive(Copy, Clone, Eq, PartialEq, Debug, Deserialize)]
 pub enum GimbalKind {
     Hardware { protocol: GimbalProtocol },
-    Software
+    Software,
 }
 
 #[async_trait]
 pub trait GimbalInterface: Send {
-    fn new() -> anyhow::Result<Self>
-    where
-        Self: Sized;
+    async fn control_angles(&mut self, roll: f64, pitch: f64) -> anyhow::Result<()>;
+}
 
+#[async_trait]
+pub trait SimpleBgcGimbalInterface: GimbalInterface {
     async fn send_command(&mut self, cmd: OutgoingCommand) -> anyhow::Result<()>;
 
     async fn recv_command(&mut self) -> anyhow::Result<Option<IncomingCommand>>;
 
-    async fn control_angles(&mut self, mut roll: f64, mut pitch: f64) -> anyhow::Result<()> {
-        info!("Got request for {}, {}", roll, pitch);
-        if roll.abs() > 50.0 || pitch.abs() > 50.0 {
-            roll = 0.0;
-            pitch = 0.0;
-        }
+}
 
+#[async_trait]
+impl <T: SimpleBgcGimbalInterface> GimbalInterface for T {
+    async fn control_angles(&mut self, roll: f64, pitch: f64) -> anyhow::Result<()> {
         let factor: f64 = (2 ^ 14) as f64 / 360.0;
 
         let command = OutgoingCommand::Control(ControlData {
@@ -61,10 +60,6 @@ pub trait GimbalInterface: Send {
 
         self.send_command(command).await?;
 
-        // TODO: we need to implement CMD_CONFIRM in the simplebgc-rs crate
-        // let response = self.get_response()?;
-
         Ok(())
     }
 }
-

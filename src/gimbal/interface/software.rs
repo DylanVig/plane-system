@@ -1,24 +1,19 @@
 use anyhow::Context;
-use num_traits::FromPrimitive;
 use simplebgc::*;
-use std::io::{Read, Write};
 use std::time::{Duration, Instant};
 
 use std::f32::consts::PI;
 use tokio::{spawn, sync::*, time::interval};
 
-use super::GimbalInterface;
+use super::{GimbalInterface, SimpleBgcGimbalInterface};
 
 pub struct SoftwareGimbalInterface {
     tx: broadcast::Sender<OutgoingCommand>,
     rx: broadcast::Receiver<IncomingCommand>,
 }
 
-impl SoftwareGimbalInterface {}
-
-#[async_trait]
-impl GimbalInterface for SoftwareGimbalInterface {
-    fn new() -> anyhow::Result<Self> {
+impl SoftwareGimbalInterface {
+    pub fn new() -> anyhow::Result<Self> {
         let (tx_out, rx_out) = broadcast::channel(64);
         let (tx_in, rx_in) = broadcast::channel(64);
 
@@ -31,7 +26,10 @@ impl GimbalInterface for SoftwareGimbalInterface {
             rx: rx_in,
         })
     }
+}
 
+#[async_trait]
+impl SimpleBgcGimbalInterface for SoftwareGimbalInterface {
     async fn send_command(&mut self, cmd: OutgoingCommand) -> anyhow::Result<()> {
         self.tx.send(cmd).context("could not send gimbal command")?;
 
@@ -227,7 +225,7 @@ impl GimbalState {
                 }
             }
             cmd => {
-              warn!("received unimplemented command: {:?}", cmd);
+                warn!("received unimplemented command: {:?}", cmd);
             }
         }
     }

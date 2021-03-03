@@ -1,16 +1,11 @@
 use anyhow::Context;
 use futures::{SinkExt, StreamExt};
-use num_traits::FromPrimitive;
 use simplebgc::*;
 use tokio_serial::{Serial, SerialPortSettings};
 use tokio_util::codec::{Decoder, Framed};
-use std::{io::{Read, Write}, path::Path};
-use std::time::Duration;
+use std::path::Path;
 
-use super::GimbalInterface;
-
-const SBGC_VID: u16 = 0x10C4;
-const SBGC_PID: u16 = 0xEA60;
+use super::{GimbalInterface, SimpleBgcGimbalInterface};
 
 pub struct HardwareGimbalInterface {
     inner: Framed<Serial, V1Codec>,
@@ -29,6 +24,10 @@ impl HardwareGimbalInterface {
     fn find_usb_device_path() -> anyhow::Result<Option<String>> {
         #[cfg(feature = "udev")]
         {
+
+            const SBGC_VID: u16 = 0x10C4;
+            const SBGC_PID: u16 = 0xEA60;
+
             let ports = serialport::available_ports()?;
             info!("{:?}", ports);
             for port in ports {
@@ -54,14 +53,16 @@ impl HardwareGimbalInterface {
     }
 }
 
-#[async_trait]
-impl GimbalInterface for HardwareGimbalInterface {
-    fn new() -> anyhow::Result<Self> {
+impl HardwareGimbalInterface {
+    pub fn new() -> anyhow::Result<Self> {
         Self::with_path(
             Self::find_usb_device_path()?.context("could not find SimpleBGC USB device")?,
         )
     }
-   
+}
+
+#[async_trait]
+impl SimpleBgcGimbalInterface for HardwareGimbalInterface {
     async fn send_command(&mut self, cmd: OutgoingCommand) -> anyhow::Result<()> {
         self.inner.send(cmd).await?;
         Ok(())
