@@ -1,14 +1,14 @@
 use anyhow::Context;
+
 use futures::FutureExt;
 use std::{path::Path, sync::Arc};
 
-use crate::Channels;
+use crate::{Channels};
 
-use super::interface::*;
-use super::*;
+use super::{GimbalCommand, GimbalKind, GimbalRequest, GimbalResponse, interface::{GimbalInterface, HardwareGimbalInterface, SoftwareGimbalInterface}};
 
 pub struct GimbalClient {
-    iface: GimbalInterface,
+    iface: Box<dyn GimbalInterface + Send>,
     channels: Arc<Channels>,
     cmd: flume::Receiver<GimbalCommand>,
 }
@@ -20,10 +20,10 @@ impl GimbalClient {
         path: P,
     ) -> anyhow::Result<Self> {
         let iface =
-            GimbalInterface::with_path(path).context("failed to create gimbal interface")?;
+            HardwareGimbalInterface::with_path(path).context("failed to create gimbal interface")?;
 
         Ok(Self {
-            iface,
+            iface: Box::new(iface),
             channels,
             cmd,
         })
@@ -32,8 +32,18 @@ impl GimbalClient {
     pub fn connect(
         channels: Arc<Channels>,
         cmd: flume::Receiver<GimbalCommand>,
+        kind: GimbalKind,
     ) -> anyhow::Result<Self> {
-        let iface = GimbalInterface::new().context("failed to create gimbal interface")?;
+        let iface: Box<dyn GimbalInterface + Send> = match kind {
+            GimbalKind::Hardware { protocol } => Box::new(
+                HardwareGimbalInterface::new()
+                    .context("failed to create hardware gimbal interface")?,
+            ),
+            GimbalKind::Software => Box::new(
+                SoftwareGimbalInterface::new()
+                    .context("failed to create software gimbal interface")?,
+            ),
+        };
 
         Ok(Self {
             iface,
@@ -75,6 +85,7 @@ impl GimbalClient {
                 self.iface.control_angles(*roll, *pitch).await?
             }
         }
+
         Ok(GimbalResponse::Unit)
     }
 }
