@@ -37,23 +37,28 @@ impl GroundServerClient {
         let mut camera_recv = self.channels.camera_event.subscribe();
 
         let interrupt_fut = interrupt_recv.recv().fuse();
-        let telemetry_info = TelemetryInfo {
-            plane_attitude: Attitude {
-                roll: 30.0,
-                pitch: 10.0,
-                yaw: -20.0,
-            },
-            gimbal_attitude: Attitude {
-                roll: 60.0,
-                pitch: 70.0,
-                yaw: -90.0,
-            },
-            position: Coords3D {
-                latitude: -10.0,
-                longitude: 30.0,
-                altitude: 400.0,
-            },
-        };
+
+        let telemetry_info = self.channels.telemetry.borrow().clone().unwrap_or_else(|| {
+            warn!("no telemetry data available for image capture");
+
+            TelemetryInfo {
+                plane_attitude: Attitude {
+                    roll: 30.0,
+                    pitch: 10.0,
+                    yaw: -20.0,
+                },
+                gimbal_attitude: Attitude {
+                    roll: 60.0,
+                    pitch: 70.0,
+                    yaw: -90.0,
+                },
+                position: Coords3D {
+                    latitude: -10.0,
+                    longitude: 30.0,
+                    altitude: 400.0,
+                },
+            }
+        });
 
         futures::pin_mut!(interrupt_fut);
 

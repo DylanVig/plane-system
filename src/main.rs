@@ -172,15 +172,38 @@ async fn main() -> anyhow::Result<()> {
     }
 
     if let Some(camera_config) = config.camera {
-        match camera_config.kind {
-            cli::config::CameraKind::R10C => trace!("camera kind set to Sony R10C"),
-        }
-
         info!("connecting to camera");
-        let camera_task = spawn({
-            let mut camera_client = CameraClient::connect(channels.clone(), camera_cmd_receiver)?;
-            async move { camera_client.run().await }
-        });
+
+        let camera_save_path = if let Some(save_path) = camera_config.save_path {
+            std::fs::canonicalize(save_path)
+                .context("could not canonicalize for saving images from camera")?
+        } else {
+            std::env::current_dir()
+                .context("could not get current working dir for saving images from camera")?
+        };
+
+        let camera_task = match camera_config.kind {
+            cli::config::CameraKind::R10C => {
+                trace!("camera kind set to Sony R10C");
+
+                spawn({
+                    let mut camera_client = CameraClient::connect(
+                        channels.clone(),
+                        camera_cmd_receiver,
+                        camera::CameraClientConfig {
+                            save_path: camera_save_path,
+                        },
+                    )?;
+                    async move { camera_client.run().await }
+                })
+            }
+
+            // for the future when we switch to a different type of camera
+            #[allow(unreachable_patterns)]
+            unknown_kind => {
+                bail!("camera kind {:?} is not implemented", unknown_kind)
+            }
+        };
 
         task_names.push("camera");
         futures.push(camera_task);
@@ -191,7 +214,7 @@ async fn main() -> anyhow::Result<()> {
 
         info!("initializing gimbal");
         let gimbal_task = spawn({
-            let mut gimbal_client = if let Some(gimbal_path) = gimbal_config.path {
+            let mut gimbal_client = if let Some(gimbal_path) = gimbal_config.device_path {
                 GimbalClient::connect_with_path(channels.clone(), gimbal_cmd_receiver, gimbal_path)?
             } else {
                 GimbalClient::connect(channels.clone(), gimbal_cmd_receiver, gimbal_config.kind)?
