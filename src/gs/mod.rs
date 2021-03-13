@@ -38,28 +38,6 @@ impl GroundServerClient {
 
         let interrupt_fut = interrupt_recv.recv().fuse();
 
-        let telemetry_info = self.channels.telemetry.borrow().clone().unwrap_or_else(|| {
-            warn!("no telemetry data available for image capture");
-
-            TelemetryInfo {
-                plane_attitude: Attitude {
-                    roll: 30.0,
-                    pitch: 10.0,
-                    yaw: -20.0,
-                },
-                gimbal_attitude: Attitude {
-                    roll: 60.0,
-                    pitch: 70.0,
-                    yaw: -90.0,
-                },
-                position: Coords3D {
-                    latitude: -10.0,
-                    longitude: 30.0,
-                    altitude: 400.0,
-                },
-            }
-        });
-
         futures::pin_mut!(interrupt_fut);
 
         loop {
@@ -82,16 +60,37 @@ impl GroundServerClient {
                                         }
                                     }
                                 } else {
-
                                     error!("unknown mime type for image file received from camera");
                                     continue;
                                 };
+
+                                let telemetry_info = self.channels.telemetry.borrow().clone().unwrap_or_else(|| {
+                                    warn!("no telemetry data available for image capture");
+
+                                    TelemetryInfo {
+                                        plane_attitude: Attitude {
+                                            roll: 30.0,
+                                            pitch: 10.0,
+                                            yaw: -20.0,
+                                        },
+                                        gimbal_attitude: Attitude {
+                                            roll: 60.0,
+                                            pitch: 70.0,
+                                            yaw: -90.0,
+                                        },
+                                        position: Coords3D {
+                                            latitude: -10.0,
+                                            longitude: 30.0,
+                                            altitude: 400.0,
+                                        },
+                                    }
+                                });
 
                                 self.send_image(
                                     image_data.as_ref(),
                                     image_name,
                                     image_mime,
-                                    telemetry_info.clone()
+                                    telemetry_info,
                                 ).await?;
                             }
                             _ => {}
