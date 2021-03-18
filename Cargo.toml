@@ -39,7 +39,7 @@ clap = "2"
 config = "0.10.1"
 rustyline = "7.0"
 
-chrono = "0.4"
+chrono = { version = "0.4", features = ["serde"] }
 geo = "0.17.0"
 colored = "2"
 humansize = "1.1"
