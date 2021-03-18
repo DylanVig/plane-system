@@ -26,6 +26,9 @@ pub enum GimbalKind {
 #[async_trait]
 pub trait GimbalInterface: Send {
     async fn control_angles(&mut self, roll: f64, pitch: f64) -> anyhow::Result<()>;
+    async fn power_on(&mut self) -> anyhow::Result<()>;
+    async fn power_off(&mut self) -> anyhow::Result<()>;
+    async fn auto_tune(&mut self) -> anyhow::Result<()>;
 }
 
 #[async_trait]
@@ -61,5 +64,21 @@ impl <T: SimpleBgcGimbalInterface> GimbalInterface for T {
         self.send_command(command).await?;
 
         Ok(())
+    }
+
+    async fn power_on(&mut self) -> anyhow::Result<()> {
+        self.send_command(OutgoingCommand::MotorsOn).await?;
+
+        Ok(())
+    }
+
+    async fn power_off(&mut self) -> anyhow::Result<()> {
+        self.send_command(OutgoingCommand::MotorsOff(MotorsOffQuery(MotorsOffMode::SafeStop))).await?;
+
+        Ok(())
+    }
+
+    async fn auto_tune(&mut self) -> anyhow::Result<()> {
+        unimplemented!()
     }
 }
