@@ -143,14 +143,14 @@ async fn main() -> anyhow::Result<()> {
     })
     .expect("could not set ctrl+c handler");
 
-    if let Some(pixhawk_address) = config.pixhawk.address {
-        info!("connecting to pixhawk at {}", pixhawk_address);
+    if let Some(pixhawk_config) = config.pixhawk {
+        info!("connecting to pixhawk at {}", pixhawk_config.address);
         let pixhawk_task = spawn({
             let mut pixhawk_client = PixhawkClient::connect(
                 channels.clone(),
                 pixhawk_cmd_receiver,
-                pixhawk_address,
-                config.pixhawk.mavlink,
+                pixhawk_config.address,
+                pixhawk_config.mavlink,
             )
             .await?;
             async move { pixhawk_client.run().await }

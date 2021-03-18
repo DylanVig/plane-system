@@ -8,7 +8,7 @@ use crate::{gimbal::GimbalKind, state::Coords2D};
 
 #[derive(Debug, Deserialize)]
 pub struct PixhawkConfig {
-    pub address: Option<String>,
+    pub address: String,
     pub mavlink: MavlinkVersion,
 }
 
@@ -50,7 +50,7 @@ pub struct CameraConfig {
 
 #[derive(Debug, Deserialize)]
 pub struct PlaneSystemConfig {
-    pub pixhawk: PixhawkConfig,
+    pub pixhawk: Option<PixhawkConfig>,
     pub plane_server: PlaneServerConfig,
     pub ground_server: Option<GroundServerConfig>,
     pub camera: Option<CameraConfig>,
