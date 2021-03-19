@@ -174,13 +174,12 @@ async fn main() -> anyhow::Result<()> {
     if let Some(camera_config) = config.camera {
         info!("connecting to camera");
 
-        let camera_save_path = if let Some(save_path) = camera_config.save_path {
-            std::fs::canonicalize(save_path)
+        let mut client_config = camera::CameraClientConfig::default();
+
+        if let Some(save_path) = camera_config.save_path {
+            client_config.save_path = std::fs::canonicalize(save_path)
                 .context("could not canonicalize for saving images from camera")?
-        } else {
-            std::env::current_dir()
-                .context("could not get current working dir for saving images from camera")?
-        };
+        }
 
         let camera_task = match camera_config.kind {
             cli::config::CameraKind::R10C => {
@@ -190,9 +189,7 @@ async fn main() -> anyhow::Result<()> {
                     let mut camera_client = CameraClient::connect(
                         channels.clone(),
                         camera_cmd_receiver,
-                        camera::CameraClientConfig {
-                            save_path: camera_save_path,
-                        },
+                        client_config,
                     )?;
                     async move { camera_client.run().await }
                 })
