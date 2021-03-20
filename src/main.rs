@@ -2,6 +2,7 @@ use std::{process::exit, str::FromStr, sync::Arc, time::Duration};
 
 use anyhow::Context;
 use ctrlc;
+use image::ImageClient;
 use structopt::StructOpt;
 use tokio::{spawn, sync::*, time::sleep};
 
@@ -24,9 +25,9 @@ extern crate async_trait;
 
 mod camera;
 mod cli;
-mod client;
 mod gimbal;
 mod gs;
+mod image;
 mod pixhawk;
 mod scheduler;
 mod server;
@@ -49,13 +50,15 @@ pub struct Channels {
     pixhawk_cmd: flume::Sender<pixhawk::PixhawkCommand>,
 
     /// Channel for broadcasting updates to the state of the camera.
-    camera_event: broadcast::Sender<CameraEvent>,
+    camera_event: broadcast::Sender<camera::CameraEvent>,
 
     /// Channel for sending instructions to the camera.
     camera_cmd: flume::Sender<camera::CameraCommand>,
 
     /// Channel for sending instructions to the gimbal.
     gimbal_cmd: flume::Sender<gimbal::GimbalCommand>,
+
+    image_event: broadcast::Sender<image::ImageEvent>,
 }
 
 #[derive(Debug)]
@@ -118,6 +121,7 @@ async fn main() -> anyhow::Result<()> {
     let (pixhawk_event_sender, _) = broadcast::channel(64);
     let (pixhawk_cmd_sender, pixhawk_cmd_receiver) = flume::bounded(64);
     let (camera_event_sender, _) = broadcast::channel(256);
+    let (image_event_sender, _) = broadcast::channel(256);
     let (camera_cmd_sender, camera_cmd_receiver) = flume::bounded(256);
     let (gimbal_cmd_sender, gimbal_cmd_receiver) = flume::bounded(256);
 
@@ -129,6 +133,7 @@ async fn main() -> anyhow::Result<()> {
         camera_event: camera_event_sender,
         camera_cmd: camera_cmd_sender,
         gimbal_cmd: gimbal_cmd_sender,
+        image_event: image_event_sender,
     });
 
     let mut task_names = Vec::new();
@@ -174,13 +179,6 @@ async fn main() -> anyhow::Result<()> {
     if let Some(camera_config) = config.camera {
         info!("connecting to camera");
 
-        let mut client_config = camera::CameraClientConfig::default();
-
-        if let Some(save_path) = camera_config.save_path {
-            client_config.save_path = std::fs::canonicalize(save_path)
-                .context("could not canonicalize for saving images from camera")?
-        }
-
         let camera_task = match camera_config.kind {
             cli::config::CameraKind::R10C => {
                 trace!("camera kind set to Sony R10C");
@@ -189,7 +187,6 @@ async fn main() -> anyhow::Result<()> {
                     let mut camera_client = CameraClient::connect(
                         channels.clone(),
                         camera_cmd_receiver,
-                        client_config,
                     )?;
                     async move { camera_client.run().await }
                 })
@@ -203,6 +200,21 @@ async fn main() -> anyhow::Result<()> {
         };
 
         task_names.push("camera");
+        futures.push(camera_task);
+    }
+
+    if let Some(image_config) = config.image {
+        info!("starting image download task");
+
+        let camera_task = spawn({
+            let mut image_client = ImageClient::new(
+                channels.clone(),
+                image_config,
+            );
+            async move { image_client.run().await }
+        });
+
+        task_names.push("image");
         futures.push(camera_task);
     }
 

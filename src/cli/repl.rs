@@ -107,8 +107,8 @@ fn format_camera_response(response: CameraResponse) -> () {
             println!("received {} of data", size);
         }
 
-        CameraResponse::File { path } => {
-            println!("received file: {}", path.to_string_lossy());
+        CameraResponse::Download { name: path } => {
+            println!("received file: {}", path);
         }
 
         CameraResponse::StorageInfo { storages } => {

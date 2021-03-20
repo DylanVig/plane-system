@@ -17,32 +17,18 @@ enum CameraClientMode {
     ContinuousCapture,
 }
 
-pub struct CameraClientConfig {
-    pub save_path: PathBuf,
-}
-
-impl Default for CameraClientConfig {
-    fn default() -> Self {
-        CameraClientConfig {
-            save_path: std::env::current_dir().expect("could not get current directory"),
-        }
-    }
-}
-
 pub struct CameraClient {
     iface: CameraInterface,
     channels: Arc<Channels>,
     cmd: flume::Receiver<CameraCommand>,
     error: Option<CameraErrorMode>,
     mode: CameraClientMode,
-    config: CameraClientConfig,
 }
 
 impl CameraClient {
     pub fn connect(
         channels: Arc<Channels>,
         cmd: flume::Receiver<CameraCommand>,
-        config: CameraClientConfig,
     ) -> anyhow::Result<Self> {
         let iface = CameraInterface::new().context("failed to create camera interface")?;
 
@@ -52,7 +38,6 @@ impl CameraClient {
             cmd,
             error: None,
             mode: CameraClientMode::Idle,
-            config,
         })
     }
 
@@ -139,9 +124,9 @@ impl CameraClient {
                                             CameraSaveMode::HostDevice => {
                                                 let shot_handle = ObjectHandle::from(0xFFFFC001);
 
-                                                let image_path = self.download_image(shot_handle).await?;
+                                                let image_name = self.download_image(shot_handle).await?;
 
-                                                info!("saved continuous capture image to {:?}", image_path);
+                                                info!("saved continuous capture image to {:?}", image_name);
                                             }
 
                                             CameraSaveMode::MemoryCard1 => warn!("continuous capture images are being saved to camera; this is not supported"),
@@ -264,9 +249,9 @@ impl CameraClient {
                 CameraFileRequest::Get { handle } => {
                     let shot_handle = ObjectHandle::from(*handle);
 
-                    let image_path = self.download_image(shot_handle).await?;
+                    let image_name = self.download_image(shot_handle).await?;
 
-                    Ok(CameraResponse::File { path: image_path })
+                    Ok(CameraResponse::Download { name: image_name })
                 }
             },
 
@@ -371,9 +356,9 @@ impl CameraClient {
 
                 let shot_handle = ObjectHandle::from(0xFFFFC001);
 
-                let image_path = self.download_image(shot_handle).await?;
+                let image_name = self.download_image(shot_handle).await?;
 
-                Ok(CameraResponse::File { path: image_path })
+                Ok(CameraResponse::Download { name: image_name })
             }
 
             CameraRequest::Zoom(req) => match req {
@@ -682,7 +667,7 @@ impl CameraClient {
         .await
     }
 
-    async fn download_image(&mut self, handle: ObjectHandle) -> anyhow::Result<PathBuf> {
+    async fn download_image(&mut self, handle: ObjectHandle) -> anyhow::Result<String> {
         let shot_info = self
             .iface
             .object_info(handle)
@@ -693,30 +678,14 @@ impl CameraClient {
             .object_data(handle)
             .context("error while getting image data")?;
 
-        let mut image_path = self.config.save_path.clone();
-
-        image_path.push(&shot_info.filename);
-
-        debug!("writing image to file '{}'", image_path.to_string_lossy());
-
-        let mut image_file = tokio::fs::File::create(&image_path)
-            .await
-            .context("failed to create file")?;
-
-        image_file
-            .write_all(&shot_data[..])
-            .await
-            .context("failed to save image")?;
-
-        info!("wrote image to file '{}'", image_path.to_string_lossy());
+        let image_name = shot_info.filename;
 
         let _ = self.channels.camera_event.send(CameraEvent::Download {
-            file_name: Some(image_path.clone()),
-            image_name: shot_info.filename,
+            image_name: image_name.clone(),
             image_data: Arc::new(shot_data),
         });
 
-        Ok(image_path)
+        Ok(image_name)
     }
 
     async fn set_gps(&mut self, telemetry: TelemetryInfo) -> anyhow::Result<()> {

@@ -1,4 +1,4 @@
-use std::{path::PathBuf, sync::Arc};
+use std::sync::Arc;
 
 use serde::Serialize;
 
@@ -8,7 +8,6 @@ pub enum CameraEvent {
     Download {
         image_name: String,
         image_data: Arc<Vec<u8>>,
-        file_name: Option<PathBuf>,
     },
     Error(CameraErrorMode),
 }
