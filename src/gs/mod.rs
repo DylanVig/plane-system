@@ -10,7 +10,7 @@ use reqwest;
 use crate::state::*;
 use serde_json::json;
 
-use crate::{CameraEvent, Channels};
+use crate::{image::ImageEvent, Channels};
 
 #[derive(StructOpt, Debug, Clone)]
 #[structopt(setting(AppSettings::NoBinaryName))]
@@ -34,7 +34,7 @@ impl GroundServerClient {
 
     pub async fn run(self) -> anyhow::Result<()> {
         let mut interrupt_recv = self.channels.interrupt.subscribe();
-        let mut camera_recv = self.channels.camera_event.subscribe();
+        let mut image_recv = self.channels.image_event.subscribe();
 
         let interrupt_fut = interrupt_recv.recv().fuse();
 
@@ -42,43 +42,27 @@ impl GroundServerClient {
 
         loop {
             select! {
-                camera_evt = camera_recv.recv().fuse() => {
-                    if let Ok(camera_evt) = camera_evt {
-                        match camera_evt {
-                            CameraEvent::Download { image_name, image_data, .. } => {
-                                debug!("image download detected, uploading file to ground server");
+                image_evt = image_recv.recv().fuse() => {
+                    if let Ok(ImageEvent {
+                        file,
+                        data,
+                        telemetry,
+                    }) = image_evt
+                    {
+                        debug!("image download detected, uploading file to ground server");
 
-                                let image_mime = if let Some(image_ext) = Path::new(&image_name).extension().and_then(OsStr::to_str) {
-                                    let image_ext = image_ext.to_lowercase();
+                        let file_name = file
+                            .file_name()
+                            .map(OsStr::to_string_lossy)
+                            .expect("image has no filename");
 
-                                    match image_ext.as_str() {
-                                        "jpg" | "jpeg" => "image/jpeg",
-                                        "mp4" => "video/mp4",
-                                        ext => {
-                                            error!("unknown mime type for image file received from camera with extension {:?}", ext);
-                                            continue;
-                                        }
-                                    }
-                                } else {
-                                    error!("unknown mime type for image file received from camera");
-                                    continue;
-                                };
+                        let telemetry_info = self.channels.telemetry.borrow().clone();
 
-                                let telemetry_info = self.channels.telemetry.borrow().clone();
-
-                                if telemetry_info.is_none() {
-                                    warn!("no telemetry data available for image capture")
-                                }
-
-                                self.send_image(
-                                    image_data.as_ref(),
-                                    image_name,
-                                    image_mime,
-                                    telemetry_info,
-                                ).await?;
-                            }
-                            _ => {}
+                        if telemetry_info.is_none() {
+                            warn!("no telemetry data available for image capture")
                         }
+
+                        self.send_image(data.as_ref(), file_name.to_string(), telemetry).await?;
                     }
                 }
                 _ = interrupt_fut => {
@@ -94,10 +78,26 @@ impl GroundServerClient {
     pub async fn send_image(
         &self,
         data: &[u8],
-        image_name: String,
-        mime_type: &str,
+        file_name: String,
         telemetry: Option<TelemetryInfo>,
     ) -> anyhow::Result<()> {
+        let file_name = file_name.to_lowercase();
+
+        let mime_type = {
+            let file_ext = file_name.split(".").last();
+
+            match file_ext {
+                Some("jpg") | Some("jpeg") => "image/jpeg",
+                Some("mp4") => "video/mp4",
+                ext => {
+                    bail!(
+                        "unknown mime type for image file received from camera with extension {:?}",
+                        ext
+                    );
+                }
+            }
+        };
+
         let endpoint = self
             .base_url
             .join("/api/v1/image")
@@ -132,7 +132,7 @@ impl GroundServerClient {
             .part(
                 "files",
                 reqwest::multipart::Part::bytes(Vec::from(data))
-                    .file_name(image_name)
+                    .file_name(file_name)
                     .mime_str(mime_type)?,
             );
 

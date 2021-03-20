@@ -9,7 +9,7 @@ use crate::{camera::CameraEvent, cli::config::ImageConfig, state::TelemetryInfo,
 #[derive(Clone, Debug)]
 pub struct ImageEvent {
     pub data: Arc<Vec<u8>>,
-    pub filename: PathBuf,
+    pub file: PathBuf,
     pub telemetry: Option<TelemetryInfo>,
 }
 
@@ -57,7 +57,7 @@ impl ImageClient {
 
                                 self.channels.image_event.send(ImageEvent {
                                   data: image_data,
-                                  filename: image_filename,
+                                  file: image_filename,
                                   telemetry: telemetry_info
                                 })?;
                             }
