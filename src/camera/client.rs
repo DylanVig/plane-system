@@ -1,9 +1,14 @@
-use std::{collections::HashMap, path::PathBuf, rc::Rc, sync::Arc, time::Duration};
-use futures::FutureExt;
 use anyhow::Context;
+use futures::FutureExt;
 use num_traits::{FromPrimitive, ToPrimitive};
 use ptp::{ObjectHandle, PtpData, StorageId};
-use tokio::{io::AsyncWriteExt, sync::mpsc, time::sleep};
+use std::{
+    collections::HashMap,
+    path::PathBuf,
+    sync::Arc,
+    time::Duration,
+};
+use tokio::{io::AsyncWriteExt, time::sleep};
 
 use crate::{util::*, Channels};
 
@@ -16,18 +21,32 @@ enum CameraClientMode {
     ContinuousCapture,
 }
 
+pub struct CameraClientConfig {
+    pub save_path: PathBuf,
+}
+
+impl Default for CameraClientConfig {
+    fn default() -> Self {
+        CameraClientConfig {
+            save_path: std::env::current_dir().expect("could not get current directory"),
+        }
+    }
+}
+
 pub struct CameraClient {
     iface: CameraInterface,
     channels: Arc<Channels>,
     cmd: flume::Receiver<CameraCommand>,
     error: Option<CameraErrorMode>,
     mode: CameraClientMode,
+    config: CameraClientConfig,
 }
 
 impl CameraClient {
     pub fn connect(
         channels: Arc<Channels>,
         cmd: flume::Receiver<CameraCommand>,
+        config: CameraClientConfig,
     ) -> anyhow::Result<Self> {
         let iface = CameraInterface::new().context("failed to create camera interface")?;
 
@@ -37,6 +56,7 @@ impl CameraClient {
             cmd,
             error: None,
             mode: CameraClientMode::Idle,
+            config,
         })
     }
 
@@ -666,7 +686,7 @@ impl CameraClient {
             .object_data(handle)
             .context("error while getting image data")?;
 
-        let mut image_path = std::env::current_dir().context("failed to get current directory")?;
+        let mut image_path = self.config.save_path.clone();
 
         image_path.push(&shot_info.filename);
 
@@ -686,7 +706,7 @@ impl CameraClient {
         let _ = self.channels.camera_event.send(CameraEvent::Download {
             file_name: Some(image_path.clone()),
             image_name: shot_info.filename,
-            image_data: Arc::new(shot_data)
+            image_data: Arc::new(shot_data),
         });
 
         Ok(image_path)

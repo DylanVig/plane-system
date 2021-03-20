@@ -8,7 +8,7 @@ use crate::{gimbal::GimbalKind, state::Coords2D};
 
 #[derive(Debug, Deserialize)]
 pub struct PixhawkConfig {
-    pub address: Option<String>,
+    pub address: String,
     pub mavlink: MavlinkVersion,
 }
 
@@ -30,7 +30,9 @@ pub struct SchedulerConfig {
 #[derive(Debug, Deserialize)]
 pub struct GimbalConfig {
     pub kind: GimbalKind,
-    pub path: Option<String>,
+
+    /// The path to the device file
+    pub device_path: Option<PathBuf>,
 }
 
 #[derive(Copy, Clone, Eq, PartialEq, Debug, Deserialize)]
@@ -41,12 +43,14 @@ pub enum CameraKind {
 #[derive(Debug, Deserialize)]
 pub struct CameraConfig {
     pub kind: CameraKind,
-    pub path: Option<String>,
+
+    /// The folder in which to save downloaded images
+    pub save_path: Option<PathBuf>,
 }
 
 #[derive(Debug, Deserialize)]
 pub struct PlaneSystemConfig {
-    pub pixhawk: PixhawkConfig,
+    pub pixhawk: Option<PixhawkConfig>,
     pub plane_server: PlaneServerConfig,
     pub ground_server: Option<GroundServerConfig>,
     pub camera: Option<CameraConfig>,

@@ -18,6 +18,7 @@ pub enum GimbalProtocol {
 }
 
 #[derive(Copy, Clone, Eq, PartialEq, Debug, Deserialize)]
+#[serde(tag = "type")]
 pub enum GimbalKind {
     Hardware { protocol: GimbalProtocol },
     Software,

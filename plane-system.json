@@ -6,7 +6,7 @@
     "address": "[::]:8080"
   },
   "ground_server": {
-    "address": "192.168.1.133:9000"
+    "address": "http://2ba675992842.ngrok.io/"
   },
   "scheduler": {
     "enabled": false,
@@ -16,9 +16,8 @@
     }
   },
   "camera": {
-    "kind": "R10C"
+    "kind": "R10C",
+    "save_path": "./images/"
   },
-  "gimbal": {
-    "kind": "SimpleBGC"
-  }
+  "gimbal": null
 }

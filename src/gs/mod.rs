@@ -37,23 +37,6 @@ impl GroundServerClient {
         let mut camera_recv = self.channels.camera_event.subscribe();
 
         let interrupt_fut = interrupt_recv.recv().fuse();
-        let telemetry_info = TelemetryInfo {
-            plane_attitude: Attitude {
-                roll: 30.0,
-                pitch: 10.0,
-                yaw: -20.0,
-            },
-            gimbal_attitude: Attitude {
-                roll: 60.0,
-                pitch: 70.0,
-                yaw: -90.0,
-            },
-            position: Coords3D {
-                latitude: -10.0,
-                longitude: 30.0,
-                altitude: 400.0,
-            },
-        };
 
         futures::pin_mut!(interrupt_fut);
 
@@ -77,16 +60,21 @@ impl GroundServerClient {
                                         }
                                     }
                                 } else {
-
                                     error!("unknown mime type for image file received from camera");
                                     continue;
                                 };
+
+                                let telemetry_info = self.channels.telemetry.borrow().clone();
+
+                                if telemetry_info.is_none() {
+                                    warn!("no telemetry data available for image capture")
+                                }
 
                                 self.send_image(
                                     image_data.as_ref(),
                                     image_name,
                                     image_mime,
-                                    telemetry_info.clone()
+                                    telemetry_info,
                                 ).await?;
                             }
                             _ => {}
@@ -108,7 +96,7 @@ impl GroundServerClient {
         data: &[u8],
         image_name: String,
         mime_type: &str,
-        telemetry: TelemetryInfo,
+        telemetry: Option<TelemetryInfo>,
     ) -> anyhow::Result<()> {
         let endpoint = self
             .base_url
@@ -117,23 +105,27 @@ impl GroundServerClient {
 
         let timestamp = chrono::Utc::now().timestamp_millis();
 
-        let json = json!({
-            "timestamp": timestamp,
-            "imgMode": "fixed",
-            "fov": 60.0,
-            "telemetry": {
-                "altitude": telemetry.position.altitude,
-                "planeYaw": telemetry.plane_attitude.yaw,
-                "gps": {
-                    "latitude": telemetry.position.latitude,
-                    "longitude": telemetry.position.longitude,
-                },
-                "gimOrt": {
-                    "pitch": telemetry.gimbal_attitude.pitch,
-                    "roll": telemetry.gimbal_attitude.roll,
+        let json = if let Some(telemetry) = telemetry {
+            json!({
+                "timestamp": timestamp,
+                "imgMode": "fixed",
+                "fov": 60.0,
+                "telemetry": {
+                    "altitude": telemetry.position.altitude,
+                    "planeYaw": telemetry.plane_attitude.yaw,
+                    "gps": {
+                        "latitude": telemetry.position.latitude,
+                        "longitude": telemetry.position.longitude,
+                    },
+                    "gimOrt": {
+                        "pitch": telemetry.gimbal_attitude.pitch,
+                        "roll": telemetry.gimbal_attitude.roll,
+                    }
                 }
-            }
-        });
+            })
+        } else {
+            serde_json::Value::Null
+        };
 
         let form = reqwest::multipart::Form::new()
             .part("json", reqwest::multipart::Part::text(json.to_string()))
