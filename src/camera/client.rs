@@ -85,6 +85,7 @@ impl CameraClient {
                 cmd = self.cmd.recv_async().fuse() => {
                     if let Ok(cmd) = cmd {
                         let result = self.exec(cmd.request()).await;
+                        trace!("command completed, sending response");
                         let _ = cmd.respond(result);
                     }
                 }

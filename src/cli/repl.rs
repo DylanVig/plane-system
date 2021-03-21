@@ -54,7 +54,9 @@ pub async fn run(channels: Arc<Channels>) -> anyhow::Result<()> {
             ReplRequest::Camera(request) => {
                 let (cmd, chan) = Command::new(request);
                 channels.camera_cmd.clone().send(cmd)?;
+                trace!("command sent, awaiting response");
                 let result = chan.await?;
+                trace!("command completed, received response");
 
                 match result {
                     Ok(response) => format_camera_response(response),
