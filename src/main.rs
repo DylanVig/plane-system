@@ -207,7 +207,7 @@ async fn main() -> anyhow::Result<()> {
         info!("starting image download task");
 
         let camera_task = spawn({
-            let mut image_client = ImageClient::new(
+            let image_client = ImageClient::new(
                 channels.clone(),
                 image_config,
             );

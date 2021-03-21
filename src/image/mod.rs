@@ -55,11 +55,11 @@ impl ImageClient {
                                     }
                                 };
 
-                                self.channels.image_event.send(ImageEvent {
+                                let _ = self.channels.image_event.send(ImageEvent {
                                   data: image_data,
                                   file: image_filename,
                                   telemetry: telemetry_info
-                                })?;
+                                });
                             }
                             _ => {}
                         }
