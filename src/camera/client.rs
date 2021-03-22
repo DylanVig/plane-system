@@ -76,52 +76,37 @@ impl CameraClient {
         futures::pin_mut!(interrupt_fut);
 
         let telemetry_chan = self.channels.telemetry.clone();
-        let telemetry_stream = tokio_stream::wrappers::WatchStream::new(telemetry_chan);
-        let cmd_stream = self.cmd.clone().into_stream();
-
-        enum Input {
-            Telemetry(Option<TelemetryInfo>),
-            Command(CameraCommand),
-        }
-
-        let telemetry_stream = telemetry_stream.map(|telem| Input::Telemetry(telem));
-        let cmd_stream = cmd_stream.map(|cmd| Input::Command(cmd));
-        let mut input_stream = futures::stream::select(telemetry_stream, cmd_stream);
+        let mut telemetry_stream = tokio_stream::wrappers::WatchStream::new(telemetry_chan).fuse();
+        let mut cmd_stream = self.cmd.clone().into_stream().fuse();
 
         loop {
             self.iface
                 .update()
                 .context("failed to update camera state")?;
 
-            let input_fut = input_stream.next();
-
-            futures::pin_mut!(input_fut);
-
-            match futures::future::select(input_fut, &mut interrupt_fut).await {
-                futures::future::Either::Left((input, _)) => match input.unwrap() {
-                    Input::Command(cmd) => {
-                        let request = cmd.request();
-                        let result = self.exec(request).await;
-                        trace!("command completed, sending response");
-                        cmd.respond(result).expect("help");
-                        tokio::task::yield_now().await;
-                    }
-                    Input::Telemetry(telemetry) => {
-                        if let Some(telemetry) = telemetry {
-                            let camera_data = telemetry_to_camera_data(telemetry);
-                            if let Err(err) = self
-                                .iface
-                                .set(CameraPropertyCode::LocationInfo, camera_data)
-                            {
-                                warn!("setting gps location in camera failed: {:?}", err);
-                            } else {
-                                trace!("sent telemetry info to camera");
-                            }
+            futures::select! {
+                cmd = cmd_stream.next() => {
+                    // this is only None if the command stream closes for some reason
+                    let cmd = cmd.unwrap();
+                    let request = cmd.request();
+                    let result = self.exec(request).await;
+                    trace!("command completed, sending response");
+                    cmd.respond(result).expect("help");
+                }
+                telemetry = telemetry_stream.next() => {
+                    // this is only None if the telemetry stream closes for some reason
+                    let telemetry = telemetry.unwrap();
+                    if let Some(telemetry) = telemetry {
+                        let camera_data = telemetry_to_camera_data(telemetry);
+                        if let Err(err) = self.iface.set(CameraPropertyCode::LocationInfo, camera_data) {
+                            warn!("setting gps location in camera failed: {:?}", err);
+                        } else {
+                            trace!("sent telemetry info to camera");
                         }
                     }
-                },
-                futures::future::Either::Right(_) => break,
-            };
+                }
+                _ = &mut interrupt_fut => break,
+            }
 
             if let Ok(event) = self.iface.recv() {
                 trace!("received event: {:?}", event);
