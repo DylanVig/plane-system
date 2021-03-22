@@ -2,18 +2,21 @@ use std::sync::Arc;
 
 use anyhow::Context;
 use colored::Colorize;
+use futures::FutureExt;
 use humansize::FileSize;
 use prettytable::{cell, row, Table};
 use structopt::StructOpt;
 
 use crate::{
-    camera::CameraRequest, camera::CameraResponse, gimbal::GimbalRequest, gs::GroundServerRequest, Channels, Command,
+    camera::CameraRequest, camera::CameraResponse, dummy::DummyRequest, gimbal::GimbalRequest,
+    gs::GroundServerRequest, Channels, Command,
 };
 
 #[derive(StructOpt, Debug)]
 #[structopt(setting(clap::AppSettings::NoBinaryName))]
 #[structopt(rename_all = "kebab-case")]
 enum ReplRequest {
+    Dummy(DummyRequest),
     Camera(CameraRequest),
     Gimbal(GimbalRequest),
     GroundServer(GroundServerRequest),
@@ -68,12 +71,22 @@ pub async fn run(channels: Arc<Channels>) -> anyhow::Result<()> {
                 channels.gimbal_cmd.clone().send(cmd)?;
                 let _ = chan.await?;
             }
-            ReplRequest::GroundServer(request) => match request {
-                
-            }
+            ReplRequest::GroundServer(request) => match request {},
             ReplRequest::Exit => {
                 let _ = channels.interrupt.send(());
                 break;
+            }
+            ReplRequest::Dummy(request) => {
+                let (cmd, chan) = Command::new(request);
+                channels.dummy_cmd.clone().send(cmd)?;
+                trace!("dummy command sent, awaiting response");
+                let result = chan.await?;
+                trace!("dummy command completed, received response");
+
+                match result {
+                    Ok(response) => println!("dummy done"),
+                    Err(err) => println!("{}", format!("error: {}", err).red()),
+                };
             }
         };
     }
@@ -295,7 +308,7 @@ fn format_camera_response(response: CameraResponse) -> () {
         CameraResponse::ExposureMode { exposure_mode } => {
             println!("new exposure mode: {:?}", exposure_mode);
         }
-        
+
         CameraResponse::OperatingMode { operating_mode } => {
             println!("new operating mode: {:?}", operating_mode);
         }

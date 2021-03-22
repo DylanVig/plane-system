@@ -1,6 +1,6 @@
 use anyhow::Context;
 use chrono::{Datelike, Timelike};
-use futures::FutureExt;
+use futures::{FutureExt, StreamExt};
 use num_traits::{FromPrimitive, ToPrimitive};
 use ptp::{ObjectHandle, PtpData, StorageId};
 use std::{collections::HashMap, path::PathBuf, sync::Arc, time::Duration};
@@ -72,9 +72,12 @@ impl CameraClient {
         self.init()?;
 
         let mut interrupt_recv = self.channels.interrupt.subscribe();
-        let mut telemetry_chan = self.channels.telemetry.clone();
         let interrupt_fut = interrupt_recv.recv().fuse();
         futures::pin_mut!(interrupt_fut);
+
+        let telemetry_chan = self.channels.telemetry.clone();
+        let mut telemetry_stream = tokio_stream::wrappers::WatchStream::new(telemetry_chan).fuse();
+        let mut cmd_stream = self.cmd.clone().into_stream().fuse();
 
         loop {
             self.iface
@@ -82,24 +85,27 @@ impl CameraClient {
                 .context("failed to update camera state")?;
 
             futures::select! {
-                cmd = self.cmd.recv_async().fuse() => {
-                    if let Ok(cmd) = cmd {
-                        let result = self.exec(cmd.request()).await;
-                        trace!("command completed, sending response");
-                        let _ = cmd.respond(result);
-                    }
+                cmd = cmd_stream.next() => {
+                    // this is only None if the command stream closes for some reason
+                    let cmd = cmd.unwrap();
+                    let request = cmd.request();
+                    let result = self.exec(request).await;
+                    trace!("command completed, sending response");
+                    cmd.respond(result).expect("help");
                 }
-                _ = telemetry_chan.changed().fuse() => {
-                    let telemetry = telemetry_chan.borrow().clone();
+                telemetry = telemetry_stream.next() => {
+                    // this is only None if the telemetry stream closes for some reason
+                    let telemetry = telemetry.unwrap();
                     if let Some(telemetry) = telemetry {
-                        if let Err(err) = self.set_gps(telemetry).await {
+                        let camera_data = telemetry_to_camera_data(telemetry);
+                        if let Err(err) = self.iface.set(CameraPropertyCode::LocationInfo, camera_data) {
                             warn!("setting gps location in camera failed: {:?}", err);
                         } else {
                             trace!("sent telemetry info to camera");
                         }
                     }
                 }
-                _ = interrupt_fut => break,
+                _ = &mut interrupt_fut => break,
             }
 
             if let Ok(event) = self.iface.recv() {
@@ -688,72 +694,73 @@ impl CameraClient {
 
         Ok(image_name)
     }
+}
 
-    async fn set_gps(&mut self, telemetry: TelemetryInfo) -> anyhow::Result<()> {
-        let lat = telemetry.position.latitude.abs();
-        let lat_north = telemetry.position.latitude < 0.0;
-        let lat_degrees = lat as u32;
-        let lat_minutes = (lat * 60.0 % 60.0) as u32;
-        let lat_seconds_den = 100000u32;
-        let lat_seconds_num = (lat * 3600.0 % 60.0 * lat_seconds_den as f32) as u32;
+fn telemetry_to_camera_data(telemetry: TelemetryInfo) -> PtpData {
+    let lat = telemetry.position.latitude.abs();
+    let lat_north = telemetry.position.latitude < 0.0;
+    let lat_degrees = lat as u32;
+    let lat_minutes = (lat * 60.0 % 60.0) as u32;
+    let lat_seconds_den = 100000u32;
+    let lat_seconds_num = (lat * 3600.0 % 60.0 * lat_seconds_den as f32) as u32;
 
-        let lon = telemetry.position.longitude.abs();
-        let lon_west = telemetry.position.longitude < 0.0;
-        let lon_degrees = lon as u32;
-        let lon_minutes = (lon * 60.0 % 60.0) as u32;
-        let lon_seconds_den = 100000u32;
-        let lon_seconds_num = (lon * 3600.0 % 60.0 * lon_seconds_den as f32) as u32;
+    let lon = telemetry.position.longitude.abs();
+    let lon_west = telemetry.position.longitude < 0.0;
+    let lon_degrees = lon as u32;
+    let lon_minutes = (lon * 60.0 % 60.0) as u32;
+    let lon_seconds_den = 100000u32;
+    let lon_seconds_num = (lon * 3600.0 % 60.0 * lon_seconds_den as f32) as u32;
 
-        let camera_data = PtpData::AUINT32(vec![
-            0x01, // Info received from a GPS
-            0x01, // 3D position data
-            if lat_north { 0x00 } else { 0x01 },
-            lat_degrees,
-            lat_minutes,
-            lat_seconds_num,
-            lat_seconds_den,
-            if lon_west { 0x00 } else { 0x01 },
-            lon_degrees,
-            lon_minutes,
-            lon_seconds_num,
-            lon_seconds_den,
-            0x01, // sea level altitude is included
-            if telemetry.position.altitude >= 0.0 { 0x00 } else { 0x01 },
-            (telemetry.position.altitude.abs() * 1000.0) as u32,
-            1000, // denominator of altitude is 1000
-            0x00, // geoid altitude is not included,
-            0x00,
-            0,
-            0,
-            0x00, // VDoP is not included
-            0,
-            0,
-            0x00, // HDoP is not included,
-            0,
-            0,
-            0x00, // PDoP is not included
-            0,
-            0,
-            0x01, // coordinate system is WGS84
-            0x00, // speed is not included
-            0,
-            0,
-            0,
-            0x00, // true bearing is not included
-            0,
-            0,
-            0x00, // magnetic bearing is not included
-            0,
-            0,
-            telemetry.time.year() as u32,
-            telemetry.time.month(),
-            telemetry.time.day(),
-            telemetry.time.hour(),
-            telemetry.time.minute(),
-            telemetry.time.second(),
-        ]);
-
-        self.iface
-            .set(CameraPropertyCode::LocationInfo, camera_data)
-    }
+    PtpData::AUINT32(vec![
+        0x01, // Info received from a GPS
+        0x01, // 3D position data
+        if lat_north { 0x00 } else { 0x01 },
+        lat_degrees,
+        lat_minutes,
+        lat_seconds_num,
+        lat_seconds_den,
+        if lon_west { 0x00 } else { 0x01 },
+        lon_degrees,
+        lon_minutes,
+        lon_seconds_num,
+        lon_seconds_den,
+        0x01, // sea level altitude is included
+        if telemetry.position.altitude >= 0.0 {
+            0x00
+        } else {
+            0x01
+        },
+        (telemetry.position.altitude.abs() * 1000.0) as u32,
+        1000, // denominator of altitude is 1000
+        0x00, // geoid altitude is not included,
+        0x00,
+        0,
+        0,
+        0x00, // VDoP is not included
+        0,
+        0,
+        0x00, // HDoP is not included,
+        0,
+        0,
+        0x00, // PDoP is not included
+        0,
+        0,
+        0x01, // coordinate system is WGS84
+        0x00, // speed is not included
+        0,
+        0,
+        0,
+        0x00, // true bearing is not included
+        0,
+        0,
+        0x00, // magnetic bearing is not included
+        0,
+        0,
+        telemetry.time.year() as u32,
+        telemetry.time.month(),
+        telemetry.time.day(),
+        telemetry.time.hour(),
+        telemetry.time.minute(),
+        telemetry.time.second(),
+    ])
 }
