@@ -1,4 +1,4 @@
-use std::{sync::Arc, process::exit};
+use std::{process::exit, sync::Arc};
 
 use anyhow::Context;
 use camera::{client::CameraClient, state::CameraEvent};
@@ -28,6 +28,7 @@ mod pixhawk;
 mod scheduler;
 mod server;
 mod state;
+mod stream;
 mod telemetry;
 mod util;
 
@@ -96,6 +97,9 @@ impl<Req, Res, Err> Command<Req, Res, Err> {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    //initialize gstreamer stream
+    stream::run();
+
     pretty_env_logger::init_timed();
 
     let main_args: cli::args::MainArgs = cli::args::MainArgs::from_args();
