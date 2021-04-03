@@ -44,7 +44,10 @@ pub async fn run(channels: Arc<Channels>) -> anyhow::Result<()> {
 
         let request =
             match <ReplRequest as StructOpt>::from_iter_safe(line.split_ascii_whitespace()) {
-                Ok(cmd) => cmd,
+                Ok(cmd) => {
+                    rl.add_history_entry(line);
+                    cmd
+                }
                 Err(err) => {
                     println!("{}", err.message);
                     continue;
