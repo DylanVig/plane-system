@@ -35,13 +35,18 @@ This property controls the plane system's image capture scheduler. Set this to `
 
 - `gps`: required, accepts an object with properties `latitude` (number) and `longitude` (number) that describe a GPS location where the gimbal should point
 
+## `image`
+
+This property controls the plane system's image processing module. This module is responsible for taking images that are received from the camera, pairing them with the most recent telemetry, and saving them to the disk. You can set this to `null`, but doing so will disable all of the aforementioned features.
+
+- `save_path`: optional, accepts a path where images captured by the camera will be saved when they are downloaded. if this is not specified, the plane system will save them in the present working directory.
+
 ## `camera`
 
 This property controls the plane system's interface with a camera. Set this to `null` to disable the camera, or provide an object with the following properties:
 
 - `kind`: required, accepts a camera model (string)
   - the following camera models are currently defined: `R10C`
-- `save_path`: optional, accepts a path where images captured by the camera will be saved when they are downloaded. if this is not specified, the plane system will save them in the present working directory.
 
 ## `gimbal`
 

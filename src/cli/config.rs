@@ -35,6 +35,17 @@ pub struct GimbalConfig {
     pub device_path: Option<PathBuf>,
 }
 
+#[derive(Clone, Debug, Deserialize)]
+pub struct ImageConfig {
+    /// The folder in which to save downloaded images
+    #[serde(default = "default_save_path")]
+    pub save_path: PathBuf,
+}
+
+fn default_save_path() -> PathBuf {
+    std::env::current_dir().expect("could not get current directory")
+}
+
 #[derive(Copy, Clone, Eq, PartialEq, Debug, Deserialize)]
 pub enum CameraKind {
     R10C,
@@ -43,9 +54,6 @@ pub enum CameraKind {
 #[derive(Debug, Deserialize)]
 pub struct CameraConfig {
     pub kind: CameraKind,
-
-    /// The folder in which to save downloaded images
-    pub save_path: Option<PathBuf>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -53,9 +61,12 @@ pub struct PlaneSystemConfig {
     pub pixhawk: Option<PixhawkConfig>,
     pub plane_server: PlaneServerConfig,
     pub ground_server: Option<GroundServerConfig>,
+    pub image: Option<ImageConfig>,
     pub camera: Option<CameraConfig>,
     pub gimbal: Option<GimbalConfig>,
     pub scheduler: Option<SchedulerConfig>,
+    #[serde(default = "bool::default")]
+    pub dummy: bool,
 }
 
 impl PlaneSystemConfig {

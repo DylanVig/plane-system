@@ -1,23 +1,19 @@
 {
   "pixhawk": {
-    "mavlink": { "type": "V2" }
+    "mavlink": { "type": "V2" },
+    "address": "[::]:14551"
   },
   "plane_server": {
     "address": "[::]:8080"
   },
-  "ground_server": {
-    "address": "http://2ba675992842.ngrok.io/"
-  },
-  "scheduler": {
-    "enabled": false,
-    "gps": {
-      "latitude": -35.3589442144018,
-      "longitude": 149.164787599129
-    }
-  },
-  "camera": {
-    "kind": "R10C",
+  "ground_server": null,
+  "image": {
     "save_path": "./images/"
   },
-  "gimbal": null
+  "scheduler": null,
+  "camera": {
+    "kind": "R10C"
+  },
+  "gimbal": null,
+  "dummy": true
 }

@@ -196,8 +196,8 @@ pub enum CameraResponse {
     Data {
         data: Vec<u8>,
     },
-    File {
-        path: std::path::PathBuf,
+    Download {
+        name: String,
     },
     StorageInfo {
         storages: HashMap<ptp::StorageId, ptp::PtpStorageInfo>,
