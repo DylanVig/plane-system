@@ -6,13 +6,14 @@
   "plane_server": {
     "address": "[::]:8080"
   },
-  "ground_server": {
-    "address": "http://127.0.0.1:9000/"
+  "ground_server": null,
+  "image": {
+    "save_path": "./images/"
   },
   "scheduler": null,
   "camera": {
-    "kind": "R10C",
-    "save_path": "./images/"
+    "kind": "R10C"
   },
-  "gimbal": null
+  "gimbal": null,
+  "dummy": true
 }

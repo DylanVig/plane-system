@@ -2,8 +2,10 @@ use std::{process::exit, str::FromStr, sync::Arc, time::Duration};
 
 use anyhow::Context;
 use ctrlc;
+use image::ImageClient;
 use structopt::StructOpt;
 use tokio::{spawn, sync::*, time::sleep};
+use futures::channel::oneshot;
 
 use camera::{client::CameraClient, state::CameraEvent};
 use gimbal::client::GimbalClient;
@@ -24,9 +26,10 @@ extern crate async_trait;
 
 mod camera;
 mod cli;
-mod client;
+mod dummy;
 mod gimbal;
 mod gs;
+mod image;
 mod pixhawk;
 mod scheduler;
 mod server;
@@ -49,13 +52,18 @@ pub struct Channels {
     pixhawk_cmd: flume::Sender<pixhawk::PixhawkCommand>,
 
     /// Channel for broadcasting updates to the state of the camera.
-    camera_event: broadcast::Sender<CameraEvent>,
+    camera_event: broadcast::Sender<camera::CameraEvent>,
 
     /// Channel for sending instructions to the camera.
     camera_cmd: flume::Sender<camera::CameraCommand>,
 
     /// Channel for sending instructions to the gimbal.
     gimbal_cmd: flume::Sender<gimbal::GimbalCommand>,
+
+    /// Channel for sending instructions to the gimbal.
+    dummy_cmd: flume::Sender<dummy::DummyCommand>,
+
+    image_event: broadcast::Sender<image::ImageEvent>,
 }
 
 #[derive(Debug)]
@@ -85,7 +93,13 @@ impl<Req, Res, Err> Command<Req, Res, Err> {
     }
 
     fn respond(self, result: Result<Res, Err>) -> Result<(), Result<Res, Err>> {
-        self.channel().send(result)
+        let chan = self.channel();
+
+        if chan.is_canceled() {
+            panic!("chan is closed");
+        }
+
+        chan.send(result)
     }
 
     fn success(self, data: Res) -> Result<(), Result<Res, Err>> {
@@ -113,13 +127,15 @@ async fn main() -> anyhow::Result<()> {
 
     let config = config.context("failed to read config file")?;
 
-    let (interrupt_sender, _) = broadcast::channel(1);
     let (telemetry_sender, telemetry_receiver) = watch::channel(None);
+    let (interrupt_sender, _) = broadcast::channel(1);
     let (pixhawk_event_sender, _) = broadcast::channel(64);
-    let (pixhawk_cmd_sender, pixhawk_cmd_receiver) = flume::bounded(64);
     let (camera_event_sender, _) = broadcast::channel(256);
-    let (camera_cmd_sender, camera_cmd_receiver) = flume::bounded(256);
-    let (gimbal_cmd_sender, gimbal_cmd_receiver) = flume::bounded(256);
+    let (image_event_sender, _) = broadcast::channel(256);
+    let (pixhawk_cmd_sender, pixhawk_cmd_receiver) = flume::unbounded();
+    let (camera_cmd_sender, camera_cmd_receiver) = flume::unbounded();
+    let (gimbal_cmd_sender, gimbal_cmd_receiver) = flume::unbounded();
+    let (dummy_cmd_sender, dummy_cmd_receiver) = flume::unbounded();
 
     let channels = Arc::new(Channels {
         interrupt: interrupt_sender.clone(),
@@ -129,6 +145,8 @@ async fn main() -> anyhow::Result<()> {
         camera_event: camera_event_sender,
         camera_cmd: camera_cmd_sender,
         gimbal_cmd: gimbal_cmd_sender,
+        dummy_cmd: dummy_cmd_sender,
+        image_event: image_event_sender,
     });
 
     let mut task_names = Vec::new();
@@ -142,6 +160,19 @@ async fn main() -> anyhow::Result<()> {
         }
     })
     .expect("could not set ctrl+c handler");
+
+    if config.dummy {
+        info!("starting dummy");
+
+        let dummy_task = spawn({
+            let mut dummy_client =
+                dummy::DummyClient::create(channels.clone(), dummy_cmd_receiver)?;
+            async move { dummy_client.run().await }
+        });
+
+        task_names.push("dummy");
+        futures.push(dummy_task);
+    }
 
     if let Some(pixhawk_config) = config.pixhawk {
         info!("connecting to pixhawk at {}", pixhawk_config.address);
@@ -174,23 +205,13 @@ async fn main() -> anyhow::Result<()> {
     if let Some(camera_config) = config.camera {
         info!("connecting to camera");
 
-        let mut client_config = camera::CameraClientConfig::default();
-
-        if let Some(save_path) = camera_config.save_path {
-            client_config.save_path = std::fs::canonicalize(save_path)
-                .context("could not canonicalize for saving images from camera")?
-        }
-
         let camera_task = match camera_config.kind {
             cli::config::CameraKind::R10C => {
                 trace!("camera kind set to Sony R10C");
 
                 spawn({
-                    let mut camera_client = CameraClient::connect(
-                        channels.clone(),
-                        camera_cmd_receiver,
-                        client_config,
-                    )?;
+                    let mut camera_client =
+                        CameraClient::connect(channels.clone(), camera_cmd_receiver)?;
                     async move { camera_client.run().await }
                 })
             }
@@ -203,6 +224,18 @@ async fn main() -> anyhow::Result<()> {
         };
 
         task_names.push("camera");
+        futures.push(camera_task);
+    }
+
+    if let Some(image_config) = config.image {
+        info!("starting image download task");
+
+        let camera_task = spawn({
+            let image_client = ImageClient::new(channels.clone(), image_config);
+            async move { image_client.run().await }
+        });
+
+        task_names.push("image");
         futures.push(camera_task);
     }
 
