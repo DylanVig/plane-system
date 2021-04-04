@@ -24,74 +24,89 @@ enum ReplRequest {
 }
 
 pub async fn run(channels: Arc<Channels>) -> anyhow::Result<()> {
-    let mut rl = rustyline::Editor::<()>::new();
+    let mut interrupt_recv = channels.interrupt.subscribe();
+    let interrupt_fut = interrupt_recv.recv();
 
-    loop {
-        let current_prompt = "\n\nplane-system> ".bright_white();
+    let repl_fut = async {
+        let mut rl = rustyline::Editor::<()>::new();
+        loop {
+            let current_prompt = "\n\nplane-system> ".bright_white();
 
-        let line = match rl.readline(&current_prompt) {
-            Ok(line) => line,
-            Err(err) => match err {
-                rustyline::error::ReadlineError::Interrupted => {
+            let line = match rl.readline(&current_prompt) {
+                Ok(line) => line,
+                Err(err) => match err {
+                    rustyline::error::ReadlineError::Interrupted => {
+                        let _ = channels.interrupt.send(());
+                        break;
+                    }
+                    _ => return Err(err.into()),
+                },
+            };
+
+            trace!("got line: {:#?}", line);
+
+            let request =
+                match <ReplRequest as StructOpt>::from_iter_safe(line.split_ascii_whitespace()) {
+                    Ok(cmd) => {
+                        rl.add_history_entry(line);
+                        cmd
+                    }
+                    Err(err) => {
+                        println!("{}", err.message);
+                        continue;
+                    }
+                };
+
+            trace!("got command: {:#?}", request);
+
+            match request {
+                ReplRequest::Camera(request) => {
+                    let (cmd, chan) = Command::new(request);
+                    channels.camera_cmd.clone().send(cmd)?;
+                    trace!("command sent, awaiting response");
+                    let result = chan.await?;
+                    trace!("command completed, received response");
+
+                    match result {
+                        Ok(response) => format_camera_response(response),
+                        Err(err) => println!("{}", format!("error: {}", err).red()),
+                    };
+                }
+                ReplRequest::Gimbal(request) => {
+                    let (cmd, chan) = Command::new(request);
+                    channels.gimbal_cmd.clone().send(cmd)?;
+                    let _ = chan.await?;
+                }
+                ReplRequest::GroundServer(request) => match request {},
+                ReplRequest::Exit => {
                     let _ = channels.interrupt.send(());
                     break;
                 }
-                _ => return Err(err.into()),
-            },
-        };
+                ReplRequest::Dummy(request) => {
+                    let (cmd, chan) = Command::new(request);
+                    channels.dummy_cmd.clone().send(cmd)?;
+                    trace!("dummy command sent, awaiting response");
+                    let result = chan.await?;
+                    trace!("dummy command completed, received response");
 
-        trace!("got line: {:#?}", line);
-
-        let request =
-            match <ReplRequest as StructOpt>::from_iter_safe(line.split_ascii_whitespace()) {
-                Ok(cmd) => cmd,
-                Err(err) => {
-                    println!("{}", err.message);
-                    continue;
+                    match result {
+                        Ok(_) => println!("dummy done"),
+                        Err(err) => println!("{}", format!("error: {}", err).red()),
+                    };
                 }
             };
+        }
 
-        trace!("got command: {:#?}", request);
+        Result::<(), anyhow::Error>::Ok(())
+    };
 
-        match request {
-            ReplRequest::Camera(request) => {
-                let (cmd, chan) = Command::new(request);
-                channels.camera_cmd.clone().send(cmd)?;
-                trace!("command sent, awaiting response");
-                let result = chan.await?;
-                trace!("command completed, received response");
+    futures::pin_mut!(repl_fut);
+    futures::pin_mut!(interrupt_fut);
 
-                match result {
-                    Ok(response) => format_camera_response(response),
-                    Err(err) => println!("{}", format!("error: {}", err).red()),
-                };
-            }
-            ReplRequest::Gimbal(request) => {
-                let (cmd, chan) = Command::new(request);
-                channels.gimbal_cmd.clone().send(cmd)?;
-                let _ = chan.await?;
-            }
-            ReplRequest::GroundServer(request) => match request {},
-            ReplRequest::Exit => {
-                let _ = channels.interrupt.send(());
-                break;
-            }
-            ReplRequest::Dummy(request) => {
-                let (cmd, chan) = Command::new(request);
-                channels.dummy_cmd.clone().send(cmd)?;
-                trace!("dummy command sent, awaiting response");
-                let result = chan.await?;
-                trace!("dummy command completed, received response");
-
-                match result {
-                    Ok(response) => println!("dummy done"),
-                    Err(err) => println!("{}", format!("error: {}", err).red()),
-                };
-            }
-        };
+    match futures::future::select(repl_fut, interrupt_fut).await {
+        futures::future::Either::Left((res, _)) => res,
+        futures::future::Either::Right(_) => Ok(()),
     }
-
-    Ok(())
 }
 
 fn table_format() -> prettytable::format::TableFormat {
