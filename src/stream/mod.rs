@@ -5,13 +5,9 @@ pub fn run() {
     gst::init().unwrap();
 
     //autovideosrc ! videoconvert ! autovideosink
-
     // Create the GStreamer pipeline
     let pipeline = gst::parse_launch(&format!(
-        "autovideosrc !  videoscale \
-    ! videoconvert ! x264enc tune=zerolatency bitrate=500 \
-    speed-preset=superfast ! rtph264pay ! \
-    udpsink host=127.0.0.1 port=5000",
+    "rpicamsrc ! h264parse ! rtph264pay config-interval=1 pt=96 ! gdppay ! tcpserversink host=10.42.0.16 port=5000",
     ))
     .unwrap();
 
