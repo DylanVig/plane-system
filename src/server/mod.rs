@@ -30,6 +30,10 @@ enum ClientType {
 pub async fn serve(channels: Arc<Channels>, address: SocketAddr) -> anyhow::Result<()> {
     info!("initializing server");
 
+    let route_online = warp::path!("api" / "online")
+        .and(warp::get())
+        .map(move || warp::reply::json(&"ok"));
+
     let telemetry_receiver = Arc::new(channels.telemetry.clone());
 
     let route_roi = warp::path!("api" / "roi")
@@ -70,7 +74,7 @@ pub async fn serve(channels: Arc<Channels>, address: SocketAddr) -> anyhow::Resu
             }
         });
 
-    let api = route_roi.or(route_telem).or(route_telem_stream);
+    let api = route_online.or(route_roi).or(route_telem).or(route_telem_stream);
 
     info!("initialized server");
 
