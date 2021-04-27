@@ -1,1 +1,1 @@
-RUST_LOG=info cargo run
+RUST_LOG=plane_system=debug cargo run

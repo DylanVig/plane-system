@@ -7,6 +7,7 @@ use std::{
 
 use anyhow::Context;
 use bytes::{Buf, BytesMut};
+use futures::StreamExt;
 use tokio::{net::ToSocketAddrs, sync::mpsc};
 
 use mavlink::{
@@ -26,14 +27,14 @@ pub struct PixhawkClient {
     buf: BytesMut,
     sequence: AtomicU8,
     channels: Arc<Channels>,
-    cmd: mpsc::Receiver<PixhawkCommand>,
+    cmd: flume::Receiver<PixhawkCommand>,
     version: MavlinkVersion,
 }
 
 impl PixhawkClient {
     pub async fn connect<A: ToSocketAddrs + Clone>(
         channels: Arc<Channels>,
-        cmd: mpsc::Receiver<PixhawkCommand>,
+        cmd: flume::Receiver<PixhawkCommand>,
         addr: A,
         version: MavlinkVersion,
     ) -> anyhow::Result<Self> {
@@ -221,19 +222,26 @@ impl PixhawkClient {
 
         let mut interrupt_recv = self.channels.interrupt.subscribe();
 
-        // no delay b/c this is an I/O-bound loop
+        let mut loop_fut = async {
+            // no delay b/c this is an I/O-bound loop
+            loop {
+                if let Ok(cmd) = self.cmd.try_recv() {
+                    self.exec(cmd).await?;
+                }
 
-        loop {
-            if let Ok(cmd) = self.cmd.try_recv() {
-                self.exec(cmd).await?;
+                let _ = self.recv().await?;
             }
+            
+            #[allow(unreachable_code)]
+            Result::<(), anyhow::Error>::Ok(())
+        };
 
-            let _ = self.recv().await?;
+        let mut interrupt_fut = interrupt_recv.recv();
 
-            if interrupt_recv.try_recv().is_ok() {
-                break;
-            }
-        }
+        futures::pin_mut!(loop_fut);
+        futures::pin_mut!(interrupt_fut);
+
+        futures::future::select(loop_fut, interrupt_fut).await;
 
         Ok(())
     }

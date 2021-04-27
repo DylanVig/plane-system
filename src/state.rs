@@ -122,11 +122,23 @@ impl Attitude {
     }
 }
 
-#[derive(Default, Debug, Clone, Copy, Serialize)]
+#[derive(Debug, Clone, Copy, Serialize)]
 pub struct TelemetryInfo {
     pub plane_attitude: Attitude,
     pub gimbal_attitude: Attitude,
     pub position: Coords3D,
+    pub time: chrono::DateTime<chrono::Local>,
+}
+
+impl Default for TelemetryInfo {
+    fn default() -> Self {
+        TelemetryInfo {
+            gimbal_attitude: Default::default(),
+            plane_attitude: Default::default(),
+            position: Default::default(),
+            time: chrono::Local::now(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

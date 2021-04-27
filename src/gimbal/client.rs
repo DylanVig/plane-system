@@ -1,26 +1,49 @@
 use anyhow::Context;
-use std::sync::Arc;
-use std::time::Duration;
 
-use tokio::sync::mpsc;
+use futures::FutureExt;
+use std::{path::Path, sync::Arc};
 
-use crate::Channels;
+use crate::{Channels};
 
-use super::interface::*;
-use super::*;
+use super::{GimbalCommand, GimbalKind, GimbalRequest, GimbalResponse, interface::{GimbalInterface, HardwareGimbalInterface, SoftwareGimbalInterface}};
 
 pub struct GimbalClient {
-    iface: GimbalInterface,
+    iface: Box<dyn GimbalInterface + Send>,
     channels: Arc<Channels>,
-    cmd: mpsc::Receiver<GimbalCommand>,
+    cmd: flume::Receiver<GimbalCommand>,
 }
 
 impl GimbalClient {
+    pub fn connect_with_path<P: AsRef<Path>>(
+        channels: Arc<Channels>,
+        cmd: flume::Receiver<GimbalCommand>,
+        path: P,
+    ) -> anyhow::Result<Self> {
+        let iface =
+            HardwareGimbalInterface::with_path(path).context("failed to create gimbal interface")?;
+
+        Ok(Self {
+            iface: Box::new(iface),
+            channels,
+            cmd,
+        })
+    }
+
     pub fn connect(
         channels: Arc<Channels>,
-        cmd: mpsc::Receiver<GimbalCommand>,
+        cmd: flume::Receiver<GimbalCommand>,
+        kind: GimbalKind,
     ) -> anyhow::Result<Self> {
-        let iface = GimbalInterface::new().context("failed to create gimbal interface")?;
+        let iface: Box<dyn GimbalInterface + Send> = match kind {
+            GimbalKind::Hardware { protocol } => Box::new(
+                HardwareGimbalInterface::new()
+                    .context("failed to create hardware gimbal interface")?,
+            ),
+            GimbalKind::Software => Box::new(
+                SoftwareGimbalInterface::new()
+                    .context("failed to create software gimbal interface")?,
+            ),
+        };
 
         Ok(Self {
             iface,
@@ -38,26 +61,31 @@ impl GimbalClient {
         self.init()?;
 
         let mut interrupt_recv = self.channels.interrupt.subscribe();
+        let interrupt_fut = interrupt_recv.recv().fuse();
+        futures::pin_mut!(interrupt_fut);
 
         loop {
-            if let Ok(cmd) = self.cmd.try_recv() {
-                let result = self.exec(cmd.request()).await;
-                let _ = cmd.respond(result);
+            futures::select! {
+                cmd = self.cmd.recv_async().fuse() => {
+                    if let Ok(cmd) = cmd {
+                        let result = self.exec(cmd.request()).await;
+                        let _ = cmd.respond(result);
+                    }
+                }
+                _ = interrupt_fut => break,
             }
-
-            if interrupt_recv.try_recv().is_ok() {
-                break;
-            }
-
-            tokio::time::sleep(Duration::from_millis(10)).await;
         }
+        
         Ok(())
     }
 
     async fn exec(&mut self, cmd: &GimbalRequest) -> anyhow::Result<GimbalResponse> {
         match cmd {
-            GimbalRequest::Control { roll, pitch } => self.iface.control_angles(*roll, *pitch)?,
+            GimbalRequest::Control { roll, pitch } => {
+                self.iface.control_angles(*roll, *pitch).await?
+            }
         }
+
         Ok(GimbalResponse::Unit)
     }
 }

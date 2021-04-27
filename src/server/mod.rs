@@ -1,9 +1,10 @@
 use anyhow::Context;
+use futures::StreamExt;
 use serde::{Deserialize, Serialize};
 use std::{convert::Infallible, net::SocketAddr, sync::Arc};
 use warp::{self, Filter};
 
-use crate::state::RegionOfInterest;
+use crate::state::{RegionOfInterest, TelemetryInfo};
 use crate::Channels;
 
 #[derive(Clone)]
@@ -27,9 +28,11 @@ enum ClientType {
 }
 
 pub async fn serve(channels: Arc<Channels>, address: SocketAddr) -> anyhow::Result<()> {
-    use tokio_compat_02::FutureExt;
-
     info!("initializing server");
+
+    let route_online = warp::path!("api" / "online")
+        .and(warp::get())
+        .map(move || warp::reply::json(&"ok"));
 
     let telemetry_receiver = Arc::new(channels.telemetry.clone());
 
@@ -41,12 +44,35 @@ pub async fn serve(channels: Arc<Channels>, address: SocketAddr) -> anyhow::Resu
             warp::reply()
         });
 
-    let route_telem = warp::path!("api" / "telemetry").and(warp::get()).and_then({
-        move || {
+    let route_telem = warp::path!("api" / "telemetry" / "now")
+        .and(warp::get())
+        .and_then({
             let telemetry = telemetry_receiver.clone().borrow().clone();
-            async move { Result::<_, Infallible>::Ok(warp::reply::json(&telemetry)) }
-        }
-    });
+            move || async move { Ok::<_, Infallible>(warp::reply::json(&telemetry)) }
+        });
+
+    let route_telem_stream = warp::path!("api" / "telemetry" / "stream")
+        .and(warp::get())
+        .map({
+            let telemetry_receiver = channels.telemetry.clone();
+
+            move || {
+                let telemetry_stream = futures::stream::unfold(
+                    telemetry_receiver.clone(),
+                    |mut telemetry_receiver| async move {
+                        let res = telemetry_receiver.changed().await;
+
+                        let telemetry = telemetry_receiver.borrow().clone();
+
+                        Some((res.map(|_| telemetry), telemetry_receiver))
+                    },
+                );
+
+                warp::sse::reply(telemetry_stream.map(|res| {
+                    res.map(|telemetry| warp::sse::Event::default().json_data(telemetry).unwrap())
+                }))
+            }
+        });
 
     let route_test = warp::path!("api" / "test").and(warp::get()).map(|| {
         let response = "hi";
@@ -89,8 +115,11 @@ pub async fn serve(channels: Arc<Channels>, address: SocketAddr) -> anyhow::Resu
         .or(route_telem)
         .or(route_test)
         .or(route_image)
+        .or(route_roi)
+        .or(route_online)
+        .or(route_telem_stream)
         .with(cors);
-
+    
     info!("initialized server");
 
     async {
@@ -109,7 +138,6 @@ pub async fn serve(channels: Arc<Channels>, address: SocketAddr) -> anyhow::Resu
 
         server.await;
     }
-    .compat()
     .await;
 
     Ok(())
