@@ -115,7 +115,9 @@ impl<Req, Res, Err> Command<Req, Res, Err> {
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     //initialize gstreamer stream
-    stream::run();
+    tokio::task::spawn_blocking(move || {
+        stream::run();
+    }).await?;
 
     pretty_env_logger::init_timed();
 
