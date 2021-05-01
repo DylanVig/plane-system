@@ -1,6 +1,6 @@
 use anyhow::Context;
 use num_traits::{FromPrimitive, ToPrimitive};
-use ptp::{ObjectHandle, PtpRead, StorageId};
+use ptp::{ObjectFormatCode, ObjectHandle, PtpRead, StandardCommandCode, StorageId};
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, collections::HashSet, fmt::Debug, time::Duration};
 use std::{
@@ -427,8 +427,23 @@ impl CameraInterface {
     ) -> anyhow::Result<Vec<u8>> {
         Ok(self.camera.get_object(object_id, timeout)?)
     }
+
+    pub fn init_capture(
+        &self,
+        storage: StorageId,
+        format: ObjectFormatCode,
+        timeout: Option<Duration>,
+    ) -> anyhow::Result<Vec<u8>> {
+        Ok(self.camera.command(
+            StandardCommandCode::InitiateCapture.into(),
+            &[storage.into(), format.to_u32().unwrap()],
+            None,
+            timeout,
+        )?)
+    }
 }
 
+#[derive(Clone)]
 pub struct CameraInterfaceAsync {
     inner: Arc<Mutex<CameraInterface>>,
 }
@@ -561,5 +576,18 @@ impl CameraInterfaceAsync {
         let inner = self.inner.clone();
         tokio::task::spawn_blocking(move || inner.lock().unwrap().object_data(object_id, timeout))
             .await?
+    }
+
+    pub async fn init_capture(
+        &self,
+        storage: StorageId,
+        format: ObjectFormatCode,
+        timeout: Option<Duration>,
+    ) -> anyhow::Result<Vec<u8>> {
+        let inner = self.inner.clone();
+        tokio::task::spawn_blocking(move || {
+            inner.lock().unwrap().init_capture(storage, format, timeout)
+        })
+        .await?
     }
 }

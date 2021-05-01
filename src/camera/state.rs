@@ -28,6 +28,14 @@ pub enum CameraExposureMode {
     MovieIntelligentAuto,
 }
 
+#[repr(u16)]
+#[derive(Debug, Copy, Clone, FromPrimitive, ToPrimitive, Serialize, Eq, PartialEq)]
+pub enum CameraFocusMode {
+    Manual = 0x0001,
+    AutoFocusStill = 0x0002,
+    AutoFocusContinuous = 0x8004,
+}
+
 #[repr(u8)]
 #[derive(Debug, Copy, Clone, FromPrimitive, ToPrimitive, Serialize, Eq, PartialEq)]
 pub enum CameraCompressionMode {

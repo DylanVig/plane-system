@@ -1,8 +1,5 @@
 {
-  "pixhawk": {
-    "mavlink": { "type": "V2" },
-    "address": "[::]:14551"
-  },
+  "pixhawk": null,
   "plane_server": {
     "address": "[::]:8080"
   },
@@ -15,5 +12,5 @@
     "kind": "R10C"
   },
   "gimbal": null,
-  "dummy": true
+  "dummy": false
 }
