@@ -2,7 +2,7 @@ use anyhow::Context;
 use chrono::{Datelike, Timelike};
 use futures::{FutureExt, StreamExt};
 use num_traits::{FromPrimitive, ToPrimitive};
-use ptp::{ObjectHandle, PtpData, StorageId};
+use ptp::{ObjectFormatCode, ObjectHandle, PtpData, StandardObjectFormatCode, StorageId};
 use std::{collections::HashMap, path::PathBuf, sync::Arc, time::Duration};
 use tokio::{io::AsyncWriteExt, time::sleep};
 
@@ -113,16 +113,21 @@ impl CameraClient {
                         }
                     }
                 }
+                _ = tokio::time::sleep(Duration::from_millis(20)).fuse() => {
+                    // if there is no telemetry, we still want to check the
+                    // camera for events, so we can't allow this select to block
+                    // indefinitely
+                }
                 _ = &mut interrupt_fut => break,
             }
 
-            if let Ok(event) = self.iface.recv(Some(TIMEOUT)).await {
-                trace!("received event: {:?}", event);
+            if let Ok(cam_evt) = self.iface.recv(Some(TIMEOUT)).await {
+                trace!("received event: {:?}", cam_evt);
 
                 // in CC mode, if we receive an image capture event we should
                 // automatically download the image
                 match self.mode {
-                    CameraClientMode::ContinuousCapture => match event.code {
+                    CameraClientMode::ContinuousCapture => match cam_evt.code {
                         ptp::EventCode::Vendor(0xC204) => {
                             debug!("received image during continuous capture");
 
@@ -135,19 +140,19 @@ impl CameraClient {
                             match save_media {
                                 PtpData::UINT16(save_media) => {
                                     match CameraSaveMode::from_u16(save_media) {
-                                        Some(save_media) => match save_media {
-                                            CameraSaveMode::HostDevice => {
-                                                let shot_handle = ObjectHandle::from(0xFFFFC001);
+                                            Some(save_media) => match save_media {
+                                                CameraSaveMode::HostDevice => {
+                                                    let shot_handle = ObjectHandle::from(0xFFFFC001);
 
-                                                let image_name = self.download_image(shot_handle).await?;
+                                                    let image_name = self.download_image(shot_handle).await?;
 
-                                                info!("saved continuous capture image to {:?}", image_name);
-                                            }
+                                                    info!("saved continuous capture image to {:?}", image_name);
+                                                }
 
-                                            CameraSaveMode::MemoryCard1 => warn!("continuous capture images are being saved to camera; this is not supported"),
-                                        },
-                                        None => bail!("invalid save media"),
-                                    }
+                                                CameraSaveMode::MemoryCard1 => warn!("continuous capture images are being saved to camera; this is not supported"),
+                                            },
+                                            None => bail!("invalid save media"),
+                                        }
                                 }
                                 _ => bail!("invalid save media"),
                             }
@@ -341,21 +346,15 @@ impl CameraClient {
                     .execute(CameraControlCode::S1Button, PtpData::UINT16(0x0002))
                     .await?;
 
-                sleep(Duration::from_millis(200)).await;
-
                 // shoot!
                 self.iface
                     .execute(CameraControlCode::S2Button, PtpData::UINT16(0x0002))
                     .await?;
 
-                sleep(Duration::from_millis(200)).await;
-
                 // release
                 self.iface
                     .execute(CameraControlCode::S2Button, PtpData::UINT16(0x0001))
                     .await?;
-
-                sleep(Duration::from_millis(200)).await;
 
                 // hell yeah
                 self.iface
@@ -614,6 +613,37 @@ impl CameraClient {
                         .await?;
 
                     return Ok(CameraResponse::Unit);
+                }
+            },
+
+            CameraRequest::FocusMode(req) => match req {
+                CameraFocusModeRequest::Set { mode } => {
+                    self.ensure_setting(
+                        CameraPropertyCode::FocusMode,
+                        PtpData::UINT16(mode.to_u16().unwrap()),
+                    )
+                    .await?;
+
+                    return Ok(CameraResponse::FocusMode { focus_mode: *mode });
+                }
+                CameraFocusModeRequest::Get => {
+                    let props = self
+                        .iface
+                        .update()
+                        .await
+                        .context("failed to query camera properties")?;
+
+                    let prop = props
+                        .get(&CameraPropertyCode::FocusMode)
+                        .context("failed to query focus mode")?;
+
+                    if let PtpData::UINT16(mode) = prop.current {
+                        if let Some(focus_mode) = CameraFocusMode::from_u16(mode) {
+                            return Ok(CameraResponse::FocusMode { focus_mode });
+                        }
+                    }
+
+                    bail!("invalid operating mode: {:?}", prop.current);
                 }
             },
         }

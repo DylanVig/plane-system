@@ -43,6 +43,9 @@ pub enum CameraRequest {
     #[structopt(name = "mode")]
     OperationMode(CameraOperationModeRequest),
 
+    #[structopt(name = "focus")]
+    FocusMode(CameraFocusModeRequest),
+
     /// record videos
     Record(CameraRecordRequest),
 
@@ -190,6 +193,28 @@ impl FromStr for CameraOperatingMode {
     }
 }
 
+#[derive(StructOpt, Debug, Clone)]
+pub enum CameraFocusModeRequest {
+    /// get the current focus mode
+    Get,
+
+    /// set the current focus mode
+    Set { mode: CameraFocusMode },
+}
+
+impl FromStr for CameraFocusMode {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(match s {
+            "manual" | "m" => Self::Manual,
+            "afc" => Self::AutoFocusContinuous,
+            "afs"  => Self::AutoFocusStill,
+            _ => bail!("invalid focus mode")
+        })
+    }
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub enum CameraResponse {
     Unit,
@@ -216,5 +241,8 @@ pub enum CameraResponse {
     },
     ExposureMode {
         exposure_mode: CameraExposureMode,
+    },
+    FocusMode {
+        focus_mode: CameraFocusMode,
     },
 }
