@@ -84,6 +84,14 @@ impl GimbalClient {
             GimbalRequest::Control { roll, pitch } => {
                 self.iface.control_angles(*roll, *pitch).await?
             }
+            GimbalRequest::GPS { lat, lon } => {
+                let telemetry_info = self.channels.telemetry.borrow().clone();
+
+                if telemetry_info.is_none() {
+                    warn!("no telemetry data available for gimbal pointing")
+                }
+                self.iface.point_at_gps(*lat, *lon, &telemetry_info).await?
+            }
         }
 
         Ok(GimbalResponse::Unit)

@@ -11,6 +11,7 @@ pub type GimbalCommand = Command<GimbalRequest, GimbalResponse>;
 #[structopt(rename_all = "kebab-case")]
 pub enum GimbalRequest {
     Control { roll: f64, pitch: f64 },
+    GPS { lat: f32, lon: f32 },
 }
 
 #[derive(Debug, Clone, Serialize)]
