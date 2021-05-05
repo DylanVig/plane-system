@@ -113,7 +113,7 @@ impl CameraClient {
                         }
                     }
                 }
-                _ = tokio::time::sleep(Duration::from_millis(100)).fuse() => {
+                _ = tokio::time::sleep(Duration::from_millis(20)).fuse() => {
                     // if there is no telemetry, we still want to check the
                     // camera for events, so we can't allow this select to block
                     // indefinitely
