@@ -109,9 +109,9 @@ impl GroundServerClient {
             json!({
                 "timestamp": timestamp,
                 "imgMode": "fixed",
-                "fov": 0.0,
+                "fov": 60.0,
                 "telemetry": {
-                    "altitude": telemetry.position.altitude_msl,
+                    "altitude": telemetry.position.altitude_rel,
                     "planeYaw": telemetry.plane_attitude.yaw,
                     "gps": {
                         "latitude": telemetry.position.latitude,
