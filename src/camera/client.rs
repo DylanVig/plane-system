@@ -85,15 +85,6 @@ impl CameraClient {
         let telemetry_chan = self.channels.telemetry.clone();
         let mut telemetry_stream = tokio_stream::wrappers::WatchStream::new(telemetry_chan).fuse();
         let mut cmd_stream = self.cmd.clone().into_stream().fuse();
-        let mut cam_evt_stream = {
-            // iface can be cloned b/c it's just a wrapper around a Arc Mutex anyway
-            let iface = self.iface.clone();
-            futures::stream::unfold(iface, |iface| async move {
-                Some((iface.recv(None).await, iface))
-            })
-        };
-
-        futures::pin_mut!(cam_evt_stream);
 
         loop {
             self.iface
@@ -122,56 +113,54 @@ impl CameraClient {
                         }
                     }
                 }
-                cam_evt = cam_evt_stream.next() => {
-                    // TODO: handle this error
-                    match cam_evt.unwrap() {
-                        Ok(cam_evt) => {
-                            trace!("received event: {:?}", cam_evt);
-
-                            // in CC mode, if we receive an image capture event we should
-                            // automatically download the image
-                            match self.mode {
-                                CameraClientMode::ContinuousCapture => match cam_evt.code {
-                                    ptp::EventCode::Vendor(0xC204) => {
-                                        debug!("received image during continuous capture");
-
-                                        let save_media = self
-                                            .iface
-                                            .get(CameraPropertyCode::SaveMedia)
-                                            .context("unknown whether image is saved to host or device")?
-                                            .current;
-
-                                        match save_media {
-                                            PtpData::UINT16(save_media) => {
-                                                match CameraSaveMode::from_u16(save_media) {
-                                                    Some(save_media) => match save_media {
-                                                        CameraSaveMode::HostDevice => {
-                                                            let shot_handle = ObjectHandle::from(0xFFFFC001);
-
-                                                            let image_name = self.download_image(shot_handle).await?;
-
-                                                            info!("saved continuous capture image to {:?}", image_name);
-                                                        }
-
-                                                        CameraSaveMode::MemoryCard1 => warn!("continuous capture images are being saved to camera; this is not supported"),
-                                                    },
-                                                    None => bail!("invalid save media"),
-                                                }
-                                            }
-                                            _ => bail!("invalid save media"),
-                                        }
-                                    }
-                                    _ => {}
-                                },
-                                _ => {}
-                            }
-                        }
-                        Err(e) => {
-                            return Err(e);
-                        }
-                    }
+                _ = tokio::time::sleep(Duration::from_millis(20)).fuse() => {
+                    // if there is no telemetry, we still want to check the
+                    // camera for events, so we can't allow this select to block
+                    // indefinitely
                 }
                 _ = &mut interrupt_fut => break,
+            }
+
+            if let Ok(cam_evt) = self.iface.recv(Some(TIMEOUT)).await {
+                trace!("received event: {:?}", cam_evt);
+
+                // in CC mode, if we receive an image capture event we should
+                // automatically download the image
+                match self.mode {
+                    CameraClientMode::ContinuousCapture => match cam_evt.code {
+                        ptp::EventCode::Vendor(0xC204) => {
+                            debug!("received image during continuous capture");
+
+                            let save_media = self
+                                .iface
+                                .get(CameraPropertyCode::SaveMedia)
+                                .context("unknown whether image is saved to host or device")?
+                                .current;
+
+                            match save_media {
+                                PtpData::UINT16(save_media) => {
+                                    match CameraSaveMode::from_u16(save_media) {
+                                            Some(save_media) => match save_media {
+                                                CameraSaveMode::HostDevice => {
+                                                    let shot_handle = ObjectHandle::from(0xFFFFC001);
+
+                                                    let image_name = self.download_image(shot_handle).await?;
+
+                                                    info!("saved continuous capture image to {:?}", image_name);
+                                                }
+
+                                                CameraSaveMode::MemoryCard1 => warn!("continuous capture images are being saved to camera; this is not supported"),
+                                            },
+                                            None => bail!("invalid save media"),
+                                        }
+                                }
+                                _ => bail!("invalid save media"),
+                            }
+                        }
+                        _ => {}
+                    },
+                    _ => {}
+                }
             }
 
             if let Err(camera_error) = self.check_error() {

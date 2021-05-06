@@ -27,6 +27,8 @@ impl HardwareGimbalInterface {
 
             const SBGC_VID: u16 = 0x10C4;
             const SBGC_PID: u16 = 0xEA60;
+            const FTDI_VID: u16 = 0x0403;
+            const FTDI_PID: u16 = 0x6001;
 
             let ports = serialport::available_ports()?;
             info!("{:?}", ports);
@@ -46,7 +48,7 @@ impl HardwareGimbalInterface {
 
         #[cfg(not(feature = "udev"))]
         {
-            warn!("USB serial devices cannot be automatically detected because this executable was not compiled with libudev enabled");
+            warn!("USB serial devices cannot be automatically detected because this executable was not compiled with udev enabled");
         }
 
         Ok(None)
