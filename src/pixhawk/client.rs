@@ -231,7 +231,7 @@ impl PixhawkClient {
 
                 let _ = self.recv().await?;
             }
-            
+
             #[allow(unreachable_code)]
             Result::<(), anyhow::Error>::Ok(())
         };
@@ -258,6 +258,7 @@ impl PixhawkClient {
                     coords: Coords3D::new(
                         data.lat as f32 / 1e7,
                         data.lon as f32 / 1e7,
+                        data.alt as f32 / 1e3,
                         data.relative_alt as f32 / 1e3,
                     ),
                 });
@@ -283,6 +284,7 @@ impl PixhawkClient {
                         data.lat as f32 / 1e7,
                         data.lng as f32 / 1e7,
                         data.alt_msl,
+                        data.alt_rel,
                     ),
                 });
             }

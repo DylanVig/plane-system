@@ -49,7 +49,7 @@ impl SchedulerBackend {
 
     pub fn get_target_gimbal_angles(&mut self) -> (f64, f64) {
         // altitude in m, no conversion needed
-        let altitude = self.telemetry.position.altitude as f64;
+        let altitude = self.telemetry.position.altitude_rel as f64;
 
         // roll, pitch, yaw in degrees, need radians
         let plane_roll = self.telemetry.plane_attitude.roll.to_radians() as f64;

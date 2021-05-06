@@ -823,13 +823,13 @@ fn telemetry_to_camera_data(telemetry: TelemetryInfo) -> PtpData {
         lon_minutes,
         lon_seconds_num,
         lon_seconds_den,
-        0x01, // sea level altitude is included
-        if telemetry.position.altitude >= 0.0 {
+        0x01, // relative altitude is included
+        if telemetry.position.altitude_rel >= 0.0 {
             0x00
         } else {
             0x01
         },
-        (telemetry.position.altitude.abs() * 1000.0) as u32,
+        (telemetry.position.altitude_rel.abs() * 1000.0) as u32,
         1000, // denominator of altitude is 1000
         0x00, // geoid altitude is not included,
         0x00,

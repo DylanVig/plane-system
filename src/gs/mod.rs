@@ -111,7 +111,7 @@ impl GroundServerClient {
                 "imgMode": "fixed",
                 "fov": 60.0,
                 "telemetry": {
-                    "altitude": telemetry.position.altitude,
+                    "altitude": telemetry.position.altitude_rel,
                     "planeYaw": telemetry.plane_attitude.yaw,
                     "gps": {
                         "latitude": telemetry.position.latitude,
