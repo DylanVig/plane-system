@@ -29,6 +29,9 @@ pub struct PlaneSystemConfig {
     pub server: ServerConfig,
     pub camera: bool,
     pub gimbal: bool,
+    pub stream: bool,
+    pub stream_rpi: bool,
+    pub stream_address: String,
     pub scheduler: SchedulerConfig,
 }
 

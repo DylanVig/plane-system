@@ -7,7 +7,8 @@ use prettytable::{cell, row, Table};
 use structopt::StructOpt;
 
 use crate::{
-    camera::CameraRequest, camera::CameraResponse, gimbal::GimbalRequest, Channels, Command,
+    camera::CameraRequest, camera::CameraResponse, gimbal::GimbalRequest, stream::StreamRequest,
+    Channels, Command,
 };
 
 #[derive(StructOpt, Debug)]
@@ -16,6 +17,7 @@ use crate::{
 enum ReplRequest {
     Camera(CameraRequest),
     Gimbal(GimbalRequest),
+    Stream(StreamRequest),
     Exit,
 }
 
@@ -63,6 +65,11 @@ pub async fn run(channels: Arc<Channels>) -> anyhow::Result<()> {
             ReplRequest::Gimbal(request) => {
                 let (cmd, chan) = Command::new(request);
                 channels.gimbal_cmd.clone().send(cmd).await?;
+                let _ = chan.await?;
+            }
+            ReplRequest::Stream(request) => {
+                let (cmd, chan) = Command::new(request);
+                channels.stream_cmd.clone().send(cmd).await?;
                 let _ = chan.await?;
             }
             ReplRequest::Exit => {

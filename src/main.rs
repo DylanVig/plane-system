@@ -8,6 +8,7 @@ use pixhawk::{client::PixhawkClient, state::PixhawkEvent};
 use scheduler::Scheduler;
 use state::TelemetryInfo;
 use std::time::Duration;
+use stream::client::StreamClient;
 use structopt::StructOpt;
 use telemetry::TelemetryStream;
 use tokio::{spawn, sync::*, time::sleep};
@@ -54,6 +55,9 @@ pub struct Channels {
 
     /// Channel for sending instructions to the gimbal.
     gimbal_cmd: mpsc::Sender<gimbal::GimbalCommand>,
+
+    ///Channel for starting stream.
+    stream_cmd: mpsc::Sender<stream::StreamCommand>,
 }
 
 #[derive(Debug)]
@@ -97,9 +101,6 @@ impl<Req, Res, Err> Command<Req, Res, Err> {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    //initialize gstreamer stream
-    stream::run();
-
     pretty_env_logger::init_timed();
 
     let main_args: cli::args::MainArgs = cli::args::MainArgs::from_args();
@@ -121,6 +122,7 @@ async fn main() -> anyhow::Result<()> {
     let (camera_event_sender, _) = broadcast::channel(256);
     let (camera_cmd_sender, camera_cmd_receiver) = mpsc::channel(256);
     let (gimbal_cmd_sender, gimbal_cmd_receiver) = mpsc::channel(256);
+    let (stream_cmd_sender, stream_cmd_receiver) = mpsc::channel(256);
 
     let channels = Arc::new(Channels {
         interrupt: interrupt_sender.clone(),
@@ -130,6 +132,7 @@ async fn main() -> anyhow::Result<()> {
         camera_event: camera_event_sender,
         camera_cmd: camera_cmd_sender,
         gimbal_cmd: gimbal_cmd_sender,
+        stream_cmd: stream_cmd_sender,
     });
 
     let mut task_names = Vec::new();
@@ -212,6 +215,21 @@ async fn main() -> anyhow::Result<()> {
     });
     task_names.push("server");
     futures.push(server_task);
+
+    if config.stream {
+        info!("initializing stream");
+        let stream_task = spawn({
+            let mut stream_client = StreamClient::connect(
+                channels.clone(),
+                stream_cmd_receiver,
+                config.stream_rpi,
+                config.stream_address,
+            )?;
+            async move { stream_client.run().await }
+        });
+        task_names.push("stream");
+        futures.push(stream_task);
+    }
 
     info!("intializing cli");
     let cli_task = spawn({

@@ -1,6 +1,8 @@
 {
   "pixhawk": {
-    "mavlink": { "type": "V2" }
+    "mavlink": {
+      "type": "V2"
+    }
   },
   "server": {
     "address": "[::]:8080"
@@ -13,5 +15,8 @@
     }
   },
   "camera": false,
-  "gimbal": false
+  "gimbal": false,
+  "stream": true,
+  "stream_rpi": false,
+  "stream_address": "127.0.0.1"
 }
