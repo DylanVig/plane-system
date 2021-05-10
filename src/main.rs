@@ -224,6 +224,9 @@ async fn main() -> anyhow::Result<()> {
                 stream_cmd_receiver,
                 config.stream_rpi,
                 config.stream_address,
+                config.rpi_cameras,
+                config.test_cameras,
+                config.stream_port,
             )?;
             async move { stream_client.run().await }
         });

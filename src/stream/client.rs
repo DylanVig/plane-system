@@ -20,8 +20,12 @@ impl StreamClient {
     cmd: mpsc::Receiver<StreamCommand>,
     mode: bool,
     address: String,
+    rpi_cameras: Vec<String>,
+    test_cameras: Vec<String>,
+    port: u32,
   ) -> anyhow::Result<Self> {
-    let iface = StreamInterface::new(mode, address).context("failed to create stream interface")?;
+    let iface = StreamInterface::new(mode, address, rpi_cameras, test_cameras, port)
+      .context("failed to create stream interface")?;
 
     Ok(Self {
       iface,

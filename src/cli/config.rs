@@ -32,6 +32,9 @@ pub struct PlaneSystemConfig {
     pub stream: bool,
     pub stream_rpi: bool,
     pub stream_address: String,
+    pub stream_port: u32,
+    pub rpi_cameras: Vec<String>,
+    pub test_cameras: Vec<String>,
     pub scheduler: SchedulerConfig,
 }
 

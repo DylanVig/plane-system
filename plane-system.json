@@ -18,5 +18,38 @@
   "gimbal": false,
   "stream": true,
   "stream_rpi": false,
-  "stream_address": "127.0.0.1"
+  "stream_address": "127.0.0.1",
+  "stream_port": "5000",
+  "rpi_cameras": [
+    "rpicamsrc"
+  ],
+  "test_cameras": [
+    "autovideosrc",
+    "videotestsrc",
+    "videotestsrc pattern=0",
+    "videotestsrc pattern=1",
+    "videotestsrc pattern=2",
+    "videotestsrc pattern=3",
+    "videotestsrc pattern=4",
+    "videotestsrc pattern=5",
+    "videotestsrc pattern=6",
+    "videotestsrc pattern=7",
+    "videotestsrc pattern=8",
+    "videotestsrc pattern=9",
+    "videotestsrc pattern=10",
+    "videotestsrc pattern=11",
+    "videotestsrc pattern=12",
+    "videotestsrc pattern=13",
+    "videotestsrc pattern=14",
+    "videotestsrc pattern=15",
+    "videotestsrc pattern=16",
+    "videotestsrc pattern=17",
+    "videotestsrc pattern=18",
+    "videotestsrc pattern=19",
+    "videotestsrc pattern=20",
+    "videotestsrc pattern=21",
+    "videotestsrc pattern=22",
+    "videotestsrc pattern=23",
+    "videotestsrc pattern=24"
+  ]
 }
