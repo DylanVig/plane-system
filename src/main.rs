@@ -4,7 +4,7 @@ use anyhow::Context;
 use ctrlc;
 use image::ImageClient;
 use structopt::StructOpt;
-use tokio::{spawn, sync::*, time::sleep};
+use tokio::{spawn, sync::{broadcast, watch}, time::sleep};
 use futures::channel::oneshot;
 
 use camera::{client::CameraClient, state::CameraEvent};
