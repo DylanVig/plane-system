@@ -1,9 +1,8 @@
 [package]
 name = "plane-system"
-version = "0.1.0"
+version = "0.0.0"
 authors = ["Ibiyemi Abiodun <ibiyemi@intulon.com>"]
 edition = "2018"
-
 
 [dependencies]
 # logging + error handling
@@ -12,7 +11,7 @@ log = "0.4.11"
 anyhow = "1.0"
 
 # async 
-tokio = { version = "1.3.0", features = ["full"] }
+tokio = { version = "1.11.0", features = ["full"] }
 tokio-stream = { version = "0.1", features = ["sync"] }
 futures = "0.3"
 flume = "0.10"
@@ -33,21 +32,21 @@ warp = "0.3"
 reqwest = { version = "0.11", features = ["json", "multipart"], default-features = false }
 
 # utility
-bytes = "1.0"
-ctrlc = "3.1"
+bytes = "1.1"
+ctrlc = "3.2"
 structopt = "0.3"
 clap = "2"
-config = "0.10.1"
-rustyline = "8.0"
+config = "0.11.0"
+rustyline = "9.0"
 
 chrono = { version = "0.4", features = ["serde"] }
-geo = "0.17.0"
+geo = "0.18.0"
 colored = "2"
 humansize = "1.1"
 prettytable-rs = "0.8"
 
 # i/o
-rusb = "0.7"
+rusb = "0.8"
 serialport = { git = "https://github.com/Susurrus/serialport-rs.git", default-features = false }
 tokio-serial = { git = "https://github.com/CUAir/tokio-serial.git", default-features = false }
 tokio-util = { version = "0.6.2", features = ["codec"] }
