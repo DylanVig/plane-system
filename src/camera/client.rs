@@ -122,7 +122,7 @@ impl CameraClient {
             }
 
             if let Ok(cam_evt) = self.iface.recv(Some(TIMEOUT)).await {
-                trace!("received event: {:?}", cam_evt);
+                debug!("received event: {:X?}", cam_evt);
 
                 // in CC mode, if we receive an image capture event we should
                 // automatically download the image
@@ -194,14 +194,57 @@ impl CameraClient {
                 Ok(CameraResponse::Unit)
             }
 
+            CameraRequest::Debug {
+                property,
+                value_num,
+            } => {
+                let current_state = self
+                    .iface
+                    .update()
+                    .await
+                    .context("could not get current camera state")?;
+
+                if let Some(property) = property {
+                    let property_code: CameraPropertyCode = FromPrimitive::from_u32(*property)
+                        .context("not a valid camera property code")?;
+                    println!("dumping {:#X?}", property_code);
+
+                    let property = current_state.get(&property_code);
+                    println!("dumping {:#X?}", property);
+
+                    if let Some(property) = property {
+                        println!("setting {:#X?}", property_code);
+                        if let Some(&value) = value_num.first() {
+                            let property_value = match property.data_type {
+                                0x0001 => PtpData::INT8(value as i8),
+                                0x0002 => PtpData::UINT8(value as u8),
+                                0x0003 => PtpData::INT16(value as i16),
+                                0x0004 => PtpData::UINT16(value as u16),
+                                0x0005 => PtpData::INT32(value as i32),
+                                0x0006 => PtpData::UINT32(value as u32),
+                                0x0007 => PtpData::INT64(value as i64),
+                                0x0008 => PtpData::UINT64(value as u64),
+                                _ => bail!("cannot set this property type, not implemented"),
+                            };
+
+                            self.ensure_setting(property_code, property_value).await?;
+                        }
+                    }
+                } else {
+                    println!("{:#X?}", current_state);
+                }
+
+                Ok(CameraResponse::Unit)
+            }
+
             CameraRequest::Storage(cmd) => match cmd {
                 CameraStorageRequest::List => {
                     self.ensure_mode(0x04).await?;
 
-                    trace!("getting storage ids");
+                    debug!("getting storage ids");
 
                     let storage_ids = retry_async(10, Some(Duration::from_secs(1)), || async {
-                        trace!("checking for storage ID 0x00010000");
+                        debug!("checking for storage ID 0x00010000");
 
                         let storage_ids = self
                             .iface
@@ -217,7 +260,7 @@ impl CameraClient {
                     })
                     .await?;
 
-                    trace!("got storage ids: {:?}", storage_ids);
+                    debug!("got storage ids: {:?}", storage_ids);
 
                     let infos: Vec<Result<(_, _), _>> =
                         futures::future::join_all(storage_ids.iter().map(|&id| {
@@ -242,12 +285,12 @@ impl CameraClient {
                 CameraFileRequest::List { parent } => {
                     self.ensure_mode(0x04).await?;
 
-                    trace!("getting object handles");
+                    debug!("getting object handles");
 
                     // wait for storage ID 0x00010001 to exist
 
                     retry_async(10, Some(Duration::from_secs(1)), || async {
-                        trace!("checking for storage ID 0x00010001");
+                        debug!("checking for storage ID 0x00010001");
 
                         let storage_ids = self
                             .iface
@@ -276,7 +319,7 @@ impl CameraClient {
                         .await
                         .context("could not get object handles")?;
 
-                    trace!("got object handles: {:?}", object_handles);
+                    debug!("got object handles: {:?}", object_handles);
 
                     futures::future::join_all(object_handles.iter().map(|&id| {
                         let iface = &self.iface;
@@ -341,20 +384,28 @@ impl CameraClient {
 
                 info!("capturing image");
 
+                debug!("sending half shutter press");
+
                 // press shutter button halfway to fix the focus
                 self.iface
                     .execute(CameraControlCode::S1Button, PtpData::UINT16(0x0002))
                     .await?;
+
+                debug!("sending full shutter press");
 
                 // shoot!
                 self.iface
                     .execute(CameraControlCode::S2Button, PtpData::UINT16(0x0002))
                     .await?;
 
+                debug!("sending full shutter release");
+
                 // release
                 self.iface
                     .execute(CameraControlCode::S2Button, PtpData::UINT16(0x0001))
                     .await?;
+
+                debug!("sending half shutter release");
 
                 // hell yeah
                 self.iface
@@ -375,7 +426,7 @@ impl CameraClient {
                                     Some(2) => bail!("capture failure"),
                                     _ => bail!("unknown capture status"),
                                 },
-                                evt => trace!("received event: {:?}", evt),
+                                evt => debug!("received event: {:?}", evt),
                             }
                         }
 

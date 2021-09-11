@@ -49,6 +49,14 @@ pub enum CameraRequest {
     /// record videos
     Record(CameraRecordRequest),
 
+    /// dump the state of the camera to the console
+    Debug {
+        #[structopt(parse(try_from_str = crate::util::parse_hex_u32))]
+        property: Option<u32>,
+
+        value_num: Vec<isize>,
+    },
+
     /// perform a usb reset and reconnect
     Reset,
 }
