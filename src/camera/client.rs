@@ -213,7 +213,6 @@ impl CameraClient {
                     println!("dumping {:#X?}", property);
 
                     if let Some(property) = property {
-                        println!("setting {:#X?}", property_code);
                         if let Some(&value) = value_num.first() {
                             let property_value = match property.data_type {
                                 0x0001 => PtpData::INT8(value as i8),
@@ -226,6 +225,8 @@ impl CameraClient {
                                 0x0008 => PtpData::UINT64(value as u64),
                                 _ => bail!("cannot set this property type, not implemented"),
                             };
+
+                            println!("setting {:#X?} to {:#X?}", property_code, property_value);
 
                             self.ensure_setting(property_code, property_value).await?;
                         }
@@ -384,6 +385,15 @@ impl CameraClient {
 
                 info!("capturing image");
 
+                let shooting_file_status = self
+                    .iface
+                    .get(CameraPropertyCode::ShootingFileInfo)
+                    .map(|p| match p.current {
+                        PtpData::UINT16(u) => u,
+                        _ => unreachable!(),
+                    })
+                    .unwrap_or(0);
+
                 debug!("sending half shutter press");
 
                 // press shutter button halfway to fix the focus
@@ -416,19 +426,19 @@ impl CameraClient {
 
                 tokio::time::timeout(Duration::from_millis(3000), async {
                     loop {
-                        trace!("checking for events");
+                        let new_props =  self
+                        .iface
+                        .update()
+                        .await
+                        ;
 
-                        if let Ok(event) = self.iface.recv(Some(TIMEOUT)).await {
-                            // 0xC204 = image taken
-                            match event.code {
-                                ptp::EventCode::Vendor(0xC204) => match event.params[0] {
-                                    Some(1) => break,
-                                    Some(2) => bail!("capture failure"),
-                                    _ => bail!("unknown capture status"),
-                                },
-                                evt => debug!("received event: {:?}", evt),
-                            }
-                        }
+                        let new_shooting_file_status =
+                            .get(CameraPropertyCode::ShootingFileInfo)
+                            .map(|p| match p.current {
+                                PtpData::UINT16(u) => u,
+                                _ => unreachable!(),
+                            })
+                            .unwrap_or(0);
 
                         tokio::task::yield_now().await;
                     }
@@ -845,6 +855,9 @@ impl CameraClient {
         Ok(image_name)
     }
 }
+
+
+
 
 fn telemetry_to_camera_data(telemetry: TelemetryInfo) -> PtpData {
     let lat = telemetry.position.latitude.abs();
