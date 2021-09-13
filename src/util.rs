@@ -7,6 +7,12 @@ pub fn parse_hex_u32(src: &str) -> Result<u32, ParseIntError> {
     u32::from_str_radix(src, 16)
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Change<T> {
+    pub old: T,
+    pub new: T,
+}
+
 /// This is an extension trait for channel receivers.
 #[async_trait]
 pub(crate) trait ReceiverExt<T: Clone + Send> {

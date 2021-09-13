@@ -21,7 +21,7 @@ pub enum CameraRequest {
     Capture,
 
     /// power off the camera
-    Power(CameraPowerRequest),
+    Off,
 
     /// disconnect and reconnect to the camera
     Reconnect,
@@ -157,12 +157,6 @@ pub enum CameraZoomLevelRequest {
 pub enum CameraZoomModeRequest {
     Optical,
     OpticalDigital,
-}
-
-#[derive(StructOpt, Debug, Clone)]
-pub enum CameraPowerRequest {
-    Up,
-    Down,
 }
 
 #[derive(StructOpt, Debug, Clone)]

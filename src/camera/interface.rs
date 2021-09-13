@@ -8,6 +8,7 @@ use std::{
     sync::{Arc, Mutex},
 };
 
+
 /// Sony's USB vendor ID
 const SONY_USB_VID: u16 = 0x054C;
 /// Sony R10C camera's product ID
@@ -137,7 +138,6 @@ pub struct CameraInterface {
 
 struct CameraState {
     version: u16,
-    properties: HashMap<CameraPropertyCode, ptp::PtpPropInfo>,
     supported_properties: HashSet<CameraPropertyCode>,
     supported_controls: HashSet<CameraControlCode>,
 }
@@ -223,7 +223,6 @@ impl CameraInterface {
                         version: sdi_ext_version,
                         supported_properties: sdi_device_props,
                         supported_controls: sdi_device_controls,
-                        properties: HashMap::new(),
                     });
                 }
                 Err(err) => {
@@ -270,8 +269,8 @@ impl CameraInterface {
     }
 
     /// Queries the camera for its current state and updates the hashmap held by
-    /// this interface.
-    pub fn update(&mut self) -> anyhow::Result<&HashMap<CameraPropertyCode, ptp::PtpPropInfo>> {
+    /// this interface. Returns only the properties that have changed.
+    pub fn update(&mut self) -> anyhow::Result<Vec<ptp::PtpPropInfo>> {
         let timeout = self.timeout();
 
         let state = if let Some(ref mut state) = self.state {
@@ -295,33 +294,16 @@ impl CameraInterface {
 
         trace!("reading {:?} entries", num_entries);
 
-        let mut properties = HashMap::new();
+        let mut properties = Vec::new();
 
         for _ in 0..num_entries {
-            let prop = ptp::PtpPropInfo::decode(&mut cursor)?;
-            let code = CameraPropertyCode::from_u16(prop.property_code);
+            let current_prop = ptp::PtpPropInfo::decode(&mut cursor)?;
+            let prop_code = CameraPropertyCode::from_u16(current_prop.property_code);
 
-            if let Some(code) = code {
-                properties.insert(code, prop);
-            }
+            properties.push(current_prop);
         }
 
-        state.properties = properties;
-
-        Ok(&state.properties)
-    }
-
-    /// Gets information about a camera property from the hashmap. This method
-    /// does NOT query the camera itself.
-    pub fn get(&self, code: CameraPropertyCode) -> Option<ptp::PtpPropInfo> {
-        let state = if let Some(ref state) = self.state {
-            state
-        } else {
-            warn!("get() called when camera is not connected");
-            return None;
-        };
-
-        state.properties.get(&code).cloned()
+        Ok(properties)
     }
 
     /// Sets the value of a camera property. This should be followed by a call
@@ -333,15 +315,6 @@ impl CameraInterface {
         } else {
             bail!("set() called when camera is not connected");
         };
-
-        let current_value = state.properties.get(&code).map(|prop| &prop.current);
-
-        if let Some(current_value) = current_value {
-            if current_value == &new_value {
-                trace!("current value is the same as value passed to set(), returning");
-                return Ok(());
-            }
-        }
 
         let buf = new_value.encode();
 
@@ -379,7 +352,7 @@ impl CameraInterface {
     }
 
     /// Receives an event from the camera.
-    pub fn recv(&self, timeout: Option<Duration>) -> anyhow::Result<ptp::PtpEvent> {
+    pub fn recv(&self, timeout: Option<Duration>) -> anyhow::Result<Option<ptp::PtpEvent>> {
         let event = self.camera.event(timeout)?;
         trace!("received event: {:#?}", &event);
         Ok(event)
@@ -440,154 +413,5 @@ impl CameraInterface {
             None,
             timeout,
         )?)
-    }
-}
-
-#[derive(Clone)]
-pub struct CameraInterfaceAsync {
-    inner: Arc<Mutex<CameraInterface>>,
-}
-
-impl CameraInterfaceAsync {
-    pub fn new() -> anyhow::Result<Self> {
-        Ok(CameraInterfaceAsync {
-            inner: Arc::new(Mutex::new(CameraInterface::new()?)),
-        })
-    }
-
-    pub fn timeout(&self) -> Option<Duration> {
-        self.inner.lock().unwrap().timeout()
-    }
-
-    pub async fn connect(&self) -> anyhow::Result<()> {
-        let inner = self.inner.clone();
-        tokio::task::spawn_blocking(move || inner.lock().unwrap().connect()).await?
-    }
-
-    pub async fn disconnect(&self) -> anyhow::Result<()> {
-        let inner = self.inner.clone();
-        tokio::task::spawn_blocking(move || inner.lock().unwrap().disconnect()).await?
-    }
-
-    pub async fn reset(&self) -> anyhow::Result<()> {
-        let inner = self.inner.clone();
-        tokio::task::spawn_blocking(move || inner.lock().unwrap().reset()).await?
-    }
-
-    /// Queries the camera for its current state and updates the hashmap held by
-    /// this interface.
-    pub async fn update(&self) -> anyhow::Result<HashMap<CameraPropertyCode, ptp::PtpPropInfo>> {
-        let inner = self.inner.clone();
-        tokio::task::spawn_blocking(move || {
-            inner.lock().unwrap().update().map(|props| props.clone())
-        })
-        .await?
-    }
-
-    /// Gets information about a camera property from the hashmap. This method
-    /// does NOT query the camera itself.
-    pub fn get(&self, code: CameraPropertyCode) -> Option<ptp::PtpPropInfo> {
-        self.inner.lock().unwrap().get(code)
-    }
-
-    /// Sets the value of a camera property. This should be followed by a call
-    /// to update() and a check to make sure that the intended result was
-    /// achieved.
-    pub async fn set(
-        &self,
-        code: CameraPropertyCode,
-        new_value: ptp::PtpData,
-    ) -> anyhow::Result<()> {
-        let inner = self.inner.clone();
-        tokio::task::spawn_blocking(move || inner.lock().unwrap().set(code, new_value)).await?
-    }
-
-    /// Executes a command on the camera. This should be followed by a call to
-    /// update() and a check to make sure that the intended result was achieved.
-    pub async fn execute(
-        &self,
-        code: CameraControlCode,
-        payload: ptp::PtpData,
-    ) -> anyhow::Result<()> {
-        let inner = self.inner.clone();
-        tokio::task::spawn_blocking(move || inner.lock().unwrap().execute(code, payload)).await?
-    }
-
-    /// Receives an event from the camera.
-    pub async fn recv(&self, timeout: Option<Duration>) -> anyhow::Result<ptp::PtpEvent> {
-        let inner = self.inner.clone();
-        tokio::task::spawn_blocking(move || inner.lock().unwrap().recv(timeout)).await?
-    }
-
-    pub async fn device_info(
-        &self,
-        timeout: Option<Duration>,
-    ) -> anyhow::Result<ptp::PtpDeviceInfo> {
-        let inner = self.inner.clone();
-        tokio::task::spawn_blocking(move || inner.lock().unwrap().device_info(timeout)).await?
-    }
-
-    pub async fn storage_ids(&self, timeout: Option<Duration>) -> anyhow::Result<Vec<StorageId>> {
-        let inner = self.inner.clone();
-        tokio::task::spawn_blocking(move || inner.lock().unwrap().storage_ids(timeout)).await?
-    }
-
-    pub async fn storage_info(
-        &self,
-        storage_id: StorageId,
-        timeout: Option<Duration>,
-    ) -> anyhow::Result<ptp::PtpStorageInfo> {
-        let inner = self.inner.clone();
-        tokio::task::spawn_blocking(move || inner.lock().unwrap().storage_info(storage_id, timeout))
-            .await?
-    }
-
-    pub async fn object_handles(
-        &self,
-        storage_id: StorageId,
-        parent_id: Option<ObjectHandle>,
-        timeout: Option<Duration>,
-    ) -> anyhow::Result<Vec<ObjectHandle>> {
-        let inner = self.inner.clone();
-        tokio::task::spawn_blocking(move || {
-            inner
-                .lock()
-                .unwrap()
-                .object_handles(storage_id, parent_id, timeout)
-        })
-        .await?
-    }
-
-    pub async fn object_info(
-        &self,
-        object_id: ObjectHandle,
-        timeout: Option<Duration>,
-    ) -> anyhow::Result<ptp::PtpObjectInfo> {
-        let inner = self.inner.clone();
-        tokio::task::spawn_blocking(move || inner.lock().unwrap().object_info(object_id, timeout))
-            .await?
-    }
-
-    pub async fn object_data(
-        &self,
-        object_id: ObjectHandle,
-        timeout: Option<Duration>,
-    ) -> anyhow::Result<Vec<u8>> {
-        let inner = self.inner.clone();
-        tokio::task::spawn_blocking(move || inner.lock().unwrap().object_data(object_id, timeout))
-            .await?
-    }
-
-    pub async fn init_capture(
-        &self,
-        storage: StorageId,
-        format: ObjectFormatCode,
-        timeout: Option<Duration>,
-    ) -> anyhow::Result<Vec<u8>> {
-        let inner = self.inner.clone();
-        tokio::task::spawn_blocking(move || {
-            inner.lock().unwrap().init_capture(storage, format, timeout)
-        })
-        .await?
     }
 }
