@@ -46,7 +46,7 @@ humansize = "1.1"
 prettytable-rs = "0.8"
 
 # i/o
-rusb = "0.8"
+rusb = "0.9"
 serialport = { git = "https://github.com/Susurrus/serialport-rs.git", default-features = false }
 tokio-serial = { git = "https://github.com/CUAir/tokio-serial.git", default-features = false }
 tokio-util = { version = "0.6.2", features = ["codec"] }
