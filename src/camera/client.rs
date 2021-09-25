@@ -2,9 +2,12 @@ use anyhow::Context;
 use chrono::{Datelike, Timelike};
 use futures::{FutureExt, StreamExt};
 use num_traits::{FromPrimitive, ToPrimitive};
-use ptp::{ObjectFormatCode, ObjectHandle, PtpData, StandardObjectFormatCode, StorageId};
-use std::{collections::HashMap, path::PathBuf, sync::Arc, time::Duration};
-use tokio::{io::AsyncWriteExt, time::sleep};
+use ptp::{ObjectHandle, PtpData, StorageId};
+use std::{collections::HashMap, sync::Arc, time::Duration};
+use tokio::spawn;
+use tokio::sync::{Mutex, RwLock};
+use tokio::task::block_in_place;
+use warp::any;
 
 use crate::{state::TelemetryInfo, util::*, Channels};
 
@@ -18,76 +21,302 @@ enum CameraClientMode {
 }
 
 pub struct CameraClient {
-    iface: CameraInterfaceAsync,
-    channels: Arc<Channels>,
-    cmd: flume::Receiver<CameraCommand>,
+    properties: Arc<RwLock<HashMap<CameraPropertyCode, ptp::PtpPropInfo>>>,
+    interface: Arc<Mutex<CameraInterface>>,
+    events: flume::Receiver<ptp::PtpEvent>,
     error: Option<CameraErrorMode>,
+
+    channels: Arc<Channels>,
+    commands: flume::Receiver<CameraCommand>,
     mode: CameraClientMode,
 }
 
 const TIMEOUT: Duration = Duration::from_secs(1);
 
-impl CameraClient {
-    pub fn connect(
-        channels: Arc<Channels>,
-        cmd: flume::Receiver<CameraCommand>,
-    ) -> anyhow::Result<Self> {
-        let iface = CameraInterfaceAsync::new().context("failed to create camera interface")?;
+pub async fn run(
+    channels: Arc<Channels>,
+    commands: flume::Receiver<CameraCommand>,
+) -> anyhow::Result<()> {
+    let mut interface = CameraInterface::new().context("failed to create camera interface")?;
 
-        Ok(CameraClient {
-            iface,
-            channels,
-            cmd,
-            error: None,
-            mode: CameraClientMode::Idle,
-        })
+    interface.connect().context("failed to connect to camera")?;
+
+    trace!("intializing camera");
+
+    let time_str = chrono::Local::now()
+        .format("%Y%m%dT%H%M%S%.3f%:z")
+        .to_string();
+
+    trace!("setting time on camera to '{}'", &time_str);
+
+    if let Err(err) = interface.set(CameraPropertyCode::DateTime, PtpData::STR(time_str)) {
+        warn!("could not set date/time on camera: {:?}", err);
     }
 
-    pub async fn init(&mut self) -> anyhow::Result<()> {
-        trace!("intializing camera");
+    let state = interface.update().context("could not get camera state")?;
 
-        self.iface
-            .connect()
-            .await
-            .context("error while connecting to camera")?;
+    let state = state
+        .into_iter()
+        .filter_map(|p| {
+            if let Some(property_code) =
+                <CameraPropertyCode as FromPrimitive>::from_u16(p.property_code)
+            {
+                Some((property_code, p))
+            } else {
+                None
+            }
+        })
+        .collect();
 
-        let time_str = chrono::Local::now()
-            .format("%Y%m%dT%H%M%S%.3f%:z")
-            .to_string();
+    let interface = Arc::new(Mutex::new(interface));
+    let (event_tx, event_rx) = flume::unbounded();
 
-        trace!("setting time on camera to '{}'", &time_str);
+    info!("initialized camera");
 
-        if let Err(err) = self
-            .iface
-            .set(CameraPropertyCode::DateTime, PtpData::STR(time_str))
-            .await
+    let event_fut = run_events(interface.clone(), event_tx);
+    let cmd_fut = run_commands(interface.clone(), event_rx, channels, commands, state);
+
+    futures::join!(event_fut, cmd_fut);
+
+    Ok(())
+}
+
+async fn run_events(
+    interface: Arc<Mutex<CameraInterface>>,
+    event_tx: flume::Sender<ptp::PtpEvent>,
+) -> anyhow::Result<()> {
+    loop {
+        let interface = interface.lock().await;
+        let event = block_in_place(|| interface.recv(Some(Duration::from_millis(50))))
+            .context("error while receiving camera event")?;
+
+        if let Some(event) = event {
+            if let Err(_) = event_tx.send(event) {
+                break;
+            }
+        }
+    }
+
+    Ok(())
+}
+
+async fn run_commands(
+    interface: Arc<Mutex<CameraInterface>>,
+    event_rx: flume::Receiver<ptp::PtpEvent>,
+    channels: Arc<Channels>,
+    commands: flume::Receiver<CameraCommand>,
+    mut state: HashMap<CameraPropertyCode, ptp::PtpPropInfo>,
+) -> anyhow::Result<()> {
+    loop {
+        let command = commands.recv_async().await?;
+
+        let result = match command.request {
+            CameraRequest::Storage(_) => todo!(),
+            CameraRequest::File(_) => todo!(),
+            CameraRequest::Capture => todo!(),
+            CameraRequest::Power(_) => todo!(),
+            CameraRequest::Reconnect => todo!(),
+            CameraRequest::Zoom(_) => todo!(),
+            CameraRequest::Exposure(_) => todo!(),
+            CameraRequest::SaveMode(_) => todo!(),
+            CameraRequest::ContinuousCapture(_) => todo!(),
+            CameraRequest::OperationMode(_) => todo!(),
+            CameraRequest::FocusMode(_) => todo!(),
+            CameraRequest::Record(_) => todo!(),
+            CameraRequest::Debug(p) => cmd_debug(interface.clone(), &mut state, p).await,
+            CameraRequest::Reset => todo!(),
+        };
+
+        command.chan.send(result);
+    }
+
+    Ok(())
+}
+
+fn update(
+    interface: &CameraInterface,
+    state: &mut HashMap<CameraPropertyCode, ptp::PtpPropInfo>,
+) -> anyhow::Result<HashMap<CameraPropertyCode, (PtpData, Option<PtpData>)>> {
+    let properties =
+        block_in_place(|| interface.update()).context("error while receiving camera state")?;
+
+    let mut changes = HashMap::new();
+
+    for property in properties {
+        if let Some(property_code) =
+            <CameraPropertyCode as FromPrimitive>::from_u16(property.property_code)
         {
-            warn!("could not set date/time on camera: {:?}", err);
+            let new = property.current.clone();
+            let old = state.insert(property_code, property).map(|d| d.current);
+
+            if let Some(old) = old {
+                if new != old {
+                    changes.insert(property_code, (new, Some(old)));
+                }
+            } else {
+                changes.insert(property_code, (new, None));
+            }
+        }
+    }
+
+    Ok(changes)
+}
+
+fn set(
+    interface: &CameraInterface,
+    property: CameraPropertyCode,
+    value: ptp::PtpData,
+) -> anyhow::Result<()> {
+    block_in_place(|| interface.set(property, value))
+        .context("error while setting camera state")?;
+
+    Ok(())
+}
+
+async fn ensure(
+    interface: &CameraInterface,
+    state: &mut HashMap<CameraPropertyCode, ptp::PtpPropInfo>,
+    property: CameraPropertyCode,
+    value: ptp::PtpData,
+) -> anyhow::Result<()> {
+    loop {
+        let actual = state.get(&property);
+
+        if let Some(actual) = actual {
+            if actual.current == value {
+                break;
+            }
         }
 
-        self.iface
-            .update()
-            .await
-            .context("could not get camera state")?;
+        set(interface, property, value.clone())?;
 
-        info!("initialized camera");
+        tokio::task::yield_now().await;
 
-        Ok(())
+        update(interface, state)?;
     }
 
-    pub async fn run(&mut self) -> anyhow::Result<()> {
-        self.init().await?;
+    Ok(())
+}
 
+async fn watch(
+    interface: &CameraInterface,
+    state: &mut HashMap<CameraPropertyCode, ptp::PtpPropInfo>,
+    property: CameraPropertyCode,
+) -> anyhow::Result<(ptp::PtpData, Option<ptp::PtpData>)> {
+    loop {
+        let mut changes = update(interface, state)?;
+
+        if let Some(change) = changes.remove(&property) {
+            break Ok(change);
+        }
+
+        tokio::task::yield_now().await;
+    }
+}
+
+async fn cmd_debug(
+    interface: Arc<Mutex<CameraInterface>>,
+    state: &mut HashMap<CameraPropertyCode, ptp::PtpPropInfo>,
+    req: CameraDebugRequest,
+) -> anyhow::Result<CameraResponse> {
+    if let Some(property) = req.property {
+        let property_code: CameraPropertyCode =
+            FromPrimitive::from_u32(property).context("not a valid camera property code")?;
+        println!("dumping {:#X?}", property_code);
+
+        let property = state.get(&property_code);
+        println!("dumping {:#X?}", property);
+
+        if let Some(property) = property {
+            if let Some(&value) = req.value_num.first() {
+                let property_value = match property.data_type {
+                    0x0001 => PtpData::INT8(value as i8),
+                    0x0002 => PtpData::UINT8(value as u8),
+                    0x0003 => PtpData::INT16(value as i16),
+                    0x0004 => PtpData::UINT16(value as u16),
+                    0x0005 => PtpData::INT32(value as i32),
+                    0x0006 => PtpData::UINT32(value as u32),
+                    0x0007 => PtpData::INT64(value as i64),
+                    0x0008 => PtpData::UINT64(value as u64),
+                    _ => bail!("cannot set this property type, not implemented"),
+                };
+
+                println!("setting {:#X?} to {:#X?}", property_code, property_value);
+
+                ensure(
+                    &*interface.lock().await,
+                    state,
+                    property_code,
+                    property_value,
+                )
+                .await?;
+            }
+        }
+    } else {
+        println!("{:#X?}", state);
+    }
+
+    Ok(CameraResponse::Unit)
+}
+
+async fn cmd_capture(
+    interface: Arc<Mutex<CameraInterface>>,
+    state: &mut HashMap<CameraPropertyCode, ptp::PtpPropInfo>,
+    req: CameraDebugRequest,
+) -> anyhow::Result<CameraResponse> {
+    if let Some(property) = req.property {
+        let property_code: CameraPropertyCode =
+            FromPrimitive::from_u32(property).context("not a valid camera property code")?;
+        println!("dumping {:#X?}", property_code);
+
+        let property = state.get(&property_code);
+        println!("dumping {:#X?}", property);
+
+        if let Some(property) = property {
+            if let Some(&value) = req.value_num.first() {
+                let property_value = match property.data_type {
+                    0x0001 => PtpData::INT8(value as i8),
+                    0x0002 => PtpData::UINT8(value as u8),
+                    0x0003 => PtpData::INT16(value as i16),
+                    0x0004 => PtpData::UINT16(value as u16),
+                    0x0005 => PtpData::INT32(value as i32),
+                    0x0006 => PtpData::UINT32(value as u32),
+                    0x0007 => PtpData::INT64(value as i64),
+                    0x0008 => PtpData::UINT64(value as u64),
+                    _ => bail!("cannot set this property type, not implemented"),
+                };
+
+                println!("setting {:#X?} to {:#X?}", property_code, property_value);
+
+                ensure(
+                    &*interface.lock().await,
+                    state,
+                    property_code,
+                    property_value,
+                )
+                .await?;
+            }
+        }
+    } else {
+        println!("{:#X?}", state);
+    }
+
+    Ok(CameraResponse::Unit)
+}
+
+/**
+impl CameraClient {
+    pub async fn run(&mut self) -> anyhow::Result<()> {
         let mut interrupt_recv = self.channels.interrupt.subscribe();
         let interrupt_fut = interrupt_recv.recv().fuse();
         futures::pin_mut!(interrupt_fut);
 
         let telemetry_chan = self.channels.telemetry.clone();
         let mut telemetry_stream = tokio_stream::wrappers::WatchStream::new(telemetry_chan).fuse();
-        let mut cmd_stream = self.cmd.clone().into_stream().fuse();
+        let mut cmd_stream = self.commands.clone().into_stream().fuse();
 
         loop {
-            self.iface
+            self.interface
                 .update()
                 .await
                 .context("failed to update camera state")?;
@@ -106,7 +335,7 @@ impl CameraClient {
                     let telemetry = telemetry.unwrap();
                     if let Some(telemetry) = telemetry {
                         let camera_data = telemetry_to_camera_data(telemetry);
-                        if let Err(err) = self.iface.set(CameraPropertyCode::LocationInfo, camera_data).await {
+                        if let Err(err) = self.interface.set(CameraPropertyCode::LocationInfo, camera_data).await {
                             warn!("setting gps location in camera failed: {:?}", err);
                         } else {
                             trace!("sent telemetry info to camera");
@@ -121,7 +350,7 @@ impl CameraClient {
                 _ = &mut interrupt_fut => break,
             }
 
-            if let Ok(cam_evt) = self.iface.recv(Some(TIMEOUT)).await {
+            if let Ok(cam_evt) = self.interface.recv(Some(TIMEOUT)).await {
                 debug!("received event: {:X?}", cam_evt);
 
                 // in CC mode, if we receive an image capture event we should
@@ -132,7 +361,7 @@ impl CameraClient {
                             debug!("received image during continuous capture");
 
                             let save_media = self
-                                .iface
+                                .interface
                                 .get(CameraPropertyCode::SaveMedia)
                                 .context("unknown whether image is saved to host or device")?
                                 .current;
@@ -169,7 +398,7 @@ impl CameraClient {
         }
 
         info!("disconnecting from camera");
-        self.iface.disconnect().await?;
+        self.interface.disconnect().await?;
 
         Ok(())
     }
@@ -177,16 +406,16 @@ impl CameraClient {
     async fn exec(&mut self, cmd: &CameraRequest) -> anyhow::Result<CameraResponse> {
         match cmd {
             CameraRequest::Reset => {
-                let _ = self.iface.disconnect();
+                let _ = self.interface.disconnect();
 
-                self.iface
+                self.interface
                     .reset()
                     .await
                     .context("error while resetting camera")?;
 
                 tokio::time::sleep(Duration::from_secs(3)).await;
 
-                self.iface =
+                self.interface =
                     CameraInterfaceAsync::new().context("failed to create camera interface")?;
                 self.init().await?;
                 self.ensure_mode(0x02).await?;
@@ -199,7 +428,7 @@ impl CameraClient {
                 value_num,
             } => {
                 let current_state = self
-                    .iface
+                    .interface
                     .update()
                     .await
                     .context("could not get current camera state")?;
@@ -248,7 +477,7 @@ impl CameraClient {
                         debug!("checking for storage ID 0x00010000");
 
                         let storage_ids = self
-                            .iface
+                            .interface
                             .storage_ids(Some(TIMEOUT))
                             .await
                             .context("could not get storage ids")?;
@@ -265,7 +494,7 @@ impl CameraClient {
 
                     let infos: Vec<Result<(_, _), _>> =
                         futures::future::join_all(storage_ids.iter().map(|&id| {
-                            let iface = &self.iface;
+                            let iface = &self.interface;
                             async move {
                                 iface
                                     .storage_info(id, Some(TIMEOUT))
@@ -294,7 +523,7 @@ impl CameraClient {
                         debug!("checking for storage ID 0x00010001");
 
                         let storage_ids = self
-                            .iface
+                            .interface
                             .storage_ids(Some(TIMEOUT))
                             .await
                             .context("could not get storage ids")?;
@@ -308,7 +537,7 @@ impl CameraClient {
                     .await?;
 
                     let object_handles = self
-                        .iface
+                        .interface
                         .object_handles(
                             ptp::StorageId::from(0x00010001),
                             parent
@@ -323,7 +552,7 @@ impl CameraClient {
                     debug!("got object handles: {:?}", object_handles);
 
                     futures::future::join_all(object_handles.iter().map(|&id| {
-                        let iface = &self.iface;
+                        let iface = &self.interface;
                         async move {
                             iface
                                 .object_info(id, Some(TIMEOUT))
@@ -351,12 +580,12 @@ impl CameraClient {
 
                 match cmd {
                     CameraPowerRequest::Up => {
-                        self.iface
+                        self.interface
                             .execute(CameraControlCode::PowerOff, ptp::PtpData::UINT16(1))
                             .await?
                     }
                     CameraPowerRequest::Down => {
-                        self.iface
+                        self.interface
                             .execute(CameraControlCode::PowerOff, ptp::PtpData::UINT16(2))
                             .await?
                     }
@@ -366,7 +595,7 @@ impl CameraClient {
             }
 
             CameraRequest::Reconnect => {
-                self.iface
+                self.interface
                     .disconnect()
                     .await
                     .context("error while disconnecting from camera")?;
@@ -386,7 +615,7 @@ impl CameraClient {
                 info!("capturing image");
 
                 let shooting_file_status = self
-                    .iface
+                    .interface
                     .get(CameraPropertyCode::ShootingFileInfo)
                     .map(|p| match p.current {
                         PtpData::UINT16(u) => u,
@@ -397,28 +626,28 @@ impl CameraClient {
                 debug!("sending half shutter press");
 
                 // press shutter button halfway to fix the focus
-                self.iface
+                self.interface
                     .execute(CameraControlCode::S1Button, PtpData::UINT16(0x0002))
                     .await?;
 
                 debug!("sending full shutter press");
 
                 // shoot!
-                self.iface
+                self.interface
                     .execute(CameraControlCode::S2Button, PtpData::UINT16(0x0002))
                     .await?;
 
                 debug!("sending full shutter release");
 
                 // release
-                self.iface
+                self.interface
                     .execute(CameraControlCode::S2Button, PtpData::UINT16(0x0001))
                     .await?;
 
                 debug!("sending half shutter release");
 
                 // hell yeah
-                self.iface
+                self.interface
                     .execute(CameraControlCode::S1Button, PtpData::UINT16(0x0001))
                     .await?;
 
@@ -427,7 +656,7 @@ impl CameraClient {
                 tokio::time::timeout(Duration::from_millis(3000), async {
                     loop {
                         let new_props =  self
-                        .iface
+                        .interface
                         .update()
                         .await
                         ;
@@ -451,7 +680,7 @@ impl CameraClient {
                 info!("received image confirmation");
 
                 let save_media = self
-                    .iface
+                    .interface
                     .get(CameraPropertyCode::SaveMedia)
                     .context("unknown whether image is saved to host or device")?
                     .current;
@@ -489,7 +718,7 @@ impl CameraClient {
                     }
                     CameraZoomLevelRequest::Get => {
                         let props = self
-                            .iface
+                            .interface
                             .update()
                             .await
                             .context("failed to query camera properties")?;
@@ -524,7 +753,7 @@ impl CameraClient {
                     }
                     CameraExposureModeRequest::Get => {
                         let props = self
-                            .iface
+                            .interface
                             .update()
                             .await
                             .context("failed to query camera properties")?;
@@ -556,7 +785,7 @@ impl CameraClient {
                 }
                 CameraSaveModeRequest::Get => {
                     let props = self
-                        .iface
+                        .interface
                         .update()
                         .await
                         .context("failed to query camera properties")?;
@@ -577,7 +806,7 @@ impl CameraClient {
 
             CameraRequest::ContinuousCapture(req) => match req {
                 CameraContinuousCaptureRequest::Start => {
-                    self.iface
+                    self.interface
                         .execute(
                             CameraControlCode::IntervalStillRecording,
                             PtpData::UINT16(0x0002),
@@ -589,7 +818,7 @@ impl CameraClient {
                     Ok(CameraResponse::Unit)
                 }
                 CameraContinuousCaptureRequest::Stop => {
-                    self.iface
+                    self.interface
                         .execute(
                             CameraControlCode::IntervalStillRecording,
                             PtpData::UINT16(0x0001),
@@ -641,7 +870,7 @@ impl CameraClient {
                 }
                 CameraOperationModeRequest::Get => {
                     let props = self
-                        .iface
+                        .interface
                         .update()
                         .await
                         .context("failed to query camera properties")?;
@@ -662,14 +891,14 @@ impl CameraClient {
 
             CameraRequest::Record(req) => match req {
                 CameraRecordRequest::Start => {
-                    self.iface
+                    self.interface
                         .execute(CameraControlCode::MovieRecording, PtpData::UINT16(0x0002))
                         .await?;
 
                     return Ok(CameraResponse::Unit);
                 }
                 CameraRecordRequest::Stop => {
-                    self.iface
+                    self.interface
                         .execute(CameraControlCode::MovieRecording, PtpData::UINT16(0x0001))
                         .await?;
 
@@ -689,7 +918,7 @@ impl CameraClient {
                 }
                 CameraFocusModeRequest::Get => {
                     let props = self
-                        .iface
+                        .interface
                         .update()
                         .await
                         .context("failed to query camera properties")?;
@@ -713,7 +942,7 @@ impl CameraClient {
     /// Checks if the camera registers a new error. Will return a given error
     /// only once, and then returns Ok until the error changes.
     fn check_error(&mut self) -> Result<(), CameraErrorMode> {
-        let caution_prop = self.iface.get(CameraPropertyCode::Caution);
+        let caution_prop = self.interface.get(CameraPropertyCode::Caution);
 
         if let Some(caution_prop) = caution_prop {
             if let PtpData::UINT16(caution_value) = caution_prop.current {
@@ -752,7 +981,7 @@ impl CameraClient {
             trace!("checking operating mode");
 
             let current_state = self
-                .iface
+                .interface
                 .update()
                 .await
                 .context("could not get current camera state")?;
@@ -770,7 +999,7 @@ impl CameraClient {
 
             debug!("setting operating mode to 0x{:04x}", mode);
 
-            self.iface
+            self.interface
                 .set(CameraPropertyCode::OperatingMode, PtpData::UINT8(mode))
                 .await
                 .context("failed to set operating mode of camera")?;
@@ -785,7 +1014,7 @@ impl CameraClient {
         setting: CameraPropertyCode,
         value: PtpData,
     ) -> anyhow::Result<()> {
-        let current_setting = self.iface.get(setting);
+        let current_setting = self.interface.get(setting);
 
         trace!("current {:?}: {:?}", setting, current_setting);
 
@@ -803,7 +1032,7 @@ impl CameraClient {
         retry_async(10, Some(Duration::from_millis(1000)), || async {
             debug!("setting {:?} to {:?}", setting, value);
 
-            self.iface
+            self.interface
                 .set(setting, value.clone())
                 .await
                 .context(format!("failed to set {:?}", setting))?;
@@ -811,7 +1040,7 @@ impl CameraClient {
             trace!("checking setting {:?}", setting);
 
             let current_state = self
-                .iface
+                .interface
                 .update()
                 .await
                 .context("could not get current camera state")?;
@@ -834,13 +1063,13 @@ impl CameraClient {
 
     async fn download_image(&mut self, handle: ObjectHandle) -> anyhow::Result<String> {
         let shot_info = self
-            .iface
+            .interface
             .object_info(handle, Some(TIMEOUT))
             .await
             .context("error while getting image info")?;
 
         let shot_data = self
-            .iface
+            .interface
             .object_data(handle, Some(TIMEOUT))
             .await
             .context("error while getting image data")?;
@@ -855,10 +1084,7 @@ impl CameraClient {
         Ok(image_name)
     }
 }
-
-
-
-
+*/
 fn telemetry_to_camera_data(telemetry: TelemetryInfo) -> PtpData {
     let lat = telemetry.position.latitude.abs();
     let lat_north = telemetry.position.latitude < 0.0;

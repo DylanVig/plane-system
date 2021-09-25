@@ -50,15 +50,18 @@ pub enum CameraRequest {
     Record(CameraRecordRequest),
 
     /// dump the state of the camera to the console
-    Debug {
-        #[structopt(parse(try_from_str = crate::util::parse_hex_u32))]
-        property: Option<u32>,
-
-        value_num: Vec<isize>,
-    },
+    Debug(CameraDebugRequest),
 
     /// perform a usb reset and reconnect
     Reset,
+}
+
+#[derive(StructOpt, Debug, Clone)]
+pub struct CameraDebugRequest {
+    #[structopt(parse(try_from_str = crate::util::parse_hex_u32))]
+    pub property: Option<u32>,
+
+    pub value_num: Vec<isize>,
 }
 
 #[derive(StructOpt, Debug, Clone)]
