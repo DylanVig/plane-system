@@ -130,7 +130,6 @@ pub enum CameraOperatingMode {
     ContentsTransfer,
 }
 
-#[derive(Debug)]
 pub struct CameraInterface {
     camera: ptp::PtpCamera<rusb::GlobalContext>,
     state: Option<CameraState>,
