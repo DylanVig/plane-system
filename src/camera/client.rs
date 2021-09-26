@@ -173,8 +173,19 @@ fn set(
     Ok(())
 }
 
-async fn ensure(
+fn control(
     interface: &CameraInterface,
+    action: CameraControlCode,
+    value: ptp::PtpData,
+) -> anyhow::Result<()> {
+    block_in_place(|| interface.execute(action, value))
+        .context("error while setting camera state")?;
+
+    Ok(())
+}
+
+async fn ensure(
+    interface: &Mutex<CameraInterface>,
     state: &mut HashMap<CameraPropertyCode, ptp::PtpPropInfo>,
     property: CameraPropertyCode,
     value: ptp::PtpData,
@@ -188,23 +199,37 @@ async fn ensure(
             }
         }
 
-        set(interface, property, value.clone())?;
+        set(&*interface.lock().await, property, value.clone())?;
 
         tokio::task::yield_now().await;
 
-        update(interface, state)?;
+        update(&*interface.lock().await, state)?;
     }
 
     Ok(())
 }
 
+async fn ensure_mode(
+    interface: &Mutex<CameraInterface>,
+    state: &mut HashMap<CameraPropertyCode, ptp::PtpPropInfo>,
+    mode: CameraOperatingMode,
+) -> anyhow::Result<()> {
+    ensure(
+        interface,
+        state,
+        CameraPropertyCode::OperatingMode,
+        PtpData::UINT8(mode as u8),
+    )
+    .await
+}
+
 async fn watch(
-    interface: &CameraInterface,
+    interface: &Mutex<CameraInterface>,
     state: &mut HashMap<CameraPropertyCode, ptp::PtpPropInfo>,
     property: CameraPropertyCode,
 ) -> anyhow::Result<(ptp::PtpData, Option<ptp::PtpData>)> {
     loop {
-        let mut changes = update(interface, state)?;
+        let mut changes = update(&*interface.lock().await, state)?;
 
         if let Some(change) = changes.remove(&property) {
             break Ok(change);
@@ -212,6 +237,34 @@ async fn watch(
 
         tokio::task::yield_now().await;
     }
+}
+
+async fn wait(
+    event_rx: flume::Receiver<ptp::PtpEvent>,
+    event_code: ptp::EventCode,
+) -> anyhow::Result<ptp::PtpEvent> {
+    loop {
+        let event = event_rx.recv_async().await?;
+
+        if event.code == event_code {
+            return Ok(event);
+        }
+    }
+}
+
+async fn download(
+    interface: &Mutex<CameraInterface>,
+    object_handle: ptp::ObjectHandle,
+) -> anyhow::Result<(ptp::PtpObjectInfo, Vec<u8>)> {
+    let interface = interface.lock().await;
+
+    let object_info = block_in_place(|| interface.object_info(object_handle, Some(TIMEOUT)))
+        .context("error getting object info for download")?;
+
+    let object_data = block_in_place(|| interface.object_data(object_handle, Some(TIMEOUT)))
+        .context("error getting object data for download")?;
+
+    Ok((object_info, object_data))
 }
 
 async fn cmd_debug(
@@ -243,13 +296,7 @@ async fn cmd_debug(
 
                 println!("setting {:#X?} to {:#X?}", property_code, property_value);
 
-                ensure(
-                    &*interface.lock().await,
-                    state,
-                    property_code,
-                    property_value,
-                )
-                .await?;
+                ensure(&*interface, state, property_code, property_value).await?;
             }
         }
     } else {
@@ -262,43 +309,112 @@ async fn cmd_debug(
 async fn cmd_capture(
     interface: Arc<Mutex<CameraInterface>>,
     state: &mut HashMap<CameraPropertyCode, ptp::PtpPropInfo>,
-    req: CameraDebugRequest,
+    events_ptp: flume::Receiver<ptp::PtpEvent>,
+    events_client: tokio::sync::broadcast::Sender<CameraEvent>,
 ) -> anyhow::Result<CameraResponse> {
-    if let Some(property) = req.property {
-        let property_code: CameraPropertyCode =
-            FromPrimitive::from_u32(property).context("not a valid camera property code")?;
-        println!("dumping {:#X?}", property_code);
+    let interface = &*interface;
 
-        let property = state.get(&property_code);
-        println!("dumping {:#X?}", property);
+    ensure_mode(interface, state, CameraOperatingMode::StillRec).await?;
 
-        if let Some(property) = property {
-            if let Some(&value) = req.value_num.first() {
-                let property_value = match property.data_type {
-                    0x0001 => PtpData::INT8(value as i8),
-                    0x0002 => PtpData::UINT8(value as u8),
-                    0x0003 => PtpData::INT16(value as i16),
-                    0x0004 => PtpData::UINT16(value as u16),
-                    0x0005 => PtpData::INT32(value as i32),
-                    0x0006 => PtpData::UINT32(value as u32),
-                    0x0007 => PtpData::INT64(value as i64),
-                    0x0008 => PtpData::UINT64(value as u64),
-                    _ => bail!("cannot set this property type, not implemented"),
-                };
+    {
+        let interface = interface.lock().await;
+        let interface = &*interface;
 
-                println!("setting {:#X?} to {:#X?}", property_code, property_value);
+        info!("capturing image");
 
-                ensure(
-                    &*interface.lock().await,
-                    state,
-                    property_code,
-                    property_value,
-                )
-                .await?;
+        debug!("sending half shutter press");
+        // press shutter button halfway to fix the focus
+        control(
+            interface,
+            CameraControlCode::S1Button,
+            PtpData::UINT16(0x0002),
+        )?;
+
+        debug!("sending full shutter press");
+
+        // shoot!
+        control(
+            interface,
+            CameraControlCode::S2Button,
+            PtpData::UINT16(0x0002),
+        );
+
+        debug!("sending full shutter release");
+
+        // release
+        control(
+            interface,
+            CameraControlCode::S2Button,
+            PtpData::UINT16(0x0001),
+        )?;
+
+        debug!("sending half shutter release");
+
+        // hell yeah
+        control(
+            interface,
+            CameraControlCode::S1Button,
+            PtpData::UINT16(0x0001),
+        )?;
+
+        info!("waiting for image confirmation");
+    }
+
+    {
+        let watch_fut = watch(interface, state, CameraPropertyCode::ShootingFileInfo);
+        let wait_fut = wait(events_ptp, ptp::EventCode::Vendor(0xC204));
+
+        futures::pin_mut!(watch_fut);
+        futures::pin_mut!(wait_fut);
+
+        let confirm_fut = futures::future::select(watch_fut, wait_fut);
+
+        let res = tokio::time::timeout(Duration::from_millis(3000), confirm_fut)
+            .await
+            .context("timed out while waiting for image confirmation")?;
+
+        match res {
+            futures::future::Either::Left((watch_res, _)) => {
+                watch_res.context("error while waiting for change in shooting file counter")?;
+            }
+            futures::future::Either::Right((wait_res, _)) => {
+                wait_res.context("error while waiting for capture complete event")?;
             }
         }
-    } else {
-        println!("{:#X?}", state);
+    }
+
+    let shooting_file_info = state
+        .get(&CameraPropertyCode::ShootingFileInfo)
+        .context("shooting file counter is unknown")?
+        .current
+        .clone();
+
+    let mut shooting_file_info = match shooting_file_info {
+        PtpData::UINT16(shooting_file_info) => shooting_file_info,
+        _ => panic!("shooting file info is not a u16"),
+    };
+
+    debug!(
+        "received shooting file info confirmation; current value = {:04x}",
+        shooting_file_info
+    );
+
+    events_client.send(CameraEvent::Capture);
+
+    while shooting_file_info > 0 {
+        let (info, data) = download(interface, ObjectHandle::from(0xFFFFC001)).await?;
+
+        events_client.send(CameraEvent::Download {
+            image_name: info.filename,
+            image_data: Arc::new(data),
+        });
+
+        let (new, _) = watch(interface, state, CameraPropertyCode::ShootingFileInfo).await?;
+
+        shooting_file_info = match new {
+            PtpData::UINT16(new) => new,
+            _ => panic!("shooting file info is not a u16"),
+        };
     }
 
     Ok(CameraResponse::Unit)
