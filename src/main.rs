@@ -113,7 +113,7 @@ impl<Req, Res, Err> Command<Req, Res, Err> {
     }
 }
 
-#[tokio::main]
+#[tokio::main(flavor = "multi_thread", worker_threads = 1)]
 async fn main() -> anyhow::Result<()> {
     pretty_env_logger::init_timed();
 

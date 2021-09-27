@@ -1,4 +1,5 @@
 use anyhow::Context;
+use futures::FutureExt;
 use num_traits::FromPrimitive;
 use std::{collections::HashMap, sync::Arc, time::Duration};
 use tokio::sync::{broadcast, RwLock};
@@ -30,7 +31,7 @@ pub async fn run(
 
     interface.connect().context("failed to connect to camera")?;
 
-    trace!("intializing camera");
+    trace!("initializing camera");
 
     let time_str = chrono::Local::now()
         .format("%Y%m%dT%H%M%S%.3f%:z")
@@ -68,31 +69,57 @@ pub async fn run(
         channels.camera_event.clone(),
     );
     let cmd_fut = run_commands(client.clone(), ptp_tx.subscribe(), command_rx);
-    let event_fut = run_events(client.clone(), ptp_tx);
 
-    let results = futures::join!(event_fut, cmd_fut, download_fut);
+    let download_handle = tokio::spawn(download_fut);
+    let cmd_handle = tokio::spawn(cmd_fut);
+    let event_handle = tokio::task::spawn_blocking({
+        let client = client.clone();
+        move || run_events(client, ptp_tx, channels.interrupt.subscribe())
+    });
 
-    results.0?;
-    results.1?;
-    results.2?;
+    tokio::select! {
+        download_res = download_handle => download_res??,
+        event_res = event_handle => event_res??,
+        cmd_res = cmd_handle => cmd_res??,
+    };
 
     Ok(())
 }
 
-async fn run_events(
+fn run_events(
     client: Arc<RwLock<CameraClient>>,
     events_ptp: broadcast::Sender<ptp::PtpEvent>,
+    mut interrupt_rx: broadcast::Receiver<()>,
 ) -> anyhow::Result<()> {
     loop {
-        let interface = &client.read().await.interface;
-        let event = block_in_place(|| interface.recv(Some(Duration::from_millis(10))))
-            .context("error while receiving camera event")?;
+        let event = {
+            trace!("event: locking client for read");
+            let rt = tokio::runtime::Handle::current();
+            let client = rt.block_on(client.read());
+            trace!("event: locked client for read");
+
+            trace!("ptp recv");
+            client
+                .interface
+                .recv(Some(Duration::from_millis(500)))
+                .context("error while receiving camera event")?
+        };
+
+        trace!("event: unlocked client for read");
 
         if let Some(event) = event {
+            debug!("event: recv {:?}", event);
+
             if let Err(_) = events_ptp.send(event) {
                 break;
             }
         }
+
+        if let Ok(()) = interrupt_rx.try_recv() {
+            break;
+        }
+
+        // tokio::task::yield_now().await;
     }
 
     Ok(())
@@ -135,16 +162,22 @@ async fn run_download(
     let client = &*client;
 
     loop {
-        wait(&mut ptp_rx, ptp::EventCode::Vendor(0xC204)).await?;
+        wait(&mut ptp_rx, ptp::EventCode::Vendor(0xC203)).await?;
 
-        let shooting_file_info = client
-            .read()
-            .await
-            .state
-            .get(&CameraPropertyCode::ShootingFileInfo)
-            .context("shooting file counter is unknown")?
-            .current
-            .clone();
+        let shooting_file_info = {
+            trace!("downloader: locking client for read");
+            let client = client.read().await;
+            trace!("downloader: locked client for read");
+
+            client
+                .state
+                .get(&CameraPropertyCode::ShootingFileInfo)
+                .context("shooting file counter is unknown")?
+                .current
+                .clone()
+        };
+
+        trace!("downloader: unlocked client for read");
 
         let mut shooting_file_info = match shooting_file_info {
             ptp::PtpData::UINT16(shooting_file_info) => shooting_file_info,
@@ -159,11 +192,14 @@ async fn run_download(
         // let _ = client_tx.send(CameraEvent::Capture);
 
         while shooting_file_info > 0 {
-            let (info, data) = download(
-                &mut client.write().await.interface,
-                ptp::ObjectHandle::from(0xFFFFC001),
-            )
-            .await?;
+            let (info, data) = {
+                trace!("downloader: locking client for write");
+                let mut client = client.write().await;
+                trace!("downloader: locked client for write");
+                download(&mut client.interface, ptp::ObjectHandle::from(0xFFFFC001))?
+            };
+
+            trace!("downloader: unlocked client for write");
 
             let _ = client_tx.send(CameraClientEvent::Download {
                 image_name: info.filename,

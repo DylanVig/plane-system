@@ -97,28 +97,28 @@ pub(super) async fn cmd_capture(
         info!("waiting for image confirmation");
     }
 
-    {
-        let watch_fut = watch(client, CameraPropertyCode::ShootingFileInfo);
-        let wait_fut = wait(ptp_rx, ptp::EventCode::Vendor(0xC204));
+    // {
+    //     let watch_fut = watch(client, CameraPropertyCode::ShootingFileInfo);
+    //     let wait_fut = wait(ptp_rx, ptp::EventCode::Vendor(0xC204));
 
-        futures::pin_mut!(watch_fut);
-        futures::pin_mut!(wait_fut);
+    //     futures::pin_mut!(watch_fut);
+    //     futures::pin_mut!(wait_fut);
 
-        let confirm_fut = futures::future::select(watch_fut, wait_fut);
+    //     let confirm_fut = futures::future::select(watch_fut, wait_fut);
 
-        let res = tokio::time::timeout(Duration::from_millis(3000), confirm_fut)
-            .await
-            .context("timed out while waiting for image confirmation")?;
+    //     let res = tokio::time::timeout(Duration::from_millis(3000), confirm_fut)
+    //         .await
+    //         .context("timed out while waiting for image confirmation")?;
 
-        match res {
-            futures::future::Either::Left((watch_res, _)) => {
-                watch_res.context("error while waiting for change in shooting file counter")?;
-            }
-            futures::future::Either::Right((wait_res, _)) => {
-                wait_res.context("error while waiting for capture complete event")?;
-            }
-        }
-    }
+    //     match res {
+    //         futures::future::Either::Left((watch_res, _)) => {
+    //             watch_res.context("error while waiting for change in shooting file counter")?;
+    //         }
+    //         futures::future::Either::Right((wait_res, _)) => {
+    //             wait_res.context("error while waiting for capture complete event")?;
+    //         }
+    //     }
+    // }
 
     Ok(CameraCommandResponse::Unit)
 }

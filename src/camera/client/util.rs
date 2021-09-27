@@ -10,7 +10,8 @@ pub(super) fn update(
     client: &mut CameraClient,
 ) -> anyhow::Result<HashMap<CameraPropertyCode, (ptp::PtpData, Option<ptp::PtpData>)>> {
     let CameraClient { interface, state } = client;
-
+    
+    trace!("ptp update");
     let properties =
         block_in_place(|| interface.update()).context("error while receiving camera state")?;
 
@@ -41,6 +42,7 @@ pub(super) fn set(
     property: CameraPropertyCode,
     value: ptp::PtpData,
 ) -> anyhow::Result<()> {
+    trace!("ptp set {:?} {:?}", property, value);
     block_in_place(|| interface.set(property, value))
         .context("error while setting camera state")?;
 
@@ -52,6 +54,7 @@ pub fn control(
     action: CameraControlCode,
     value: ptp::PtpData,
 ) -> anyhow::Result<()> {
+    trace!("ptp execute {:?} {:?}", action, value);
     block_in_place(|| interface.execute(action, value))
         .context("error while setting camera state")?;
 
@@ -97,7 +100,14 @@ pub(super) async fn watch(
     property: CameraPropertyCode,
 ) -> anyhow::Result<(ptp::PtpData, Option<ptp::PtpData>)> {
     loop {
-        let mut changes = update(&mut *client.write().await)?;
+        let mut changes = {
+            trace!("watch: locking client for write");
+            let mut client = client.write().await;
+            trace!("watch: locked client for write");
+            update(&mut *client)?
+        };
+
+        trace!("watch: unlocked client for write");
 
         if let Some(change) = changes.remove(&property) {
             break Ok(change);
@@ -114,21 +124,29 @@ pub(super) async fn wait(
     loop {
         let event = ptp_rx.recv().await?;
 
+        trace!("wait: recv {:?}", event);
+
         if event.code == event_code {
             return Ok(event);
         }
     }
 }
 
-pub(super) async fn download(
+pub(super) fn download(
     interface: &mut CameraInterface,
     object_handle: ptp::ObjectHandle,
 ) -> anyhow::Result<(ptp::PtpObjectInfo, Vec<u8>)> {
+    trace!("download: getting object info");
+
     let object_info = block_in_place(|| interface.object_info(object_handle, Some(TIMEOUT)))
         .context("error getting object info for download")?;
 
+    trace!("download: getting object data");
+
     let object_data = block_in_place(|| interface.object_data(object_handle, Some(TIMEOUT)))
         .context("error getting object data for download")?;
+
+    trace!("download: got object data");
 
     Ok((object_info, object_data))
 }
