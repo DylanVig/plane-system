@@ -3,7 +3,6 @@ use std::{process::exit, str::FromStr, sync::Arc, time::Duration};
 use anyhow::Context;
 use ctrlc;
 use futures::channel::oneshot;
-use image::ImageClient;
 use structopt::StructOpt;
 use tokio::{
     spawn,
@@ -55,7 +54,7 @@ pub struct Channels {
     pixhawk_cmd: flume::Sender<pixhawk::PixhawkCommand>,
 
     /// Channel for broadcasting updates to the state of the camera.
-    camera_event: broadcast::Sender<camera::CameraEvent>,
+    camera_event: broadcast::Sender<camera::CameraClientEvent>,
 
     /// Channel for sending instructions to the camera.
     camera_cmd: flume::Sender<camera::CameraCommand>,
@@ -66,7 +65,7 @@ pub struct Channels {
     /// Channel for sending instructions to the gimbal.
     dummy_cmd: flume::Sender<dummy::DummyCommand>,
 
-    image_event: broadcast::Sender<image::ImageEvent>,
+    image_event: broadcast::Sender<image::ImageClientEvent>,
 }
 
 #[derive(Debug)]
@@ -229,13 +228,10 @@ async fn main() -> anyhow::Result<()> {
     if let Some(image_config) = config.image {
         info!("starting image download task");
 
-        let camera_task = spawn({
-            let image_client = ImageClient::new(channels.clone(), image_config);
-            async move { image_client.run().await }
-        });
+        let image_task = spawn(image::run(channels.clone(), image_config));
 
         task_names.push("image");
-        futures.push(camera_task);
+        futures.push(image_task);
     }
 
     if let Some(gimbal_config) = config.gimbal {

@@ -1,4 +1,4 @@
-use std::{collections::HashMap, convert::Infallible, str::FromStr};
+use std::{collections::HashMap, str::FromStr};
 
 use serde::Serialize;
 use structopt::StructOpt;

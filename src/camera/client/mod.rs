@@ -130,7 +130,7 @@ async fn run_commands(
 async fn run_download(
     client: Arc<RwLock<CameraClient>>,
     mut ptp_rx: broadcast::Receiver<ptp::PtpEvent>,
-    client_tx: broadcast::Sender<CameraEvent>,
+    client_tx: broadcast::Sender<CameraClientEvent>,
 ) -> anyhow::Result<()> {
     let client = &*client;
 
@@ -165,7 +165,7 @@ async fn run_download(
             )
             .await?;
 
-            let _ = client_tx.send(CameraEvent::Download {
+            let _ = client_tx.send(CameraClientEvent::Download {
                 image_name: info.filename,
                 image_data: Arc::new(data),
             });

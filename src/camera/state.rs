@@ -3,7 +3,7 @@ use std::sync::Arc;
 use serde::Serialize;
 
 #[derive(Debug, Clone)]
-pub enum CameraEvent {
+pub enum CameraClientEvent {
     Capture,
     Download {
         image_name: String,

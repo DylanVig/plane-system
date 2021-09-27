@@ -10,7 +10,7 @@ use reqwest;
 use crate::state::*;
 use serde_json::json;
 
-use crate::{image::ImageEvent, Channels};
+use crate::{image::ImageClientEvent, Channels};
 
 #[derive(StructOpt, Debug, Clone)]
 #[structopt(setting(AppSettings::NoBinaryName))]
@@ -43,7 +43,7 @@ impl GroundServerClient {
         loop {
             select! {
                 image_evt = image_recv.recv().fuse() => {
-                    if let Ok(ImageEvent {
+                    if let Ok(ImageClientEvent {
                         file,
                         data,
                         telemetry,
