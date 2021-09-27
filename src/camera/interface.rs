@@ -2,11 +2,8 @@ use anyhow::Context;
 use num_traits::{FromPrimitive, ToPrimitive};
 use ptp::{ObjectFormatCode, ObjectHandle, PtpRead, StandardCommandCode, StorageId};
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, collections::HashSet, fmt::Debug, time::Duration};
-use std::{
-    io::Cursor,
-    sync::{Arc, Mutex},
-};
+use std::io::Cursor;
+use std::{collections::HashSet, fmt::Debug, time::Duration};
 
 /// Sony's USB vendor ID
 const SONY_USB_VID: u16 = 0x054C;
@@ -271,7 +268,7 @@ impl CameraInterface {
     /// this interface. Returns only the properties that have changed.
     pub fn update(&self) -> anyhow::Result<Vec<ptp::PtpPropInfo>> {
         let timeout = self.timeout();
-        
+
         trace!("sending SDIO_GetAllExtDevicePropInfo");
 
         let result = self.camera.command(
