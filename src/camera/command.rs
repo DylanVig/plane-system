@@ -20,9 +20,6 @@ pub enum CameraCommandRequest {
     /// capture an image
     Capture,
 
-    /// power off the camera
-    Power(CameraCommandPowerRequest),
-
     /// disconnect and reconnect to the camera
     Reconnect,
 

@@ -107,13 +107,13 @@ async fn run_commands(
         let command = command_rx.recv_async().await?;
 
         let result = match command.request {
-            CameraCommandRequest::Storage(_) => todo!(),
-            CameraCommandRequest::File(_) => todo!(),
+            CameraCommandRequest::Debug(req) => cmd_debug(client.clone(), req).await,
             CameraCommandRequest::Capture => cmd_capture(client.clone(), &mut ptp_rx).await,
             CameraCommandRequest::ContinuousCapture(req) => {
                 cmd_continuous_capture(client.clone(), req).await
             }
-            CameraCommandRequest::Power(_) => todo!(),
+            CameraCommandRequest::Storage(_) => todo!(),
+            CameraCommandRequest::File(_) => todo!(),
             CameraCommandRequest::Reconnect => todo!(),
             CameraCommandRequest::Zoom(_) => todo!(),
             CameraCommandRequest::Exposure(_) => todo!(),
@@ -121,7 +121,6 @@ async fn run_commands(
             CameraCommandRequest::OperationMode(_) => todo!(),
             CameraCommandRequest::FocusMode(_) => todo!(),
             CameraCommandRequest::Record(_) => todo!(),
-            CameraCommandRequest::Debug(req) => cmd_debug(client.clone(), req).await,
         };
 
         let _ = command.chan.send(result);
