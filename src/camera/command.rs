@@ -7,57 +7,54 @@ use crate::Command;
 
 use super::{interface::CameraOperatingMode, state::*};
 
-pub type CameraCommand = Command<CameraRequest, CameraResponse>;
+pub type CameraCommand = Command<CameraCommandRequest, CameraCommandResponse>;
 
 #[derive(StructOpt, Debug, Clone)]
-pub enum CameraRequest {
+pub enum CameraCommandRequest {
     /// view information about the storage media inside of the camera
-    Storage(CameraStorageRequest),
+    Storage(CameraCommandStorageRequest),
 
     /// view information about the files stored on the camera; download files
-    File(CameraFileRequest),
+    File(CameraCommandFileRequest),
 
     /// capture an image
     Capture,
 
     /// power off the camera
-    Power(CameraPowerRequest),
+    Power(CameraCommandPowerRequest),
 
     /// disconnect and reconnect to the camera
     Reconnect,
 
     /// control the camera's zoom lens
-    Zoom(CameraZoomRequest),
+    Zoom(CameraCommandZoomRequest),
 
     /// control the camera's exposure mode
-    Exposure(CameraExposureRequest),
+    Exposure(CameraCommandExposureRequest),
 
     /// control whether the camera saves to its internal storage or to the host
-    SaveMode(CameraSaveModeRequest),
+    SaveMode(CameraCommandSaveModeRequest),
 
     /// control continuous capture
     #[structopt(name = "cc")]
-    ContinuousCapture(CameraContinuousCaptureRequest),
+    ContinuousCapture(CameraCommandContinuousCaptureRequest),
 
     /// control operating mode
     #[structopt(name = "mode")]
-    OperationMode(CameraOperationModeRequest),
+    OperationMode(CameraCommandOperationModeRequest),
 
     #[structopt(name = "focus")]
-    FocusMode(CameraFocusModeRequest),
+    FocusMode(CameraCommandFocusModeRequest),
 
     /// record videos
-    Record(CameraRecordRequest),
+    Record(CameraCommandRecordRequest),
 
     /// dump the state of the camera to the console
-    Debug(CameraDebugRequest),
-
-    /// perform a usb reset and reconnect
-    Reset,
+    Debug(CameraCommandDebugRequest),
 }
 
 #[derive(StructOpt, Debug, Clone)]
-pub struct CameraDebugRequest {
+pub struct CameraCommandDebugRequest {
     #[structopt(parse(try_from_str = crate::util::parse_hex_u32))]
     pub property: Option<u32>,
 
@@ -65,13 +62,13 @@ pub struct CameraDebugRequest {
 }
 
 #[derive(StructOpt, Debug, Clone)]
-pub enum CameraStorageRequest {
+pub enum CameraCommandStorageRequest {
     /// list the storage volumes available on the camera
     List,
 }
 
 #[derive(StructOpt, Debug, Clone)]
-pub enum CameraFileRequest {
+pub enum CameraCommandFileRequest {
     /// list the files available on the camera
     List {
         /// the hexadecimal file handle of a folder; if provided, the contents
@@ -89,7 +86,7 @@ pub enum CameraFileRequest {
 }
 
 #[derive(StructOpt, Debug, Clone)]
-pub enum CameraExposureRequest {
+pub enum CameraCommandExposureRequest {
     Mode(CameraExposureModeRequest),
 }
 
@@ -124,7 +121,7 @@ impl std::str::FromStr for CameraExposureMode {
 }
 
 #[derive(StructOpt, Debug, Clone)]
-pub enum CameraSaveModeRequest {
+pub enum CameraCommandSaveModeRequest {
     /// get the current save mode
     Get,
 
@@ -145,7 +142,7 @@ impl std::str::FromStr for CameraSaveMode {
 }
 
 #[derive(StructOpt, Debug, Clone)]
-pub enum CameraZoomRequest {
+pub enum CameraCommandZoomRequest {
     Level(CameraZoomLevelRequest),
     Mode(CameraZoomModeRequest),
 }
@@ -163,26 +160,26 @@ pub enum CameraZoomModeRequest {
 }
 
 #[derive(StructOpt, Debug, Clone)]
-pub enum CameraPowerRequest {
+pub enum CameraCommandPowerRequest {
     Up,
     Down,
 }
 
 #[derive(StructOpt, Debug, Clone)]
-pub enum CameraContinuousCaptureRequest {
+pub enum CameraCommandContinuousCaptureRequest {
     Start,
     Stop,
     Interval { interval: f32 },
 }
 
 #[derive(StructOpt, Debug, Clone)]
-pub enum CameraRecordRequest {
+pub enum CameraCommandRecordRequest {
     Start,
     Stop,
 }
 
 #[derive(StructOpt, Debug, Clone)]
-pub enum CameraOperationModeRequest {
+pub enum CameraCommandOperationModeRequest {
     /// get the current exposure mode
     Get,
 
@@ -205,7 +202,7 @@ impl FromStr for CameraOperatingMode {
 }
 
 #[derive(StructOpt, Debug, Clone)]
-pub enum CameraFocusModeRequest {
+pub enum CameraCommandFocusModeRequest {
     /// get the current focus mode
     Get,
 
@@ -227,7 +224,7 @@ impl FromStr for CameraFocusMode {
 }
 
 #[derive(Debug, Clone, Serialize)]
-pub enum CameraResponse {
+pub enum CameraCommandResponse {
     Unit,
     Data {
         data: Vec<u8>,

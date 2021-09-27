@@ -4,7 +4,7 @@ use std::{collections::HashMap, sync::Arc, time::Duration};
 use tokio::sync::{broadcast, RwLock};
 use tokio::task::block_in_place;
 
-use crate::{Channels};
+use crate::Channels;
 
 use super::interface::*;
 use super::*;
@@ -107,20 +107,21 @@ async fn run_commands(
         let command = command_rx.recv_async().await?;
 
         let result = match command.request {
-            CameraRequest::Storage(_) => todo!(),
-            CameraRequest::File(_) => todo!(),
-            CameraRequest::Capture => cmd_capture(client.clone(), &mut ptp_rx).await,
-            CameraRequest::Power(_) => todo!(),
-            CameraRequest::Reconnect => todo!(),
-            CameraRequest::Zoom(_) => todo!(),
-            CameraRequest::Exposure(_) => todo!(),
-            CameraRequest::SaveMode(_) => todo!(),
-            CameraRequest::ContinuousCapture(_) => todo!(),
-            CameraRequest::OperationMode(_) => todo!(),
-            CameraRequest::FocusMode(_) => todo!(),
-            CameraRequest::Record(_) => todo!(),
-            CameraRequest::Debug(req) => cmd_debug(client.clone(), req).await,
-            CameraRequest::Reset => todo!(),
+            CameraCommandRequest::Storage(_) => todo!(),
+            CameraCommandRequest::File(_) => todo!(),
+            CameraCommandRequest::Capture => cmd_capture(client.clone(), &mut ptp_rx).await,
+            CameraCommandRequest::ContinuousCapture(req) => {
+                cmd_continuous_capture(client.clone(), req).await
+            }
+            CameraCommandRequest::Power(_) => todo!(),
+            CameraCommandRequest::Reconnect => todo!(),
+            CameraCommandRequest::Zoom(_) => todo!(),
+            CameraCommandRequest::Exposure(_) => todo!(),
+            CameraCommandRequest::SaveMode(_) => todo!(),
+            CameraCommandRequest::OperationMode(_) => todo!(),
+            CameraCommandRequest::FocusMode(_) => todo!(),
+            CameraCommandRequest::Record(_) => todo!(),
+            CameraCommandRequest::Debug(req) => cmd_debug(client.clone(), req).await,
         };
 
         let _ = command.chan.send(result);

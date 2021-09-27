@@ -8,8 +8,8 @@ use super::*;
 
 pub(super) async fn cmd_debug(
     client: Arc<RwLock<CameraClient>>,
-    req: CameraDebugRequest,
-) -> anyhow::Result<CameraResponse> {
+    req: CameraCommandDebugRequest,
+) -> anyhow::Result<CameraCommandResponse> {
     let client = &mut *client.write().await;
 
     if let Some(property) = req.property {
@@ -43,13 +43,13 @@ pub(super) async fn cmd_debug(
         println!("{:#X?}", client.state);
     }
 
-    Ok(CameraResponse::Unit)
+    Ok(CameraCommandResponse::Unit)
 }
 
 pub(super) async fn cmd_capture(
     client: Arc<RwLock<CameraClient>>,
     ptp_rx: &mut broadcast::Receiver<ptp::PtpEvent>,
-) -> anyhow::Result<CameraResponse> {
+) -> anyhow::Result<CameraCommandResponse> {
     let client = &*client;
 
     {
@@ -120,5 +120,56 @@ pub(super) async fn cmd_capture(
         }
     }
 
-    Ok(CameraResponse::Unit)
+    Ok(CameraCommandResponse::Unit)
+}
+
+pub(super) async fn cmd_continuous_capture(
+    client: Arc<RwLock<CameraClient>>,
+    req: CameraCommandContinuousCaptureRequest,
+) -> anyhow::Result<CameraCommandResponse> {
+    let mut client = client.write().await;
+
+    match req {
+        CameraCommandContinuousCaptureRequest::Start => {
+            control(
+                &mut client.interface,
+                CameraControlCode::IntervalStillRecording,
+                ptp::PtpData::UINT16(0x0002),
+            )
+            .context("failed to start interval recording")?;
+        }
+        CameraCommandContinuousCaptureRequest::Stop => {
+            control(
+                &mut client.interface,
+                CameraControlCode::IntervalStillRecording,
+                ptp::PtpData::UINT16(0x0001),
+            )
+            .context("failed to stop interval recording")?;
+        }
+        CameraCommandContinuousCaptureRequest::Interval { interval } => {
+            let interval = (interval * 10.) as u16;
+
+            if interval < 10 {
+                bail!("minimum interval is 1 second");
+            }
+
+            if interval > 300 {
+                bail!("maximum interval is 30 seconds");
+            }
+
+            if interval % 5 != 0 {
+                bail!("valid intervals are in increments of 0.5 seconds");
+            }
+
+            ensure(
+                &mut client,
+                CameraPropertyCode::IntervalTime,
+                ptp::PtpData::UINT16(interval),
+            )
+            .await
+            .context("failed to set camera interval")?;
+        }
+    }
+
+    Ok(CameraCommandResponse::Unit)
 }
