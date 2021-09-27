@@ -3,45 +3,61 @@ use chrono::{Datelike, Timelike};
 use futures::{FutureExt, StreamExt};
 use num_traits::{FromPrimitive, ToPrimitive};
 use ptp::{ObjectHandle, PtpData, StorageId};
+use std::ops::{Deref, DerefMut};
 use std::{collections::HashMap, sync::Arc, time::Duration};
-use tokio::spawn;
-use tokio::sync::{Mutex, RwLock};
+use tokio::sync::{broadcast, Mutex, RwLock, Semaphore, SemaphorePermit};
 use tokio::task::block_in_place;
-use warp::any;
 
 use crate::{state::TelemetryInfo, util::*, Channels};
 
 use super::interface::*;
 use super::*;
 
-#[derive(Debug, Copy, Clone, Eq, PartialEq)]
-enum CameraClientMode {
-    Idle,
-    ContinuousCapture,
-}
-
-pub struct CameraClient {
-    properties: Arc<RwLock<HashMap<CameraPropertyCode, ptp::PtpPropInfo>>>,
-    interface: Arc<Mutex<CameraInterface>>,
-    events: flume::Receiver<ptp::PtpEvent>,
-    error: Option<CameraErrorMode>,
-
-    channels: Arc<Channels>,
-    commands: flume::Receiver<CameraCommand>,
-    mode: CameraClientMode,
-}
-
 const TIMEOUT: Duration = Duration::from_secs(1);
+
+struct CameraClient {
+    interface: CameraInterface,
+
+    /// The interface can be accessed by two users at once: the
+    /// command/downloader tasks, and the event task. The event task only reads
+    /// the USB interrupt endpoint, while the command task reads and writes the
+    /// USB bulk endpoint, so they do not interfere with each other and can
+    /// access the interface concurrently.
+    ///
+    /// Therefore, instead of putting the interface in a mutex, which would
+    /// prevent the event task from accessing it without locking, we use a
+    /// semaphore to synchronize access.
+    interface_semaphore: Semaphore,
+
+    state: RwLock<HashMap<CameraPropertyCode, ptp::PtpPropInfo>>,
+}
+
+impl CameraClient {
+    async fn interface<'a, 'b: 'a>(&'b self) -> CameraInterfaceGuard<'a> {
+        let permit = self.interface_semaphore.acquire().await.unwrap();
+        CameraInterfaceGuard(&self.interface, permit)
+    }
+}
+
+struct CameraInterfaceGuard<'a>(&'a CameraInterface, SemaphorePermit<'a>);
+
+impl<'a> Deref for CameraInterfaceGuard<'a> {
+    type Target = CameraInterface;
+
+    fn deref(&self) -> &Self::Target {
+        self.0
+    }
+}
 
 pub async fn run(
     channels: Arc<Channels>,
-    commands: flume::Receiver<CameraCommand>,
+    command_rx: flume::Receiver<CameraCommand>,
 ) -> anyhow::Result<()> {
     let mut interface = CameraInterface::new().context("failed to create camera interface")?;
 
     interface.connect().context("failed to connect to camera")?;
 
-    trace!("intializing camera");
+    trace!("initializing camera");
 
     let time_str = chrono::Local::now()
         .format("%Y%m%dT%H%M%S%.3f%:z")
@@ -68,30 +84,42 @@ pub async fn run(
         })
         .collect();
 
-    let interface = Arc::new(Mutex::new(interface));
-    let (event_tx, event_rx) = flume::unbounded();
+    let client = Arc::new(CameraClient {
+        interface,
+        interface_semaphore: Semaphore::new(1),
+        state: RwLock::new(state),
+    });
+    let (ptp_tx, _) = broadcast::channel(256);
 
     info!("initialized camera");
 
-    let event_fut = run_events(interface.clone(), event_tx);
-    let cmd_fut = run_commands(interface.clone(), event_rx, channels, commands, state);
+    let download_fut = run_download(
+        client.clone(),
+        ptp_tx.subscribe(),
+        channels.camera_event.clone(),
+    );
+    let cmd_fut = run_commands(client.clone(), ptp_tx.subscribe(), command_rx);
+    let event_fut = run_events(client.clone(), ptp_tx);
 
-    futures::join!(event_fut, cmd_fut);
+    let results = futures::join!(event_fut, cmd_fut, download_fut);
+
+    results.0?;
+    results.1?;
+    results.2?;
 
     Ok(())
 }
 
 async fn run_events(
-    interface: Arc<Mutex<CameraInterface>>,
-    event_tx: flume::Sender<ptp::PtpEvent>,
+    client: Arc<CameraClient>,
+    events_ptp: broadcast::Sender<ptp::PtpEvent>,
 ) -> anyhow::Result<()> {
     loop {
-        let interface = interface.lock().await;
-        let event = block_in_place(|| interface.recv(Some(Duration::from_millis(50))))
+        let event = block_in_place(|| client.interface.recv(Some(Duration::from_millis(10))))
             .context("error while receiving camera event")?;
 
         if let Some(event) = event {
-            if let Err(_) = event_tx.send(event) {
+            if let Err(_) = events_ptp.send(event) {
                 break;
             }
         }
@@ -101,19 +129,17 @@ async fn run_events(
 }
 
 async fn run_commands(
-    interface: Arc<Mutex<CameraInterface>>,
-    event_rx: flume::Receiver<ptp::PtpEvent>,
-    channels: Arc<Channels>,
-    commands: flume::Receiver<CameraCommand>,
-    mut state: HashMap<CameraPropertyCode, ptp::PtpPropInfo>,
+    client: Arc<CameraClient>,
+    mut ptp_rx: broadcast::Receiver<ptp::PtpEvent>,
+    command_rx: flume::Receiver<CameraCommand>,
 ) -> anyhow::Result<()> {
     loop {
-        let command = commands.recv_async().await?;
+        let command = command_rx.recv_async().await?;
 
         let result = match command.request {
             CameraRequest::Storage(_) => todo!(),
             CameraRequest::File(_) => todo!(),
-            CameraRequest::Capture => todo!(),
+            CameraRequest::Capture => cmd_capture(client.clone(), &mut ptp_rx).await,
             CameraRequest::Power(_) => todo!(),
             CameraRequest::Reconnect => todo!(),
             CameraRequest::Zoom(_) => todo!(),
@@ -123,20 +149,69 @@ async fn run_commands(
             CameraRequest::OperationMode(_) => todo!(),
             CameraRequest::FocusMode(_) => todo!(),
             CameraRequest::Record(_) => todo!(),
-            CameraRequest::Debug(p) => cmd_debug(interface.clone(), &mut state, p).await,
+            CameraRequest::Debug(req) => cmd_debug(client.clone(), req).await,
             CameraRequest::Reset => todo!(),
         };
 
-        command.chan.send(result);
+        let _ = command.chan.send(result);
     }
+}
 
-    Ok(())
+async fn run_download(
+    client: Arc<CameraClient>,
+    mut ptp_rx: broadcast::Receiver<ptp::PtpEvent>,
+    client_tx: broadcast::Sender<CameraEvent>,
+) -> anyhow::Result<()> {
+    let client = &*client;
+
+    loop {
+        wait(&mut ptp_rx, ptp::EventCode::Vendor(0xC204)).await?;
+
+        let shooting_file_info = client
+            .state
+            .read()
+            .await
+            .get(&CameraPropertyCode::ShootingFileInfo)
+            .context("shooting file counter is unknown")?
+            .current
+            .clone();
+
+        let mut shooting_file_info = match shooting_file_info {
+            PtpData::UINT16(shooting_file_info) => shooting_file_info,
+            _ => panic!("shooting file info is not a u16"),
+        };
+
+        debug!(
+            "received shooting file info confirmation; current value = {:04x}",
+            shooting_file_info
+        );
+
+        // let _ = client_tx.send(CameraEvent::Capture);
+
+        while shooting_file_info > 0 {
+            let (info, data) =
+                download(&*client.interface().await, ObjectHandle::from(0xFFFFC001)).await?;
+
+            let _ = client_tx.send(CameraEvent::Download {
+                image_name: info.filename,
+                image_data: Arc::new(data),
+            });
+
+            let (new, _) = watch(client, CameraPropertyCode::ShootingFileInfo).await?;
+
+            shooting_file_info = match new {
+                PtpData::UINT16(new) => new,
+                _ => panic!("shooting file info is not a u16"),
+            };
+        }
+    }
 }
 
 fn update(
-    interface: &CameraInterface,
-    state: &mut HashMap<CameraPropertyCode, ptp::PtpPropInfo>,
+    client: &CameraClient,
 ) -> anyhow::Result<HashMap<CameraPropertyCode, (PtpData, Option<PtpData>)>> {
+    let CameraClient { interface, state } = client;
+
     let properties =
         block_in_place(|| interface.update()).context("error while receiving camera state")?;
 
@@ -185,13 +260,12 @@ fn control(
 }
 
 async fn ensure(
-    interface: &Mutex<CameraInterface>,
-    state: &mut HashMap<CameraPropertyCode, ptp::PtpPropInfo>,
+    client: &CameraClient,
     property: CameraPropertyCode,
     value: ptp::PtpData,
 ) -> anyhow::Result<()> {
     loop {
-        let actual = state.get(&property);
+        let actual = client.state.get(&property);
 
         if let Some(actual) = actual {
             if actual.current == value {
@@ -199,24 +273,17 @@ async fn ensure(
             }
         }
 
-        set(&*interface.lock().await, property, value.clone())?;
+        set(&mut client.interface, property, value.clone())?;
 
-        tokio::task::yield_now().await;
-
-        update(&*interface.lock().await, state)?;
+        update(client)?;
     }
 
     Ok(())
 }
 
-async fn ensure_mode(
-    interface: &Mutex<CameraInterface>,
-    state: &mut HashMap<CameraPropertyCode, ptp::PtpPropInfo>,
-    mode: CameraOperatingMode,
-) -> anyhow::Result<()> {
+async fn ensure_mode(client: &mut CameraClient, mode: CameraOperatingMode) -> anyhow::Result<()> {
     ensure(
-        interface,
-        state,
+        client,
         CameraPropertyCode::OperatingMode,
         PtpData::UINT8(mode as u8),
     )
@@ -224,12 +291,11 @@ async fn ensure_mode(
 }
 
 async fn watch(
-    interface: &Mutex<CameraInterface>,
-    state: &mut HashMap<CameraPropertyCode, ptp::PtpPropInfo>,
+    client: &CameraClient,
     property: CameraPropertyCode,
 ) -> anyhow::Result<(ptp::PtpData, Option<ptp::PtpData>)> {
     loop {
-        let mut changes = update(&*interface.lock().await, state)?;
+        let mut changes = update(&mut *client.write().await)?;
 
         if let Some(change) = changes.remove(&property) {
             break Ok(change);
@@ -240,11 +306,11 @@ async fn watch(
 }
 
 async fn wait(
-    event_rx: flume::Receiver<ptp::PtpEvent>,
+    ptp_rx: &mut broadcast::Receiver<ptp::PtpEvent>,
     event_code: ptp::EventCode,
 ) -> anyhow::Result<ptp::PtpEvent> {
     loop {
-        let event = event_rx.recv_async().await?;
+        let event = ptp_rx.recv().await?;
 
         if event.code == event_code {
             return Ok(event);
@@ -253,11 +319,9 @@ async fn wait(
 }
 
 async fn download(
-    interface: &Mutex<CameraInterface>,
+    interface: &CameraInterface,
     object_handle: ptp::ObjectHandle,
 ) -> anyhow::Result<(ptp::PtpObjectInfo, Vec<u8>)> {
-    let interface = interface.lock().await;
-
     let object_info = block_in_place(|| interface.object_info(object_handle, Some(TIMEOUT)))
         .context("error getting object info for download")?;
 
@@ -268,16 +332,17 @@ async fn download(
 }
 
 async fn cmd_debug(
-    interface: Arc<Mutex<CameraInterface>>,
-    state: &mut HashMap<CameraPropertyCode, ptp::PtpPropInfo>,
+    client: Arc<CameraClient>,
     req: CameraDebugRequest,
 ) -> anyhow::Result<CameraResponse> {
+    let client = &mut *client.write().await;
+
     if let Some(property) = req.property {
         let property_code: CameraPropertyCode =
             FromPrimitive::from_u32(property).context("not a valid camera property code")?;
         println!("dumping {:#X?}", property_code);
 
-        let property = state.get(&property_code);
+        let property = client.state.get(&property_code);
         println!("dumping {:#X?}", property);
 
         if let Some(property) = property {
@@ -296,36 +361,33 @@ async fn cmd_debug(
 
                 println!("setting {:#X?} to {:#X?}", property_code, property_value);
 
-                ensure(&*interface, state, property_code, property_value).await?;
+                ensure(client, property_code, property_value).await?;
             }
         }
     } else {
-        println!("{:#X?}", state);
+        println!("{:#X?}", client.state);
     }
 
     Ok(CameraResponse::Unit)
 }
 
 async fn cmd_capture(
-    interface: Arc<Mutex<CameraInterface>>,
-    state: &mut HashMap<CameraPropertyCode, ptp::PtpPropInfo>,
-    events_ptp: flume::Receiver<ptp::PtpEvent>,
-    events_client: tokio::sync::broadcast::Sender<CameraEvent>,
+    client: Arc<RwLock<CameraClient>>,
+    ptp_rx: &mut broadcast::Receiver<ptp::PtpEvent>,
 ) -> anyhow::Result<CameraResponse> {
-    let interface = &*interface;
-
-    ensure_mode(interface, state, CameraOperatingMode::StillRec).await?;
+    let client = &*client;
 
     {
-        let interface = interface.lock().await;
-        let interface = &*interface;
+        let mut client = client.write().await;
+
+        ensure_mode(&mut *client, CameraOperatingMode::StillRec).await?;
 
         info!("capturing image");
 
         debug!("sending half shutter press");
         // press shutter button halfway to fix the focus
         control(
-            interface,
+            &mut client.interface,
             CameraControlCode::S1Button,
             PtpData::UINT16(0x0002),
         )?;
@@ -334,16 +396,16 @@ async fn cmd_capture(
 
         // shoot!
         control(
-            interface,
+            &mut client.interface,
             CameraControlCode::S2Button,
             PtpData::UINT16(0x0002),
-        );
+        )?;
 
         debug!("sending full shutter release");
 
         // release
         control(
-            interface,
+            &mut client.interface,
             CameraControlCode::S2Button,
             PtpData::UINT16(0x0001),
         )?;
@@ -352,7 +414,7 @@ async fn cmd_capture(
 
         // hell yeah
         control(
-            interface,
+            &mut client.interface,
             CameraControlCode::S1Button,
             PtpData::UINT16(0x0001),
         )?;
@@ -361,8 +423,8 @@ async fn cmd_capture(
     }
 
     {
-        let watch_fut = watch(interface, state, CameraPropertyCode::ShootingFileInfo);
-        let wait_fut = wait(events_ptp, ptp::EventCode::Vendor(0xC204));
+        let watch_fut = watch(client, CameraPropertyCode::ShootingFileInfo);
+        let wait_fut = wait(ptp_rx, ptp::EventCode::Vendor(0xC204));
 
         futures::pin_mut!(watch_fut);
         futures::pin_mut!(wait_fut);
@@ -381,40 +443,6 @@ async fn cmd_capture(
                 wait_res.context("error while waiting for capture complete event")?;
             }
         }
-    }
-
-    let shooting_file_info = state
-        .get(&CameraPropertyCode::ShootingFileInfo)
-        .context("shooting file counter is unknown")?
-        .current
-        .clone();
-
-    let mut shooting_file_info = match shooting_file_info {
-        PtpData::UINT16(shooting_file_info) => shooting_file_info,
-        _ => panic!("shooting file info is not a u16"),
-    };
-
-    debug!(
-        "received shooting file info confirmation; current value = {:04x}",
-        shooting_file_info
-    );
-
-    events_client.send(CameraEvent::Capture);
-
-    while shooting_file_info > 0 {
-        let (info, data) = download(interface, ObjectHandle::from(0xFFFFC001)).await?;
-
-        events_client.send(CameraEvent::Download {
-            image_name: info.filename,
-            image_data: Arc::new(data),
-        });
-
-        let (new, _) = watch(interface, state, CameraPropertyCode::ShootingFileInfo).await?;
-
-        shooting_file_info = match new {
-            PtpData::UINT16(new) => new,
-            _ => panic!("shooting file info is not a u16"),
-        };
     }
 
     Ok(CameraResponse::Unit)

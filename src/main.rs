@@ -2,12 +2,15 @@ use std::{process::exit, str::FromStr, sync::Arc, time::Duration};
 
 use anyhow::Context;
 use ctrlc;
+use futures::channel::oneshot;
 use image::ImageClient;
 use structopt::StructOpt;
-use tokio::{spawn, sync::{broadcast, watch}, time::sleep};
-use futures::channel::oneshot;
+use tokio::{
+    spawn,
+    sync::{broadcast, watch},
+    time::sleep,
+};
 
-use camera::{client::CameraClient, state::CameraEvent};
 use gimbal::client::GimbalClient;
 use gs::GroundServerClient;
 use pixhawk::{client::PixhawkClient, state::PixhawkEvent};
@@ -209,11 +212,7 @@ async fn main() -> anyhow::Result<()> {
             cli::config::CameraKind::R10C => {
                 trace!("camera kind set to Sony R10C");
 
-                spawn({
-                    let mut camera_client =
-                        CameraClient::connect(channels.clone(), camera_cmd_receiver)?;
-                    async move { camera_client.run().await }
-                })
+                spawn(camera::run(channels.clone(), camera_cmd_receiver))
             }
 
             // for the future when we switch to a different type of camera
