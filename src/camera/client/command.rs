@@ -7,17 +7,18 @@ use super::util::*;
 use super::*;
 
 pub(super) async fn cmd_debug(
-    client: Arc<RwLock<CameraClient>>,
+    interface: CameraInterfaceRequestBuffer,
     req: CameraCommandDebugRequest,
 ) -> anyhow::Result<CameraCommandResponse> {
-    let client = &mut *client.write().await;
-
     if let Some(property) = req.property {
         let property_code: CameraPropertyCode =
             FromPrimitive::from_u32(property).context("not a valid camera property code")?;
         println!("dumping {:#X?}", property_code);
 
-        let property = client.state.get(&property_code);
+        let property = interface
+            .enter(|i| async move { i.get_info(property_code).await })
+            .await;
+
         println!("dumping {:#X?}", property);
 
         if let Some(property) = property {
@@ -36,66 +37,55 @@ pub(super) async fn cmd_debug(
 
                 println!("setting {:#X?} to {:#X?}", property_code, property_value);
 
-                ensure(client, property_code, property_value).await?;
+                ensure(&interface, property_code, property_value).await?;
             }
         }
     } else {
-        println!("{:#X?}", client.state);
+        warn!("dumping entire state is unimplemented");
     }
 
     Ok(CameraCommandResponse::Unit)
 }
 
 pub(super) async fn cmd_capture(
-    client: Arc<RwLock<CameraClient>>,
+    interface: CameraInterfaceRequestBuffer,
     ptp_rx: &mut broadcast::Receiver<ptp::PtpEvent>,
 ) -> anyhow::Result<CameraCommandResponse> {
-    let client = &*client;
+    ensure_mode(&interface, CameraOperatingMode::StillRec).await?;
 
-    {
-        let mut client = client.write().await;
+    interface
+        .enter(|i| async move {
+            info!("capturing image");
 
-        ensure_mode(&mut *client, CameraOperatingMode::StillRec).await?;
+            debug!("sending half shutter press");
 
-        info!("capturing image");
+            // press shutter button halfway to fix the focus
+            i.control(CameraControlCode::S1Button, ptp::PtpData::UINT16(0x0002))
+                .await?;
 
-        debug!("sending half shutter press");
-        // press shutter button halfway to fix the focus
-        control(
-            &mut client.interface,
-            CameraControlCode::S1Button,
-            ptp::PtpData::UINT16(0x0002),
-        )?;
+            debug!("sending full shutter press");
 
-        debug!("sending full shutter press");
+            // shoot!
+            i.control(CameraControlCode::S2Button, ptp::PtpData::UINT16(0x0002))
+                .await?;
 
-        // shoot!
-        control(
-            &mut client.interface,
-            CameraControlCode::S2Button,
-            ptp::PtpData::UINT16(0x0002),
-        )?;
+            debug!("sending full shutter release");
 
-        debug!("sending full shutter release");
+            // release
+            i.control(CameraControlCode::S2Button, ptp::PtpData::UINT16(0x0001))
+                .await?;
 
-        // release
-        control(
-            &mut client.interface,
-            CameraControlCode::S2Button,
-            ptp::PtpData::UINT16(0x0001),
-        )?;
+            debug!("sending half shutter release");
 
-        debug!("sending half shutter release");
+            // hell yeah
+            i.control(CameraControlCode::S1Button, ptp::PtpData::UINT16(0x0001))
+                .await?;
 
-        // hell yeah
-        control(
-            &mut client.interface,
-            CameraControlCode::S1Button,
-            ptp::PtpData::UINT16(0x0001),
-        )?;
+            info!("waiting for image confirmation");
 
-        info!("waiting for image confirmation");
-    }
+            Ok::<_, anyhow::Error>(())
+        })
+        .await?;
 
     // {
     //     let watch_fut = watch(client, CameraPropertyCode::ShootingFileInfo);
@@ -124,27 +114,33 @@ pub(super) async fn cmd_capture(
 }
 
 pub(super) async fn cmd_continuous_capture(
-    client: Arc<RwLock<CameraClient>>,
+    interface: CameraInterfaceRequestBuffer,
     req: CameraCommandContinuousCaptureRequest,
 ) -> anyhow::Result<CameraCommandResponse> {
-    let mut client = client.write().await;
-
     match req {
         CameraCommandContinuousCaptureRequest::Start => {
-            control(
-                &mut client.interface,
-                CameraControlCode::IntervalStillRecording,
-                ptp::PtpData::UINT16(0x0002),
-            )
-            .context("failed to start interval recording")?;
+            interface
+                .enter(|i| async move {
+                    i.control(
+                        CameraControlCode::IntervalStillRecording,
+                        ptp::PtpData::UINT16(0x0002),
+                    )
+                    .await
+                    .context("failed to start interval recording")
+                })
+                .await?;
         }
         CameraCommandContinuousCaptureRequest::Stop => {
-            control(
-                &mut client.interface,
-                CameraControlCode::IntervalStillRecording,
-                ptp::PtpData::UINT16(0x0001),
-            )
-            .context("failed to stop interval recording")?;
+            interface
+                .enter(|i| async move {
+                    i.control(
+                        CameraControlCode::IntervalStillRecording,
+                        ptp::PtpData::UINT16(0x0001),
+                    )
+                    .await
+                    .context("failed to start interval recording")
+                })
+                .await?;
         }
         CameraCommandContinuousCaptureRequest::Interval { interval } => {
             let interval = (interval * 10.) as u16;
@@ -162,7 +158,7 @@ pub(super) async fn cmd_continuous_capture(
             }
 
             ensure(
-                &mut client,
+                &interface,
                 CameraPropertyCode::IntervalTime,
                 ptp::PtpData::UINT16(interval),
             )
