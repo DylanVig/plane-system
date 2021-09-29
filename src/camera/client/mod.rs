@@ -207,13 +207,13 @@ fn run_events(
 
     loop {
         let event = {
-            let sem = rt_handle
-                .block_on(semaphore.acquire())
-                .context("error while acquiring interface semaphore")
-                .unwrap();
+            // let sem = rt_handle
+            //     .block_on(semaphore.acquire())
+            //     .context("error while acquiring interface semaphore")
+            //     .unwrap();
 
             interface
-                .recv(Some(Duration::from_millis(10)))
+                .recv(None)
                 .context("error while receiving camera event")?
         };
 
@@ -228,8 +228,6 @@ fn run_events(
         if let Ok(()) = interrupt_rx.try_recv() {
             break;
         }
-
-        // tokio::task::yield_now().await;
     }
 
     Ok(())
@@ -388,7 +386,7 @@ async fn run_download(
     client_tx: broadcast::Sender<CameraClientEvent>,
 ) -> anyhow::Result<()> {
     loop {
-        wait(&mut ptp_rx, ptp::EventCode::Vendor(0xC203)).await?;
+        wait(&mut ptp_rx, ptp::EventCode::Vendor(0xC204)).await?;
 
         tokio::time::sleep(Duration::from_millis(500)).await;
 
@@ -414,7 +412,7 @@ async fn run_download(
 
             tokio::time::sleep(Duration::from_millis(500)).await;
 
-            let (info, data) = interface
+            let result = interface
                 .enter(|i| async move {
                     let info = i
                         .object_info(ptp::ObjectHandle::from(0xFFFFC001))
@@ -428,7 +426,15 @@ async fn run_download(
 
                     Ok::<_, anyhow::Error>((info, data))
                 })
-                .await?;
+                .await;
+
+            let (info, data) = match result {
+                Ok(result) => result,
+                Err(err) => {
+                    warn!("downloading image data failed: {:?}", err);
+                    continue
+                }
+            };
 
             let _ = client_tx.send(CameraClientEvent::Download {
                 image_name: info.filename,
@@ -442,5 +448,12 @@ async fn run_download(
                 _ => panic!("shooting file info is not a u16"),
             };
         }
+
+        debug!(
+            "received shooting file info confirmation; current value = {:04x}",
+            shooting_file_info
+        );
+
+        info!("download complete");
     }
 }
