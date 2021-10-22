@@ -68,7 +68,8 @@
       "processCreateCommands": [
         "gdb-remote 127.0.0.1:14000"
       ],
-      "reverseDebugging": true
+      "reverseDebugging": true,
+      "sourceLanguages": ["rust"]
     }
   ]
 }
