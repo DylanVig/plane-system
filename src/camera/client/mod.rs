@@ -24,7 +24,26 @@ pub async fn run(
 ) -> anyhow::Result<()> {
     let mut interface = CameraInterface::new().context("failed to create camera interface")?;
 
-    interface.connect().context("failed to connect to camera")?;
+    let mut tries = 0;
+
+    loop {
+        match interface.connect().context("failed to connect to camera") {
+            Ok(_) => break,
+            Err(err) => {
+                if tries > 3 {
+                    return Err(err);
+                }
+
+                tries += 1;
+
+                warn!("failed to connect to camera: {:?}", err);
+                info!("retrying camera connection");
+                if let Err(err) = interface.disconnect() {
+                    warn!("failed to disconnect from camera: {:?}", err);
+                }
+            }
+        }
+    }
 
     trace!("initializing camera");
 
@@ -68,11 +87,17 @@ pub async fn run(
         semaphore: semaphore.clone(),
     };
 
+    let mut futures = Vec::new();
+    let mut task_names = Vec::new();
+
     let download_task = tokio::spawn(run_download(
         interface_req_buf.clone(),
         ptp_tx.subscribe(),
         channels.camera_event.clone(),
     ));
+
+    task_names.push("download");
+    futures.push(download_task);
 
     let cmd_task = tokio::spawn(run_commands(
         interface_req_buf.clone(),
@@ -80,11 +105,17 @@ pub async fn run(
         command_rx,
     ));
 
+    task_names.push("cmd");
+    futures.push(cmd_task);
+
     let interface_task = tokio::task::spawn_blocking({
         let interface = interface.clone();
         let interrupt_rx = channels.interrupt.subscribe();
         move || run_interface(interface, state, interface_rx, interrupt_rx)
     });
+
+    task_names.push("interface");
+    futures.push(interface_task);
 
     let event_task = tokio::task::spawn_blocking({
         let interface = interface.clone();
@@ -92,12 +123,34 @@ pub async fn run(
         move || run_events(interface, semaphore, ptp_tx, interrupt_rx)
     });
 
-    tokio::select! {
-        interface_res = interface_task => interface_res??,
-        download_res = download_task => download_res??,
-        event_res = event_task => event_res??,
-        cmd_res = cmd_task => cmd_res??,
-    };
+    task_names.push("event");
+    futures.push(event_task);
+
+    while futures.len() > 0 {
+        // wait for each task to end
+        let (result, i, remaining) = futures::future::select_all(futures).await;
+        let task_name = task_names.remove(i);
+
+        info!(
+            "{} ({}) task ended, {} remaining",
+            task_name,
+            i,
+            task_names.join(", ")
+        );
+
+        // if a task ended with an error or did not join properly, end the process
+        // with an interrupt
+        if let Err(err) = result? {
+            error!(
+                "got error from {} task, sending interrupt: {:?}",
+                task_name, err
+            );
+
+            info!("remaining tasks: {:?}", task_names.join(", "));
+        }
+
+        futures = remaining;
+    }
 
     Ok(())
 }
@@ -190,6 +243,7 @@ fn run_interface(
         }
 
         if let Ok(()) = interrupt_rx.try_recv() {
+            debug!("camera interface runner interrupted");
             break Ok(());
         }
 
@@ -221,11 +275,13 @@ fn run_events(
             debug!("event: recv {:?}", event);
 
             if let Err(_) = events_ptp.send(event) {
+                debug!("camera event querier exited");
                 break;
             }
         }
 
         if let Ok(()) = interrupt_rx.try_recv() {
+            debug!("camera event querier interrupted");
             break;
         }
     }
@@ -432,7 +488,7 @@ async fn run_download(
                 Ok(result) => result,
                 Err(err) => {
                     warn!("downloading image data failed: {:?}", err);
-                    continue
+                    continue;
                 }
             };
 

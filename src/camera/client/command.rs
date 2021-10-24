@@ -1,6 +1,5 @@
 use anyhow::Context;
 use num_traits::FromPrimitive;
-use std::{sync::Arc, time::Duration};
 use tokio::sync::{broadcast, RwLock};
 
 use super::util::*;

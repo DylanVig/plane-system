@@ -129,6 +129,10 @@ async fn main() -> anyhow::Result<()> {
 
     let config = config.context("failed to read config file")?;
 
+    run_tasks(config).await
+}
+
+async fn run_tasks(config: cli::config::PlaneSystemConfig) -> anyhow::Result<()> {
     let (telemetry_sender, telemetry_receiver) = watch::channel(None);
     let (interrupt_sender, _) = broadcast::channel(1);
     let (pixhawk_event_sender, _) = broadcast::channel(64);
@@ -308,12 +312,7 @@ async fn main() -> anyhow::Result<()> {
         let (result, i, remaining) = futures::future::select_all(futures).await;
         let task_name = task_names.remove(i);
 
-        info!(
-            "{} ({}) task ended, {} remaining",
-            task_name,
-            i,
-            remaining.len()
-        );
+        info!("{} ({}) task ended, {} remaining", task_name, i, task_names.join(", "));
 
         // if a task ended with an error or did not join properly, end the process
         // with an interrupt
