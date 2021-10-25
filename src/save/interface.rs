@@ -1,19 +1,17 @@
 use gst::prelude::*;
 
-pub struct StreamInterface {
+pub struct SaveInterface {
   pipeline: Option<gst::Element>,
   address: String,
   cameras: Vec<String>,
-  port: u32,
 }
 
-impl StreamInterface {
+impl SaveInterface {
   pub fn new(
     mode: bool,
     address: String,
     rpi_cameras: Vec<String>,
     test_cameras: Vec<String>,
-    port: u32,
   ) -> anyhow::Result<Self> {
     // Initialize GStreamer
     gst::init().unwrap();
@@ -28,20 +26,21 @@ impl StreamInterface {
       pipeline,
       address,
       cameras,
-      port,
     })
   }
-  pub fn start_stream(&mut self) -> anyhow::Result<()> {
-    info!("Starting stream");
-    let ip = &self.address;
+  pub fn start_save(&mut self) -> anyhow::Result<()> {
+    info!("Starting saver");
 
     let mut command = String::from("");
 
-    let port = &self.port;
-
     for i in 0..self.cameras.len() {
-      let new_command = &format!("{} ! videoconvert ! x264enc tune=zerolatency bitrate=500 speed-preset=superfast ! rtph264pay ! udpsink host={} port={} ", &self.cameras[i], ip, (port + (i as u32)).to_string());
-      command = format!("{}{}", command, new_command)
+      let new_command = &format!(
+        "{} ! queue ! x264enc ! mpegtsmux ! filesink location={}{}.mp4",
+        &self.cameras[i],
+        &self.address,
+        i.to_string()
+      );
+      command = format!("{}\n{}", command, new_command)
     }
 
     self.pipeline = Some(gst::parse_launch(&command).unwrap());
@@ -57,7 +56,7 @@ impl StreamInterface {
     Ok(())
   }
 
-  pub fn end_stream(&mut self) -> anyhow::Result<()> {
+  pub fn end_save(&mut self) -> anyhow::Result<()> {
     // End pipeline
     self
       .pipeline

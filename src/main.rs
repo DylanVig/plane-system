@@ -5,6 +5,7 @@ use camera::{client::CameraClient, state::CameraEvent};
 use ctrlc;
 use gimbal::client::GimbalClient;
 use pixhawk::{client::PixhawkClient, state::PixhawkEvent};
+use save::client::SaveClient;
 use scheduler::Scheduler;
 use state::TelemetryInfo;
 use std::time::Duration;
@@ -26,6 +27,7 @@ mod camera;
 mod cli;
 mod gimbal;
 mod pixhawk;
+mod save;
 mod scheduler;
 mod server;
 mod state;
@@ -58,6 +60,9 @@ pub struct Channels {
 
     ///Channel for starting stream.
     stream_cmd: mpsc::Sender<stream::StreamCommand>,
+
+    ///Channel for starting saver.
+    save_cmd: mpsc::Sender<save::SaveCommand>,
 }
 
 #[derive(Debug)]
@@ -123,6 +128,7 @@ async fn main() -> anyhow::Result<()> {
     let (camera_cmd_sender, camera_cmd_receiver) = mpsc::channel(256);
     let (gimbal_cmd_sender, gimbal_cmd_receiver) = mpsc::channel(256);
     let (stream_cmd_sender, stream_cmd_receiver) = mpsc::channel(256);
+    let (save_cmd_sender, save_cmd_receiver) = mpsc::channel(256);
 
     let channels = Arc::new(Channels {
         interrupt: interrupt_sender.clone(),
@@ -133,6 +139,7 @@ async fn main() -> anyhow::Result<()> {
         camera_cmd: camera_cmd_sender,
         gimbal_cmd: gimbal_cmd_sender,
         stream_cmd: stream_cmd_sender,
+        save_cmd: save_cmd_sender,
     });
 
     let mut task_names = Vec::new();
@@ -224,14 +231,31 @@ async fn main() -> anyhow::Result<()> {
                 stream_cmd_receiver,
                 config.stream_rpi,
                 config.stream_address,
-                config.rpi_cameras,
-                config.test_cameras,
+                config.rpi_cameras.clone(),
+                config.test_cameras.clone(),
                 config.stream_port,
             )?;
             async move { stream_client.run().await }
         });
         task_names.push("stream");
         futures.push(stream_task);
+    }
+
+    if config.save {
+        info!("initializing saver");
+        let save_task = spawn({
+            let mut save_client = SaveClient::connect(
+                channels.clone(),
+                save_cmd_receiver,
+                config.stream_rpi,
+                config.save_address,
+                config.rpi_cameras,
+                config.test_cameras,
+            )?;
+            async move { save_client.run().await }
+        });
+        task_names.push("save");
+        futures.push(save_task);
     }
 
     info!("intializing cli");
