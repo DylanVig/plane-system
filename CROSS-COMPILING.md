@@ -102,15 +102,16 @@ export PATH=/opt/cross/bin:$PATH
 These are the cross-assembler, cross-linker, and other tools.
 
 > In some `make` commands, you may seen an option `-j`. `-j` is the number of
-> threads that `make` uses, so if you have more than 4 cores on your PC, you can
-> increase this number to get faster builds. I use `-j8` on my device which has
-> 12 cores.
+> threads that `make` uses, so if you have more cores on your PC, you can
+> increase this number to get faster builds, or if you have fewer cores on your
+> PC, you can decrease it to make the compilation slam your computer less. I
+> use `-j8` on my device which has 12 cores.
 
 ```bash
 mkdir build-binutils
 cd build-binutils
-../binutils-x.xx/configure --prefix=/opt/cross --target=armv7l-linux-gnueabihf
-make -j4
+../binutils-x.xx/configure --prefix=/opt/cross --target=armv7l-linux-gnueabihf --enable-gold
+make -j8
 make install
 cd ..
 ```
@@ -137,8 +138,8 @@ first thing you have to do is build only the C compiler from GCC.
 ```bash
 mkdir -p build-gcc
 cd build-gcc
-../gcc-8.5.0/configure --prefix=/opt/cross --target=armv7l-linux-gnueabihf --enable-languages=c
-make -j4 all-gcc
+../gcc-8.5.0/configure --prefix=/opt/cross --target=armv7l-linux-gnueabihf --enable-languages=c --enable-multilib --with-float=soft --with-float=hard 
+make -j8 all-gcc
 make install-gcc
 cd ..
 ```
@@ -153,10 +154,12 @@ mkdir -p build-glibc
 cd build-glibc
 ../glibc-2.28/configure --prefix=/opt/cross/armv7l-linux-gnueabihf --build=$MACHTYPE --host=armv7l-linux-gnueabihf --target=armv7l-linux-gnueabihf --with-headers=/opt/cross/armv7l-linux-gnueabihf/include libc_cv_forced_unwind=yes
 make install-bootstrap-headers=yes install-headers
-make -j4 csu/subdir_lib
+make -j8 csu/subdir_lib
 install csu/crt1.o csu/crti.o csu/crtn.o /opt/cross/armv7l-linux-gnueabihf/lib
 armv7l-linux-gnueabihf-gcc -nostdlib -nostartfiles -shared -x c /dev/null -o /opt/cross/armv7l-linux-gnueabihf/lib/libc.so
 touch /opt/cross/armv7l-linux-gnueabihf/include/gnu/stubs.h
+touch /opt/cross/armv7l-linux-gnueabihf/include/gnu/stubs-hard.h
+touch /opt/cross/armv7l-linux-gnueabihf/include/gnu/stubs-soft.h
 cd ..
 ```
 
@@ -167,7 +170,7 @@ allow us to finish compiling `glibc`.
 
 ```bash
 cd build-gcc
-make -j4 all-target-libgcc
+make -j8 all-target-libgcc
 make install-target-libgcc
 cd ..
 ```
@@ -178,7 +181,7 @@ Finally, we are building `glibc`.
 
 ```bash
 cd build-glibc
-make -j4
+make -j8
 make install
 cd ..
 ```
