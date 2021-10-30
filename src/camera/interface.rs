@@ -1,8 +1,13 @@
 use anyhow::Context;
 use num_traits::{FromPrimitive, ToPrimitive};
-use ptp::{ObjectHandle, PtpRead, StorageId};
-use std::io::Cursor;
+use ptp::{ObjectFormatCode, ObjectHandle, PtpRead, StandardCommandCode, StorageId};
+use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, collections::HashSet, fmt::Debug, time::Duration};
+use std::{
+    io::Cursor,
+    sync::{Arc, Mutex},
+};
+
 
 /// Sony's USB vendor ID
 const SONY_USB_VID: u16 = 0x054C;
@@ -115,6 +120,17 @@ pub enum CameraControlCode {
     ZoomControlWideOneShot = 0xD613,
 }
 
+#[repr(u8)]
+#[derive(
+    ToPrimitive, FromPrimitive, Debug, Copy, Clone, Eq, PartialEq, Hash, Serialize, Deserialize,
+)]
+pub enum CameraOperatingMode {
+    Standby = 0x01,
+    StillRec,
+    MovieRec,
+    ContentsTransfer,
+}
+
 pub struct CameraInterface {
     camera: ptp::PtpCamera<rusb::GlobalContext>,
     state: Option<CameraState>,
@@ -122,7 +138,6 @@ pub struct CameraInterface {
 
 struct CameraState {
     version: u16,
-    properties: HashMap<CameraPropertyCode, ptp::PtpPropInfo>,
     supported_properties: HashSet<CameraPropertyCode>,
     supported_controls: HashSet<CameraControlCode>,
 }
@@ -208,7 +223,6 @@ impl CameraInterface {
                         version: sdi_ext_version,
                         supported_properties: sdi_device_props,
                         supported_controls: sdi_device_controls,
-                        properties: HashMap::new(),
                     });
                 }
                 Err(err) => {
@@ -255,8 +269,8 @@ impl CameraInterface {
     }
 
     /// Queries the camera for its current state and updates the hashmap held by
-    /// this interface.
-    pub fn update(&mut self) -> anyhow::Result<&HashMap<CameraPropertyCode, ptp::PtpPropInfo>> {
+    /// this interface. Returns only the properties that have changed.
+    pub fn update(&mut self) -> anyhow::Result<Vec<ptp::PtpPropInfo>> {
         let timeout = self.timeout();
 
         let state = if let Some(ref mut state) = self.state {
@@ -280,53 +294,27 @@ impl CameraInterface {
 
         trace!("reading {:?} entries", num_entries);
 
-        let mut properties = HashMap::new();
+        let mut properties = Vec::new();
 
         for _ in 0..num_entries {
-            let prop = ptp::PtpPropInfo::decode(&mut cursor)?;
-            let code = CameraPropertyCode::from_u16(prop.property_code);
+            let current_prop = ptp::PtpPropInfo::decode(&mut cursor)?;
+            let prop_code = CameraPropertyCode::from_u16(current_prop.property_code);
 
-            if let Some(code) = code {
-                properties.insert(code, prop);
-            }
+            properties.push(current_prop);
         }
 
-        state.properties = properties;
-
-        Ok(&state.properties)
-    }
-
-    /// Gets information about a camera property from the hashmap. This method
-    /// does NOT query the camera itself.
-    pub fn get(&self, code: CameraPropertyCode) -> Option<ptp::PtpPropInfo> {
-        let state = if let Some(ref state) = self.state {
-            state
-        } else {
-            warn!("get() called when camera is not connected");
-            return None;
-        };
-
-        state.properties.get(&code).cloned()
+        Ok(properties)
     }
 
     /// Sets the value of a camera property. This should be followed by a call
     /// to update() and a check to make sure that the intended result was
     /// achieved.
-    pub fn set(&mut self, code: CameraPropertyCode, new_value: ptp::PtpData) -> anyhow::Result<()> {
+    pub fn set(&self, code: CameraPropertyCode, new_value: ptp::PtpData) -> anyhow::Result<()> {
         let state = if let Some(ref state) = self.state {
             state
         } else {
             bail!("set() called when camera is not connected");
         };
-
-        let current_value = state.properties.get(&code).map(|prop| &prop.current);
-
-        if let Some(current_value) = current_value {
-            if current_value == &new_value {
-                trace!("current value is the same as value passed to set(), returning");
-                return Ok(());
-            }
-        }
 
         let buf = new_value.encode();
 
@@ -344,11 +332,7 @@ impl CameraInterface {
 
     /// Executes a command on the camera. This should be followed by a call to
     /// update() and a check to make sure that the intended result was achieved.
-    pub fn execute(
-        &mut self,
-        code: CameraControlCode,
-        payload: ptp::PtpData,
-    ) -> anyhow::Result<()> {
+    pub fn execute(&self, code: CameraControlCode, payload: ptp::PtpData) -> anyhow::Result<()> {
         if let None = self.state {
             warn!("execute() called when camera is not connected");
         };
@@ -368,40 +352,66 @@ impl CameraInterface {
     }
 
     /// Receives an event from the camera.
-    pub fn recv(&mut self) -> anyhow::Result<ptp::PtpEvent> {
-        let event = self.camera.event(Some(Duration::from_secs(1)))?;
-
+    pub fn recv(&self, timeout: Option<Duration>) -> anyhow::Result<Option<ptp::PtpEvent>> {
+        let event = self.camera.event(timeout)?;
         trace!("received event: {:#?}", &event);
         Ok(event)
     }
 
-    pub fn device_info(&mut self) -> anyhow::Result<ptp::PtpDeviceInfo> {
-        Ok(self.camera.get_device_info(self.timeout())?)
+    pub fn device_info(&self, timeout: Option<Duration>) -> anyhow::Result<ptp::PtpDeviceInfo> {
+        Ok(self.camera.get_device_info(timeout)?)
     }
 
-    pub fn storage_ids(&mut self) -> anyhow::Result<Vec<StorageId>> {
-        Ok(self.camera.get_storage_ids(self.timeout())?)
+    pub fn storage_ids(&self, timeout: Option<Duration>) -> anyhow::Result<Vec<StorageId>> {
+        Ok(self.camera.get_storage_ids(timeout)?)
     }
 
-    pub fn storage_info(&mut self, storage_id: StorageId) -> anyhow::Result<ptp::PtpStorageInfo> {
-        Ok(self.camera.get_storage_info(storage_id, self.timeout())?)
+    pub fn storage_info(
+        &self,
+        storage_id: StorageId,
+        timeout: Option<Duration>,
+    ) -> anyhow::Result<ptp::PtpStorageInfo> {
+        Ok(self.camera.get_storage_info(storage_id, timeout)?)
     }
 
     pub fn object_handles(
-        &mut self,
+        &self,
         storage_id: StorageId,
         parent_id: Option<ObjectHandle>,
+        timeout: Option<Duration>,
     ) -> anyhow::Result<Vec<ObjectHandle>> {
         Ok(self
             .camera
-            .get_object_handles(storage_id, None, parent_id, self.timeout())?)
+            .get_object_handles(storage_id, None, parent_id, timeout)?)
     }
 
-    pub fn object_info(&mut self, object_id: ObjectHandle) -> anyhow::Result<ptp::PtpObjectInfo> {
-        Ok(self.camera.get_object_info(object_id, self.timeout())?)
+    pub fn object_info(
+        &self,
+        object_id: ObjectHandle,
+        timeout: Option<Duration>,
+    ) -> anyhow::Result<ptp::PtpObjectInfo> {
+        Ok(self.camera.get_object_info(object_id, timeout)?)
     }
 
-    pub fn object_data(&mut self, object_id: ObjectHandle) -> anyhow::Result<Vec<u8>> {
-        Ok(self.camera.get_object(object_id, self.timeout())?)
+    pub fn object_data(
+        &self,
+        object_id: ObjectHandle,
+        timeout: Option<Duration>,
+    ) -> anyhow::Result<Vec<u8>> {
+        Ok(self.camera.get_object(object_id, timeout)?)
+    }
+
+    pub fn init_capture(
+        &self,
+        storage: StorageId,
+        format: ObjectFormatCode,
+        timeout: Option<Duration>,
+    ) -> anyhow::Result<Vec<u8>> {
+        Ok(self.camera.command(
+            StandardCommandCode::InitiateCapture.into(),
+            &[storage.into(), format.to_u32().unwrap()],
+            None,
+            timeout,
+        )?)
     }
 }

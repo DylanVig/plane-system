@@ -50,9 +50,15 @@ impl TelemetryCollector {
                     .context("pixhawk stream closed")?;
 
                 match message {
-                    PixhawkEvent::Gps { coords } => self.state.lock().unwrap().position = coords,
+                    PixhawkEvent::Gps { coords } => {
+                        let mut state = self.state.lock().unwrap();
+                        state.position = coords;
+                        state.time = chrono::Local::now();
+                    }
                     PixhawkEvent::Orientation { attitude } => {
-                        self.state.lock().unwrap().plane_attitude = attitude
+                        let mut state = self.state.lock().unwrap();
+                        state.plane_attitude = attitude;
+                        state.time = chrono::Local::now();
                     }
                     _ => {}
                 }
@@ -86,10 +92,9 @@ impl TelemetryPublisher {
     }
 
     async fn run(&self) -> anyhow::Result<()> {
-        let telemetry_sender = self.channels.telemetry.clone();
         let mut interrupt_recv = self.channels.interrupt.subscribe();
 
-        let mut interval = interval(Duration::from_millis(5));
+        let mut interval = interval(Duration::from_millis(500));
 
         loop {
             if let Ok(telemetry) = self.state.lock() {

@@ -71,8 +71,8 @@ impl Coords2D {
         }
     }
 
-    pub fn with_altitude(self, altitude: f32) -> Coords3D {
-        Coords3D::new(self.latitude, self.longitude, altitude)
+    pub fn with_altitude(self, altitude_msl: f32, altitude_rel: f32) -> Coords3D {
+        Coords3D::new(self.latitude, self.longitude, altitude_msl, altitude_rel)
     }
 }
 
@@ -90,16 +90,20 @@ pub struct Coords3D {
     /// Longitude in degrees
     pub longitude: f32,
 
-    /// Altitude in meters
-    pub altitude: f32,
+    /// Altitude in meters above mean sea level
+    pub altitude_msl: f32,
+
+    /// Altitude in meters above the ground
+    pub altitude_rel: f32,
 }
 
 impl Coords3D {
-    pub fn new(latitude: f32, longitude: f32, altitude: f32) -> Self {
+    pub fn new(latitude: f32, longitude: f32, altitude_msl: f32, altitude_rel: f32) -> Self {
         Coords3D {
             latitude,
             longitude,
-            altitude,
+            altitude_msl,
+            altitude_rel
         }
     }
 }
@@ -122,11 +126,23 @@ impl Attitude {
     }
 }
 
-#[derive(Default, Debug, Clone, Copy, Serialize)]
+#[derive(Debug, Clone, Copy, Serialize)]
 pub struct TelemetryInfo {
     pub plane_attitude: Attitude,
     pub gimbal_attitude: Attitude,
     pub position: Coords3D,
+    pub time: chrono::DateTime<chrono::Local>,
+}
+
+impl Default for TelemetryInfo {
+    fn default() -> Self {
+        TelemetryInfo {
+            gimbal_attitude: Default::default(),
+            plane_attitude: Default::default(),
+            position: Default::default(),
+            time: chrono::Local::now(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

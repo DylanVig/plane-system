@@ -2,20 +2,22 @@
   "pixhawk": {
     "mavlink": {
       "type": "V2"
-    }
+    },
+    "address": "[::]:14551"
   },
-  "server": {
+  "plane_server": {
     "address": "[::]:8080"
   },
-  "scheduler": {
-    "enabled": false,
-    "gps": {
-      "latitude": -35.3589442144018,
-      "longitude": 149.164787599129
-    }
+  "ground_server": null,
+  "image": {
+    "save_path": "./images/"
   },
-  "camera": false,
-  "gimbal": false,
+  "scheduler": null,
+  "camera": {
+    "kind": "R10C"
+  },
+  "gimbal": null,
+  "dummy": true,
   "stream": true,
   "save": true,
   "stream_rpi": false,

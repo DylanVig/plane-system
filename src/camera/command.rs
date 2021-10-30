@@ -1,11 +1,11 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, convert::Infallible, str::FromStr};
 
 use serde::Serialize;
 use structopt::StructOpt;
 
 use crate::Command;
 
-use super::state::*;
+use super::{interface::CameraOperatingMode, state::*};
 
 pub type CameraCommand = Command<CameraRequest, CameraResponse>;
 
@@ -21,7 +21,7 @@ pub enum CameraRequest {
     Capture,
 
     /// power off the camera
-    Power(CameraPowerRequest),
+    Off,
 
     /// disconnect and reconnect to the camera
     Reconnect,
@@ -38,6 +38,24 @@ pub enum CameraRequest {
     /// control continuous capture
     #[structopt(name = "cc")]
     ContinuousCapture(CameraContinuousCaptureRequest),
+
+    /// control operating mode
+    #[structopt(name = "mode")]
+    OperationMode(CameraOperationModeRequest),
+
+    #[structopt(name = "focus")]
+    FocusMode(CameraFocusModeRequest),
+
+    /// record videos
+    Record(CameraRecordRequest),
+
+    /// dump the state of the camera to the console
+    Debug {
+        #[structopt(parse(try_from_str = crate::util::parse_hex_u32))]
+        property: Option<u32>,
+
+        value_num: Vec<isize>,
+    },
 
     /// perform a usb reset and reconnect
     Reset,
@@ -142,16 +160,61 @@ pub enum CameraZoomModeRequest {
 }
 
 #[derive(StructOpt, Debug, Clone)]
-pub enum CameraPowerRequest {
-    Up,
-    Down,
-}
-
-#[derive(StructOpt, Debug, Clone)]
 pub enum CameraContinuousCaptureRequest {
     Start,
     Stop,
     Interval { interval: f32 },
+}
+
+#[derive(StructOpt, Debug, Clone)]
+pub enum CameraRecordRequest {
+    Start,
+    Stop,
+}
+
+#[derive(StructOpt, Debug, Clone)]
+pub enum CameraOperationModeRequest {
+    /// get the current exposure mode
+    Get,
+
+    /// set the current exposure mode
+    Set { mode: CameraOperatingMode },
+}
+
+impl FromStr for CameraOperatingMode {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(match s {
+            "standby" => Self::Standby,
+            "still" | "image" => Self::StillRec,
+            "movie" | "video" => Self::MovieRec,
+            "transfer" => Self::ContentsTransfer,
+            _ => bail!("invalid operating mode")
+        })
+    }
+}
+
+#[derive(StructOpt, Debug, Clone)]
+pub enum CameraFocusModeRequest {
+    /// get the current focus mode
+    Get,
+
+    /// set the current focus mode
+    Set { mode: CameraFocusMode },
+}
+
+impl FromStr for CameraFocusMode {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(match s {
+            "manual" | "m" => Self::Manual,
+            "afc" => Self::AutoFocusContinuous,
+            "afs"  => Self::AutoFocusStill,
+            _ => bail!("invalid focus mode")
+        })
+    }
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -160,8 +223,8 @@ pub enum CameraResponse {
     Data {
         data: Vec<u8>,
     },
-    File {
-        path: std::path::PathBuf,
+    Download {
+        name: String,
     },
     StorageInfo {
         storages: HashMap<ptp::StorageId, ptp::PtpStorageInfo>,
@@ -175,7 +238,13 @@ pub enum CameraResponse {
     SaveMode {
         save_mode: CameraSaveMode,
     },
+    OperatingMode {
+        operating_mode: CameraOperatingMode,
+    },
     ExposureMode {
         exposure_mode: CameraExposureMode,
+    },
+    FocusMode {
+        focus_mode: CameraFocusMode,
     },
 }

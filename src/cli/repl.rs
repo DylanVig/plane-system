@@ -2,90 +2,123 @@ use std::sync::Arc;
 
 use anyhow::Context;
 use colored::Colorize;
+use futures::FutureExt;
 use humansize::FileSize;
 use prettytable::{cell, row, Table};
 use structopt::StructOpt;
 
 use crate::{
-    camera::CameraRequest, camera::CameraResponse, gimbal::GimbalRequest, save::SaveRequest,
-    stream::StreamRequest, Channels, Command,
+    camera::CameraRequest, camera::CameraResponse, dummy::DummyRequest, gimbal::GimbalRequest,
+    gs::GroundServerRequest, save::SaveRequest, stream::StreamRequest, Channels, Command,
 };
 
 #[derive(StructOpt, Debug)]
 #[structopt(setting(clap::AppSettings::NoBinaryName))]
 #[structopt(rename_all = "kebab-case")]
 enum ReplRequest {
+    Dummy(DummyRequest),
     Camera(CameraRequest),
     Gimbal(GimbalRequest),
     Stream(StreamRequest),
     Save(SaveRequest),
+    GroundServer(GroundServerRequest),
     Exit,
 }
 
 pub async fn run(channels: Arc<Channels>) -> anyhow::Result<()> {
-    let mut rl = rustyline::Editor::<()>::new();
+    let mut interrupt_recv = channels.interrupt.subscribe();
+    let interrupt_fut = interrupt_recv.recv();
 
-    loop {
-        let current_prompt = "\n\nplane-system> ".bright_white();
+    let repl_fut = async {
+        let mut rl = rustyline::Editor::<()>::new();
+        loop {
+            let current_prompt = "\n\nplane-system> ".bright_white();
 
-        let line = match rl.readline(&current_prompt) {
-            Ok(line) => line,
-            Err(err) => match err {
-                rustyline::error::ReadlineError::Interrupted => {
+            let line = match rl.readline(&current_prompt) {
+                Ok(line) => line,
+                Err(err) => match err {
+                    rustyline::error::ReadlineError::Interrupted => {
+                        let _ = channels.interrupt.send(());
+                        break;
+                    }
+                    _ => return Err(err.into()),
+                },
+            };
+
+            trace!("got line: {:#?}", line);
+
+            let request =
+                match <ReplRequest as StructOpt>::from_iter_safe(line.split_ascii_whitespace()) {
+                    Ok(cmd) => {
+                        rl.add_history_entry(line);
+                        cmd
+                    }
+                    Err(err) => {
+                        println!("{}", err.message);
+                        continue;
+                    }
+                };
+
+            trace!("got command: {:#?}", request);
+
+            match request {
+                ReplRequest::Camera(request) => {
+                    let (cmd, chan) = Command::new(request);
+                    channels.camera_cmd.clone().send(cmd)?;
+                    trace!("command sent, awaiting response");
+                    let result = chan.await?;
+                    trace!("command completed, received response");
+
+                    match result {
+                        Ok(response) => format_camera_response(response),
+                        Err(err) => println!("{}", format!("error: {}", err).red()),
+                    };
+                }
+                ReplRequest::Gimbal(request) => {
+                    let (cmd, chan) = Command::new(request);
+                    channels.gimbal_cmd.clone().send(cmd)?;
+                    let _ = chan.await?;
+                }
+                ReplRequest::GroundServer(request) => match request {},
+                ReplRequest::Exit => {
                     let _ = channels.interrupt.send(());
                     break;
                 }
-                _ => return Err(err.into()),
-            },
-        };
+                ReplRequest::Stream(request) => {
+                    let (cmd, chan) = Command::new(request);
+                    channels.stream_cmd.clone().send(cmd)?;
+                    let _ = chan.await?;
+                }
+                ReplRequest::Save(request) => {
+                    let (cmd, chan) = Command::new(request);
+                    channels.save_cmd.clone().send(cmd)?;
+                    let _ = chan.await?;
+                }
+                ReplRequest::Dummy(request) => {
+                    let (cmd, chan) = Command::new(request);
+                    channels.dummy_cmd.clone().send(cmd)?;
+                    trace!("dummy command sent, awaiting response");
+                    let result = chan.await?;
+                    trace!("dummy command completed, received response");
 
-        trace!("got line: {:#?}", line);
-
-        let request =
-            match <ReplRequest as StructOpt>::from_iter_safe(line.split_ascii_whitespace()) {
-                Ok(cmd) => cmd,
-                Err(err) => {
-                    println!("{}", err.message);
-                    continue;
+                    match result {
+                        Ok(_) => println!("dummy done"),
+                        Err(err) => println!("{}", format!("error: {}", err).red()),
+                    };
                 }
             };
+        }
 
-        trace!("got command: {:#?}", request);
+        Result::<(), anyhow::Error>::Ok(())
+    };
 
-        match request {
-            ReplRequest::Camera(request) => {
-                let (cmd, chan) = Command::new(request);
-                channels.camera_cmd.clone().send(cmd).await?;
-                let result = chan.await?;
+    futures::pin_mut!(repl_fut);
+    futures::pin_mut!(interrupt_fut);
 
-                match result {
-                    Ok(response) => format_camera_response(response),
-                    Err(err) => println!("{}", format!("error: {}", err).red()),
-                };
-            }
-            ReplRequest::Gimbal(request) => {
-                let (cmd, chan) = Command::new(request);
-                channels.gimbal_cmd.clone().send(cmd).await?;
-                let _ = chan.await?;
-            }
-            ReplRequest::Stream(request) => {
-                let (cmd, chan) = Command::new(request);
-                channels.stream_cmd.clone().send(cmd).await?;
-                let _ = chan.await?;
-            }
-            ReplRequest::Save(request) => {
-                let (cmd, chan) = Command::new(request);
-                channels.save_cmd.clone().send(cmd).await?;
-                let _ = chan.await?;
-            }
-            ReplRequest::Exit => {
-                let _ = channels.interrupt.send(());
-                break;
-            }
-        };
+    match futures::future::select(repl_fut, interrupt_fut).await {
+        futures::future::Either::Left((res, _)) => res,
+        futures::future::Either::Right(_) => Ok(()),
     }
-
-    Ok(())
 }
 
 fn table_format() -> prettytable::format::TableFormat {
@@ -116,8 +149,8 @@ fn format_camera_response(response: CameraResponse) -> () {
             println!("received {} of data", size);
         }
 
-        CameraResponse::File { path } => {
-            println!("received file: {}", path.to_string_lossy());
+        CameraResponse::Download { name: path } => {
+            println!("received file: {}", path);
         }
 
         CameraResponse::StorageInfo { storages } => {
@@ -301,6 +334,12 @@ fn format_camera_response(response: CameraResponse) -> () {
         },
         CameraResponse::ExposureMode { exposure_mode } => {
             println!("new exposure mode: {:?}", exposure_mode);
+        }
+        CameraResponse::OperatingMode { operating_mode } => {
+            println!("new operating mode: {:?}", operating_mode);
+        }
+        CameraResponse::FocusMode { focus_mode } => {
+            println!("new focus mode: {:?}", focus_mode);
         }
     }
 }

@@ -1,7 +1,14 @@
+use std::sync::Arc;
+
 use serde::Serialize;
 
 #[derive(Debug, Clone)]
 pub enum CameraEvent {
+    Capture,
+    Download {
+        image_name: String,
+        image_data: Arc<Vec<u8>>,
+    },
     Error(CameraErrorMode),
 }
 
@@ -19,6 +26,14 @@ pub enum CameraExposureMode {
     MovieShutterPriority,
     MovieManualExposure,
     MovieIntelligentAuto,
+}
+
+#[repr(u16)]
+#[derive(Debug, Copy, Clone, FromPrimitive, ToPrimitive, Serialize, Eq, PartialEq)]
+pub enum CameraFocusMode {
+    Manual = 0x0001,
+    AutoFocusStill = 0x0002,
+    AutoFocusContinuous = 0x8004,
 }
 
 #[repr(u8)]
