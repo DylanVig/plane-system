@@ -2,17 +2,23 @@ use std::{process::exit, str::FromStr, sync::Arc, time::Duration};
 
 use anyhow::Context;
 use ctrlc;
+use futures::channel::oneshot;
 use image::ImageClient;
 use structopt::StructOpt;
-use tokio::{spawn, sync::{broadcast, watch}, time::sleep};
-use futures::channel::oneshot;
+use tokio::{
+    spawn,
+    sync::{broadcast, watch},
+    time::sleep,
+};
 
 use camera::{client::CameraClient, state::CameraEvent};
 use gimbal::client::GimbalClient;
 use gs::GroundServerClient;
 use pixhawk::{client::PixhawkClient, state::PixhawkEvent};
+use save::client::SaveClient;
 use scheduler::Scheduler;
 use state::TelemetryInfo;
+use stream::client::StreamClient;
 use telemetry::TelemetryStream;
 
 #[macro_use]
@@ -31,9 +37,11 @@ mod gimbal;
 mod gs;
 mod image;
 mod pixhawk;
+mod save;
 mod scheduler;
 mod server;
 mod state;
+mod stream;
 mod telemetry;
 mod util;
 
@@ -59,6 +67,12 @@ pub struct Channels {
 
     /// Channel for sending instructions to the gimbal.
     gimbal_cmd: flume::Sender<gimbal::GimbalCommand>,
+
+    ///Channel for starting stream.
+    stream_cmd: flume::Sender<stream::StreamCommand>,
+
+    ///Channel for starting saver.
+    save_cmd: flume::Sender<save::SaveCommand>,
 
     /// Channel for sending instructions to the gimbal.
     dummy_cmd: flume::Sender<dummy::DummyCommand>,
@@ -131,10 +145,12 @@ async fn main() -> anyhow::Result<()> {
     let (interrupt_sender, _) = broadcast::channel(1);
     let (pixhawk_event_sender, _) = broadcast::channel(64);
     let (camera_event_sender, _) = broadcast::channel(256);
-    let (image_event_sender, _) = broadcast::channel(256);
-    let (pixhawk_cmd_sender, pixhawk_cmd_receiver) = flume::unbounded();
     let (camera_cmd_sender, camera_cmd_receiver) = flume::unbounded();
     let (gimbal_cmd_sender, gimbal_cmd_receiver) = flume::unbounded();
+    let (stream_cmd_sender, stream_cmd_receiver) = flume::unbounded();
+    let (save_cmd_sender, save_cmd_receiver) = flume::unbounded();
+    let (image_event_sender, _) = broadcast::channel(256);
+    let (pixhawk_cmd_sender, pixhawk_cmd_receiver) = flume::unbounded();
     let (dummy_cmd_sender, dummy_cmd_receiver) = flume::unbounded();
 
     let channels = Arc::new(Channels {
@@ -145,6 +161,8 @@ async fn main() -> anyhow::Result<()> {
         camera_event: camera_event_sender,
         camera_cmd: camera_cmd_sender,
         gimbal_cmd: gimbal_cmd_sender,
+        stream_cmd: stream_cmd_sender,
+        save_cmd: save_cmd_sender,
         dummy_cmd: dummy_cmd_sender,
         image_event: image_event_sender,
     });
@@ -298,6 +316,41 @@ async fn main() -> anyhow::Result<()> {
 
     task_names.push("server");
     futures.push(server_task);
+
+    if config.stream {
+        info!("initializing stream");
+        let stream_task = spawn({
+            let mut stream_client = StreamClient::connect(
+                channels.clone(),
+                stream_cmd_receiver,
+                config.stream_rpi,
+                config.stream_address,
+                config.rpi_cameras.clone(),
+                config.test_cameras.clone(),
+                config.stream_port,
+            )?;
+            async move { stream_client.run().await }
+        });
+        task_names.push("stream");
+        futures.push(stream_task);
+    }
+
+    if config.save {
+        info!("initializing saver");
+        let save_task = spawn({
+            let mut save_client = SaveClient::connect(
+                channels.clone(),
+                save_cmd_receiver,
+                config.stream_rpi,
+                config.save_address,
+                config.rpi_cameras,
+                config.test_cameras,
+            )?;
+            async move { save_client.run().await }
+        });
+        task_names.push("save");
+        futures.push(save_task);
+    }
 
     info!("intializing cli");
     let cli_task = spawn({
