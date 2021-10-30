@@ -398,9 +398,7 @@ impl CameraInterfaceRequestBufferGuard {
         rx.await.unwrap()
     }
 
-    pub async fn storage_ids(
-        &self,
-    ) -> anyhow::Result<Vec<ptp::StorageId>> {
+    pub async fn storage_ids(&self) -> anyhow::Result<Vec<ptp::StorageId>> {
         let (tx, rx) = oneshot::channel();
         self.0
             .send_async(CameraInterfaceRequest::StorageIds { ret: tx })
@@ -451,13 +449,13 @@ async fn run_commands(
     loop {
         let command = command_rx.recv_async().await?;
 
-        let result = match command.request {
-            CameraCommandRequest::Debug(req) => cmd_debug(interface.clone(), req).await,
-            CameraCommandRequest::Capture => cmd_capture(interface.clone(), &mut ptp_rx).await,
+        let fut = match command.request {
+            CameraCommandRequest::Debug(req) => cmd_debug(interface.clone(), req),
+            CameraCommandRequest::Capture => cmd_capture(interface.clone(), &mut ptp_rx),
             CameraCommandRequest::ContinuousCapture(req) => {
-                cmd_continuous_capture(interface.clone(), req).await
+                cmd_continuous_capture(interface.clone(), req)
             }
-            CameraCommandRequest::Storage(_) => todo!(),
+            CameraCommandRequest::Storage(req) => cmd_storage(interface.clone(), req),
             CameraCommandRequest::File(_) => todo!(),
             CameraCommandRequest::Reconnect => todo!(),
             CameraCommandRequest::Zoom(_) => todo!(),
@@ -467,6 +465,8 @@ async fn run_commands(
             CameraCommandRequest::FocusMode(_) => todo!(),
             CameraCommandRequest::Record(_) => todo!(),
         };
+
+        let result = fut.await;
 
         let _ = command.chan.send(result);
     }
