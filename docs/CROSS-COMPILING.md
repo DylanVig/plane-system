@@ -193,3 +193,29 @@ cross-linker and cross-assembler to link our Rust binary to it.
 We are not going to be using this cross-compiler to compile any C++ code, so the
 C++ standard library is not needed. Therefore, I have omitted that step from the
 tutorial.
+
+### Use your cross-compiler to compile Rust
+
+We are going to install the `armv7-linux-gnueabihf` Rust toolchain. This will
+install versions of the Rust standard library and other configurations that are
+specialized for this CPU architecture and operating system environment.
+
+
+```bash
+rustup target add armv7-linux-gnueabihf
+```
+
+Now, we need to tell Rust to use our cross-compiler when trying to compile to
+this environment. Open or create `~/.cargo/config.toml` in your favourite text
+editor, and add the following lines.
+
+```toml
+[target.armv7-unknown-linux-gnueabihf]
+linker = "/opt/cross/bin/armv7l-linux-gnueabihf-gcc"
+```
+
+And finally, compile the project using the new cross-compiler:
+
+```bash
+cargo build --target=armv7-linux-gnueabihf
+```
