@@ -1,6 +1,7 @@
 use anyhow::Context;
 use num_traits::FromPrimitive;
 use tokio::sync::{broadcast, RwLock};
+use tokio::time::sleep;
 
 use super::util::*;
 use super::*;
@@ -167,4 +168,45 @@ pub(super) async fn cmd_continuous_capture(
     }
 
     Ok(CameraCommandResponse::Unit)
+}
+
+pub(super) async fn cmd_storage(
+    interface: CameraInterfaceRequestBuffer,
+    req: CameraCommandStorageRequest,
+) -> anyhow::Result<CameraCommandResponse> {
+    match req {
+        CameraCommandStorageRequest::List => {
+            ensure_mode(&interface, CameraOperatingMode::ContentsTransfer).await?;
+
+            debug!("getting storage ids");
+
+            sleep(Duration::from_secs(1)).await;
+
+            debug!("checking for storage ID 0x00010000");
+
+            interface
+                .enter(|i| async move {
+                    let storage_ids = i.storage_ids().await.context("could not get storage ids")?;
+
+                    if storage_ids.contains(&ptp::StorageId::from(0x00010000)) {
+                        bail!("no logical storage available");
+                    }
+
+                    debug!("got storage ids: {:?}", storage_ids);
+
+                    let infos: Vec<Result<(_, _), _>> =
+                        futures::future::join_all(storage_ids.iter().map(|&id| {
+                            let i = &i;
+                            async move { i.storage_info(id).await.map(|info| (id, info)) }
+                        }))
+                        .await;
+
+                    infos
+                        .into_iter()
+                        .collect::<Result<HashMap<_, _>, _>>()
+                        .map(|storages| CameraCommandResponse::StorageInfo { storages })
+                })
+                .await
+        }
+    }
 }

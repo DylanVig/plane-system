@@ -178,6 +178,13 @@ enum CameraInterfaceRequest {
         data: ptp::PtpData,
         ret: oneshot::Sender<anyhow::Result<()>>,
     },
+    StorageIds {
+        ret: oneshot::Sender<anyhow::Result<Vec<ptp::StorageId>>>,
+    },
+    StorageInfo {
+        handle: ptp::StorageId,
+        ret: oneshot::Sender<anyhow::Result<ptp::PtpStorageInfo>>,
+    },
     ObjectInfo {
         handle: ptp::ObjectHandle,
         ret: oneshot::Sender<anyhow::Result<ptp::PtpObjectInfo>>,
@@ -233,6 +240,12 @@ fn run_interface(
                 ret,
             } => {
                 let _ = ret.send(interface.execute(control, action));
+            }
+            CameraInterfaceRequest::StorageIds { ret } => {
+                let _ = ret.send(interface.storage_ids(Some(TIMEOUT)));
+            }
+            CameraInterfaceRequest::StorageInfo { handle, ret } => {
+                let _ = ret.send(interface.storage_info(handle, Some(TIMEOUT)));
             }
             CameraInterfaceRequest::ObjectInfo { handle, ret } => {
                 let _ = ret.send(interface.object_info(handle, Some(TIMEOUT)));
@@ -380,6 +393,29 @@ impl CameraInterfaceRequestBufferGuard {
                 data,
                 ret: tx,
             })
+            .await
+            .unwrap();
+        rx.await.unwrap()
+    }
+
+    pub async fn storage_ids(
+        &self,
+    ) -> anyhow::Result<Vec<ptp::StorageId>> {
+        let (tx, rx) = oneshot::channel();
+        self.0
+            .send_async(CameraInterfaceRequest::StorageIds { ret: tx })
+            .await
+            .unwrap();
+        rx.await.unwrap()
+    }
+
+    pub async fn storage_info(
+        &self,
+        handle: ptp::StorageId,
+    ) -> anyhow::Result<ptp::PtpStorageInfo> {
+        let (tx, rx) = oneshot::channel();
+        self.0
+            .send_async(CameraInterfaceRequest::StorageInfo { handle, ret: tx })
             .await
             .unwrap();
         rx.await.unwrap()
