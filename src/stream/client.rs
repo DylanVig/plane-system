@@ -11,13 +11,13 @@ use super::*;
 pub struct StreamClient {
   iface: StreamInterface,
   channels: Arc<Channels>,
-  cmd: mpsc::Receiver<StreamCommand>,
+  cmd: flume::Receiver<StreamCommand>,
 }
 
 impl StreamClient {
   pub fn connect(
     channels: Arc<Channels>,
-    cmd: mpsc::Receiver<StreamCommand>,
+    cmd: flume::Receiver<StreamCommand>,
     mode: bool,
     address: String,
     rpi_cameras: Vec<String>,

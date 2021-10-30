@@ -11,13 +11,13 @@ use super::*;
 pub struct SaveClient {
   iface: SaveInterface,
   channels: Arc<Channels>,
-  cmd: mpsc::Receiver<SaveCommand>,
+  cmd: flume::Receiver<SaveCommand>,
 }
 
 impl SaveClient {
   pub fn connect(
     channels: Arc<Channels>,
-    cmd: mpsc::Receiver<SaveCommand>,
+    cmd: flume::Receiver<SaveCommand>,
     mode: bool,
     address: String,
     rpi_cameras: Vec<String>,
