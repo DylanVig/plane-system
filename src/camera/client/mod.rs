@@ -103,6 +103,7 @@ pub async fn run(
         interface_req_buf.clone(),
         ptp_tx.subscribe(),
         command_rx,
+        channels.camera_event.clone(),
     ));
 
     task_names.push("cmd");
@@ -182,15 +183,20 @@ enum CameraInterfaceRequest {
         ret: oneshot::Sender<anyhow::Result<Vec<ptp::StorageId>>>,
     },
     StorageInfo {
-        handle: ptp::StorageId,
+        storage: ptp::StorageId,
         ret: oneshot::Sender<anyhow::Result<ptp::PtpStorageInfo>>,
     },
+    ObjectHandles {
+        storage: ptp::StorageId,
+        parent_object: ptp::ObjectHandle,
+        ret: oneshot::Sender<anyhow::Result<Vec<ptp::ObjectHandle>>>,
+    },
     ObjectInfo {
-        handle: ptp::ObjectHandle,
+        object: ptp::ObjectHandle,
         ret: oneshot::Sender<anyhow::Result<ptp::PtpObjectInfo>>,
     },
     ObjectData {
-        handle: ptp::ObjectHandle,
+        object: ptp::ObjectHandle,
         ret: oneshot::Sender<anyhow::Result<Vec<u8>>>,
     },
 }
@@ -244,13 +250,30 @@ fn run_interface(
             CameraInterfaceRequest::StorageIds { ret } => {
                 let _ = ret.send(interface.storage_ids(Some(TIMEOUT)));
             }
-            CameraInterfaceRequest::StorageInfo { handle, ret } => {
+            CameraInterfaceRequest::StorageInfo {
+                storage: handle,
+                ret,
+            } => {
                 let _ = ret.send(interface.storage_info(handle, Some(TIMEOUT)));
             }
-            CameraInterfaceRequest::ObjectInfo { handle, ret } => {
+            CameraInterfaceRequest::ObjectHandles {
+                storage,
+                parent_object,
+                ret,
+            } => {
+                let _ =
+                    ret.send(interface.object_handles(storage, Some(parent_object), Some(TIMEOUT)));
+            }
+            CameraInterfaceRequest::ObjectInfo {
+                object: handle,
+                ret,
+            } => {
                 let _ = ret.send(interface.object_info(handle, Some(TIMEOUT)));
             }
-            CameraInterfaceRequest::ObjectData { handle, ret } => {
+            CameraInterfaceRequest::ObjectData {
+                object: handle,
+                ret,
+            } => {
                 let _ = ret.send(interface.object_data(handle, Some(TIMEOUT)));
             }
         }
@@ -413,7 +436,27 @@ impl CameraInterfaceRequestBufferGuard {
     ) -> anyhow::Result<ptp::PtpStorageInfo> {
         let (tx, rx) = oneshot::channel();
         self.0
-            .send_async(CameraInterfaceRequest::StorageInfo { handle, ret: tx })
+            .send_async(CameraInterfaceRequest::StorageInfo {
+                storage: handle,
+                ret: tx,
+            })
+            .await
+            .unwrap();
+        rx.await.unwrap()
+    }
+
+    pub async fn object_handles(
+        &self,
+        storage: ptp::StorageId,
+        parent_object: ptp::ObjectHandle,
+    ) -> anyhow::Result<Vec<ptp::ObjectHandle>> {
+        let (tx, rx) = oneshot::channel();
+        self.0
+            .send_async(CameraInterfaceRequest::ObjectHandles {
+                storage,
+                parent_object,
+                ret: tx,
+            })
             .await
             .unwrap();
         rx.await.unwrap()
@@ -425,7 +468,10 @@ impl CameraInterfaceRequestBufferGuard {
     ) -> anyhow::Result<ptp::PtpObjectInfo> {
         let (tx, rx) = oneshot::channel();
         self.0
-            .send_async(CameraInterfaceRequest::ObjectInfo { handle, ret: tx })
+            .send_async(CameraInterfaceRequest::ObjectInfo {
+                object: handle,
+                ret: tx,
+            })
             .await
             .unwrap();
         rx.await.unwrap()
@@ -434,7 +480,10 @@ impl CameraInterfaceRequestBufferGuard {
     pub async fn object_data(&self, handle: ptp::ObjectHandle) -> anyhow::Result<Vec<u8>> {
         let (tx, rx) = oneshot::channel();
         self.0
-            .send_async(CameraInterfaceRequest::ObjectData { handle, ret: tx })
+            .send_async(CameraInterfaceRequest::ObjectData {
+                object: handle,
+                ret: tx,
+            })
             .await
             .unwrap();
         rx.await.unwrap()
@@ -445,18 +494,19 @@ async fn run_commands(
     interface: CameraInterfaceRequestBuffer,
     mut ptp_rx: broadcast::Receiver<ptp::PtpEvent>,
     command_rx: flume::Receiver<CameraCommand>,
+    client_tx: broadcast::Sender<CameraClientEvent>,
 ) -> anyhow::Result<()> {
     loop {
         let command = command_rx.recv_async().await?;
 
-        let fut = match command.request {
-            CameraCommandRequest::Debug(req) => cmd_debug(interface.clone(), req),
-            CameraCommandRequest::Capture => cmd_capture(interface.clone(), &mut ptp_rx),
+        let result = match command.request {
+            CameraCommandRequest::Debug(req) => cmd_debug(interface.clone(), req).await,
+            CameraCommandRequest::Capture => cmd_capture(interface.clone(), &mut ptp_rx).await,
             CameraCommandRequest::ContinuousCapture(req) => {
-                cmd_continuous_capture(interface.clone(), req)
+                cmd_continuous_capture(interface.clone(), req).await
             }
-            CameraCommandRequest::Storage(req) => cmd_storage(interface.clone(), req),
-            CameraCommandRequest::File(_) => todo!(),
+            CameraCommandRequest::Storage(req) => cmd_storage(interface.clone(), req).await,
+            CameraCommandRequest::File(req) => cmd_file(interface.clone(), req, client_tx).await,
             CameraCommandRequest::Reconnect => todo!(),
             CameraCommandRequest::Zoom(_) => todo!(),
             CameraCommandRequest::Exposure(_) => todo!(),
@@ -465,8 +515,6 @@ async fn run_commands(
             CameraCommandRequest::FocusMode(_) => todo!(),
             CameraCommandRequest::Record(_) => todo!(),
         };
-
-        let result = fut.await;
 
         let _ = command.chan.send(result);
     }

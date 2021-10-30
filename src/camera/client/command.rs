@@ -3,6 +3,8 @@ use num_traits::FromPrimitive;
 use tokio::sync::{broadcast, RwLock};
 use tokio::time::sleep;
 
+use crate::util::retry_async;
+
 use super::util::*;
 use super::*;
 
@@ -207,6 +209,90 @@ pub(super) async fn cmd_storage(
                         .map(|storages| CameraCommandResponse::StorageInfo { storages })
                 })
                 .await
+        }
+    }
+}
+
+pub(super) async fn cmd_file(
+    interface: CameraInterfaceRequestBuffer,
+    req: CameraCommandFileRequest,
+    client_tx: broadcast::Sender<CameraClientEvent>,
+) -> anyhow::Result<CameraCommandResponse> {
+    match req {
+        CameraCommandFileRequest::List { parent } => {
+            ensure_mode(&interface, CameraOperatingMode::ContentsTransfer).await?;
+
+            debug!("getting object handles");
+
+            interface
+                .enter(|i| async move {
+                    // wait for storage ID 0x00010001 to exist
+
+                    retry_async(10, Some(Duration::from_secs(1)), || async {
+                        debug!("checking for storage ID 0x00010001");
+
+                        let storage_ids =
+                            i.storage_ids().await.context("could not get storage ids")?;
+
+                        if !storage_ids.contains(&ptp::StorageId::from(0x00010001)) {
+                            bail!("no storage available");
+                        } else {
+                            Ok(())
+                        }
+                    })
+                    .await?;
+
+                    let object_handles = i
+                        .object_handles(
+                            ptp::StorageId::from(0x00010001),
+                            parent
+                                .clone()
+                                .map(|v| ptp::ObjectHandle::from(v))
+                                .unwrap_or(ptp::ObjectHandle::root()),
+                        )
+                        .await
+                        .context("could not get object handles")?;
+
+                    debug!("got object handles: {:?}", object_handles);
+
+                    futures::future::join_all(object_handles.iter().map(|&id| {
+                        let iface = &i;
+                        async move { iface.object_info(id).await.map(|info| (id, info)) }
+                    }))
+                    .await
+                    .into_iter()
+                    .collect::<Result<HashMap<_, _>, _>>()
+                    .map(|objects| CameraCommandResponse::ObjectInfo { objects })
+                })
+                .await
+        }
+
+        CameraCommandFileRequest::Get { handle } => {
+            ensure_mode(&interface, CameraOperatingMode::ContentsTransfer).await?;
+
+            let (info, data) = interface
+                .enter(|i| async move {
+                    let info = i
+                        .object_info(ptp::ObjectHandle::from(0xFFFFC001))
+                        .await
+                        .context("failed to get object info for download")?;
+
+                    let data = i
+                        .object_data(ptp::ObjectHandle::from(0xFFFFC001))
+                        .await
+                        .context("failed to get object data for download")?;
+
+                    Ok::<_, anyhow::Error>((info, data))
+                })
+                .await
+                .context("downloading image data failed")?;
+
+            let _ = client_tx.send(CameraClientEvent::Download {
+                image_name: info.filename.clone(),
+                image_data: Arc::new(data),
+            });
+
+            Ok(CameraCommandResponse::Download { name: info.filename })
         }
     }
 }
