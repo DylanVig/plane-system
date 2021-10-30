@@ -34,7 +34,11 @@ creating a cross compiler from scratch. Here's how it goes, with updated version
 
 ### Prerequisite information
 
-Run the following commands on your Raspberry Pi:
+Run all of the commands specified in your downloads folder, and download all of
+the archives that are mentioned into your downloads folder. This tutorial
+assumes that everything is happening in the same folder.
+
+Now, run the following commands on your Raspberry Pi:
 
 - `uname -r`: this will tell you the version of the Linux kernel that its OS uses
 - `lscpu`: the important information is the CPU architecture (which should be `armv6l`, `armv7l`, or `armv8l`/`aarch64`) and the flags (flags should contain `vfp`, indicating that the processor has a floating-point co-processor)
@@ -99,6 +103,9 @@ export PATH=/opt/cross/bin:$PATH
 
 ### Compile binutils
 
+Download the latest binutils from https://ftp.gnu.org/gnu/binutils/ and unzip it
+into your current folder.
+
 These are the cross-assembler, cross-linker, and other tools.
 
 > In some `make` commands, you may seen an option `-j`. `-j` is the number of
@@ -145,6 +152,9 @@ cd ..
 ```
 
 ### Build the C Library Headers and Startup Files
+
+Download `glibc` from http://ftp.gnu.org/gnu/glibc. Make sure to select version
+2.28, or whichever is appropriate for your Raspberry Pi's operating system.
 
 Then, use that basic C compiler to generate stubs and header files for `glibc`,
 which will allow us to do the next step.
