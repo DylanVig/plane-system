@@ -125,9 +125,21 @@ cd ..
 
 ### Add Linux kernel headers
 
-These are needed so that the programs we compile using this toolchain will be able to make system calls into the Linux kernel. They can be downloaded from https://www.kernel.org/pub/linux/kernel/. The version you choose doesn't matter too much, but try to choose one that is close to the Linux kernel version on your Raspberry Pi.
+These are needed so that the programs we compile using this toolchain will be
+able to make system calls into the Linux kernel. They can be downloaded from
+https://www.kernel.org/pub/linux/kernel/. The version you choose doesn't matter
+too much, but try to choose one that is close to the Linux kernel version on
+your Raspberry Pi.
 
 After downloading, install them into your cross-compiler directory:
+
+> On macOS, this command won't work by default, because macOS ships with a
+> different version of `sed` than Linux does. Fix this by installing GNU `sed`
+> with Homebrew, and then adding it to your `PATH`: 
+> ```bash
+> brew install gnu-sed
+> PATH="/usr/local/opt/gnu-sed/libexec/gnubin:$PATH"
+> ```
 
 ```bash
 cd linux-x.xx.x
