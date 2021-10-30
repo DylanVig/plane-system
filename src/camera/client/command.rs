@@ -80,34 +80,34 @@ pub(super) async fn cmd_capture(
             i.control(CameraControlCode::S1Button, ptp::PtpData::UINT16(0x0001))
                 .await?;
 
-            info!("waiting for image confirmation");
-
             Ok::<_, anyhow::Error>(())
         })
         .await?;
 
-    // {
-    //     let watch_fut = watch(client, CameraPropertyCode::ShootingFileInfo);
-    //     let wait_fut = wait(ptp_rx, ptp::EventCode::Vendor(0xC204));
+    info!("waiting for image confirmation");
 
-    //     futures::pin_mut!(watch_fut);
-    //     futures::pin_mut!(wait_fut);
+    {
+        let watch_fut = watch(&interface, CameraPropertyCode::ShootingFileInfo);
+        let wait_fut = wait(ptp_rx, ptp::EventCode::Vendor(0xC204));
 
-    //     let confirm_fut = futures::future::select(watch_fut, wait_fut);
+        futures::pin_mut!(watch_fut);
+        futures::pin_mut!(wait_fut);
 
-    //     let res = tokio::time::timeout(Duration::from_millis(3000), confirm_fut)
-    //         .await
-    //         .context("timed out while waiting for image confirmation")?;
+        let confirm_fut = futures::future::select(watch_fut, wait_fut);
 
-    //     match res {
-    //         futures::future::Either::Left((watch_res, _)) => {
-    //             watch_res.context("error while waiting for change in shooting file counter")?;
-    //         }
-    //         futures::future::Either::Right((wait_res, _)) => {
-    //             wait_res.context("error while waiting for capture complete event")?;
-    //         }
-    //     }
-    // }
+        let res = tokio::time::timeout(Duration::from_millis(3000), confirm_fut)
+            .await
+            .context("timed out while waiting for image confirmation")?;
+
+        match res {
+            futures::future::Either::Left((watch_res, _)) => {
+                watch_res.context("error while waiting for change in shooting file counter")?;
+            }
+            futures::future::Either::Right((wait_res, _)) => {
+                wait_res.context("error while waiting for capture complete event")?;
+            }
+        }
+    }
 
     Ok(CameraCommandResponse::Unit)
 }
