@@ -36,6 +36,14 @@ pub enum CameraFocusMode {
     AutoFocusContinuous = 0x8004,
 }
 
+#[repr(u16)]
+#[derive(Debug, Copy, Clone, FromPrimitive, ToPrimitive, Serialize, Eq, PartialEq)]
+pub enum CameraZoomMode {
+    Optical,
+    OpticalDigital,
+}
+
+
 #[repr(u8)]
 #[derive(Debug, Copy, Clone, FromPrimitive, ToPrimitive, Serialize, Eq, PartialEq)]
 pub enum CameraCompressionMode {
