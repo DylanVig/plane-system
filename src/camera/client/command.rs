@@ -292,7 +292,86 @@ pub(super) async fn cmd_file(
                 image_data: Arc::new(data),
             });
 
-            Ok(CameraCommandResponse::Download { name: info.filename })
+            Ok(CameraCommandResponse::Download {
+                name: info.filename,
+            })
         }
+    }
+}
+
+pub(super) async fn cmd_zoom(
+    interface: CameraInterfaceRequestBuffer,
+    req: CameraCommandZoomRequest,
+) -> anyhow::Result<CameraCommandResponse> {
+    match req {
+        CameraCommandZoomRequest::Level(req) => match req {
+            CameraZoomLevelRequest::Set { level } => {
+                ensure(
+                    &interface,
+                    CameraPropertyCode::ZoomAbsolutePosition,
+                    ptp::PtpData::UINT16(level as u16),
+                )
+                .await?;
+
+                return Ok(CameraCommandResponse::ZoomLevel { zoom_level: level });
+            }
+            CameraZoomLevelRequest::Get => {
+                let zoom_value = interface
+                    .enter(|i| async move {
+                        i.get_value(CameraPropertyCode::ZoomAbsolutePosition)
+                            .await
+                            .context("failed to query zoom level")
+                    })
+                    .await?;
+
+                if let ptp::PtpData::UINT16(level) = zoom_value {
+                    return Ok(CameraCommandResponse::ZoomLevel {
+                        zoom_level: level as u8,
+                    });
+                }
+
+                bail!("invalid zoom level");
+            }
+        },
+        CameraCommandZoomRequest::Mode(_req) => bail!("unimplemented"),
+    }
+}
+
+pub(super) async fn cmd_exposure(
+    interface: CameraInterfaceRequestBuffer,
+    req: CameraCommandExposureRequest,
+) -> anyhow::Result<CameraCommandResponse> {
+    match req {
+        CameraCommandExposureRequest::Mode(req) => match req {
+            CameraExposureModeRequest::Set { mode } => {
+                ensure(
+                    &interface,
+                    CameraPropertyCode::ExposureMode,
+                    ptp::PtpData::UINT16(mode as u16),
+                )
+                .await?;
+
+                return Ok(CameraCommandResponse::ExposureMode {
+                    exposure_mode: mode,
+                });
+            }
+            CameraExposureModeRequest::Get => {
+                let exposure_value = interface
+                    .enter(|i| async move {
+                        i.get_value(CameraPropertyCode::ExposureMode)
+                            .await
+                            .context("failed to query exposure mode")
+                    })
+                    .await?;
+
+                if let ptp::PtpData::UINT16(mode) = exposure_value {
+                    if let Some(exposure_mode) = CameraExposureMode::from_u16(mode) {
+                        return Ok(CameraCommandResponse::ExposureMode { exposure_mode });
+                    }
+                }
+
+                bail!("invalid exposure level");
+            }
+        },
     }
 }

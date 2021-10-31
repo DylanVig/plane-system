@@ -506,10 +506,12 @@ async fn run_commands(
                 cmd_continuous_capture(interface.clone(), req).await
             }
             CameraCommandRequest::Storage(req) => cmd_storage(interface.clone(), req).await,
-            CameraCommandRequest::File(req) => cmd_file(interface.clone(), req, client_tx).await,
+            CameraCommandRequest::File(req) => {
+                cmd_file(interface.clone(), req, client_tx.clone()).await
+            }
             CameraCommandRequest::Reconnect => todo!(),
-            CameraCommandRequest::Zoom(_) => todo!(),
-            CameraCommandRequest::Exposure(_) => todo!(),
+            CameraCommandRequest::Zoom(req) => cmd_zoom(interface.clone(), req).await,
+            CameraCommandRequest::Exposure(req) => cmd_exposure(interface.clone(), req).await,
             CameraCommandRequest::SaveMode(_) => todo!(),
             CameraCommandRequest::OperationMode(_) => todo!(),
             CameraCommandRequest::FocusMode(_) => todo!(),
