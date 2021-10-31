@@ -58,6 +58,14 @@ pub struct CameraConfig {
 
 #[derive(Debug, Deserialize)]
 pub struct PlaneSystemConfig {
+    pub stream: bool,
+    pub save: bool,
+    pub stream_rpi: bool,
+    pub stream_address: String,
+    pub save_address: String,
+    pub stream_port: u32,
+    pub rpi_cameras: Vec<String>,
+    pub test_cameras: Vec<String>,
     pub pixhawk: Option<PixhawkConfig>,
     pub plane_server: PlaneServerConfig,
     pub ground_server: Option<GroundServerConfig>,

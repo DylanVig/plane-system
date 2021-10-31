@@ -74,7 +74,10 @@ pub async fn serve(channels: Arc<Channels>, address: SocketAddr) -> anyhow::Resu
             }
         });
 
-    let api = route_online.or(route_roi).or(route_telem).or(route_telem_stream);
+    let api = route_online
+        .or(route_roi)
+        .or(route_telem)
+        .or(route_telem_stream);
 
     info!("initialized server");
 
