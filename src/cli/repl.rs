@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use colored::Colorize;
+use futures::FutureExt;
 use humansize::FileSize;
 use prettytable::{cell, row, Table};
 use structopt::StructOpt;
@@ -59,7 +60,10 @@ pub async fn run(channels: Arc<Channels>) -> anyhow::Result<()> {
             match request {
                 ReplRequest::Camera(request) => {
                     let (cmd, chan) = Command::new(request);
-                    channels.camera_cmd.clone().send(cmd)?;
+                    if let Err(err) = channels.camera_cmd.clone().send(cmd) {
+                        error!("camera client not available: {}", err);
+                        continue;
+                    }
 
                     trace!("command sent, awaiting response");
                     let result = rt_handle.block_on(chan)?;
@@ -72,7 +76,10 @@ pub async fn run(channels: Arc<Channels>) -> anyhow::Result<()> {
                 }
                 ReplRequest::Gimbal(request) => {
                     let (cmd, chan) = Command::new(request);
-                    channels.gimbal_cmd.clone().send(cmd)?;
+                    if let Err(err) = channels.gimbal_cmd.clone().send(cmd) {
+                        error!("gimbal client not available: {}", err);
+                        continue;
+                    }
                     let _ = rt_handle.block_on(chan)?;
                 }
                 ReplRequest::GroundServer(request) => match request {},
@@ -82,17 +89,27 @@ pub async fn run(channels: Arc<Channels>) -> anyhow::Result<()> {
                 }
                 ReplRequest::Stream(request) => {
                     let (cmd, chan) = Command::new(request);
-                    channels.stream_cmd.clone().send(cmd)?;
+                    if let Err(err) = channels.stream_cmd.clone().send(cmd) {
+                        error!("stream client not available: {}", err);
+                        continue;
+                    }
                     let _ = rt_handle.block_on(chan)?;
                 }
                 ReplRequest::Save(request) => {
                     let (cmd, chan) = Command::new(request);
-                    channels.save_cmd.clone().send(cmd)?;
+                    if let Err(err) = channels.save_cmd.clone().send(cmd) {
+                        error!("save client not available: {}", err);
+                        continue;
+                    }
                     let _ = rt_handle.block_on(chan)?;
                 }
                 ReplRequest::Dummy(request) => {
                     let (cmd, chan) = Command::new(request);
-                    channels.dummy_cmd.clone().send(cmd)?;
+                    if let Err(err) = channels.dummy_cmd.clone().send(cmd) {
+                        error!("dummy client not available: {}", err);
+                        continue;
+                    }
+
                     trace!("dummy command sent, awaiting response");
                     let result = rt_handle.block_on(chan)?;
                     trace!("dummy command completed, received response");
@@ -106,9 +123,15 @@ pub async fn run(channels: Arc<Channels>) -> anyhow::Result<()> {
         }
     });
 
-    let _ = interrupt_recv.recv().await;
+    let interrupt_fut = interrupt_recv.recv();
 
-    repl_fut.abort();
+    futures::pin_mut!(repl_fut);
+    futures::pin_mut!(interrupt_fut);
+
+    match futures::future::select(interrupt_fut, repl_fut).await {
+        futures::future::Either::Left((_, repl_fut)) => repl_fut.abort(),
+        futures::future::Either::Right((repl_result, _)) => repl_result??,
+    }
 
     Ok(())
 }
