@@ -1,6 +1,6 @@
 use anyhow::Context;
 use num_traits::FromPrimitive;
-use tokio::sync::{broadcast, RwLock};
+use tokio::sync::broadcast;
 use tokio::time::sleep;
 
 use crate::util::retry_async;
@@ -8,43 +8,116 @@ use crate::util::retry_async;
 use super::util::*;
 use super::*;
 
-pub(super) async fn cmd_debug(
+pub(super) async fn cmd_get(
     interface: CameraInterfaceRequestBuffer,
-    req: CameraCommandDebugRequest,
+    req: CameraCommandGetRequest,
 ) -> anyhow::Result<CameraCommandResponse> {
-    if let Some(property) = req.property {
-        let property_code: CameraPropertyCode =
-            FromPrimitive::from_u32(property).context("not a valid camera property code")?;
-        println!("dumping {:#X?}", property_code);
+    let prop = match req {
+        CameraCommandGetRequest::ExposureMode => CameraPropertyCode::ExposureMode,
+        CameraCommandGetRequest::OperatingMode => (CameraPropertyCode::OperatingMode),
+        CameraCommandGetRequest::SaveMode => (CameraPropertyCode::SaveMedia),
+        CameraCommandGetRequest::FocusMode => (CameraPropertyCode::FocusMode),
+        CameraCommandGetRequest::ZoomLevel => (CameraPropertyCode::ZoomAbsolutePosition),
+        CameraCommandGetRequest::CcInterval => (CameraPropertyCode::IntervalTime),
+        CameraCommandGetRequest::Other(_) => todo!(),
+    };
 
-        let property = interface
-            .enter(|i| async move { i.get_info(property_code).await })
-            .await;
+    let prop_info = interface
+        .enter(|i| async move { i.get_info(prop).await })
+        .await
+        .context("this property's value has not been retrieved")?;
 
-        println!("dumping {:#X?}", property);
-
-        if let Some(property) = property {
-            if let Some(&value) = req.value_num.first() {
-                let property_value = match property.data_type {
-                    0x0001 => ptp::PtpData::INT8(value as i8),
-                    0x0002 => ptp::PtpData::UINT8(value as u8),
-                    0x0003 => ptp::PtpData::INT16(value as i16),
-                    0x0004 => ptp::PtpData::UINT16(value as u16),
-                    0x0005 => ptp::PtpData::INT32(value as i32),
-                    0x0006 => ptp::PtpData::UINT32(value as u32),
-                    0x0007 => ptp::PtpData::INT64(value as i64),
-                    0x0008 => ptp::PtpData::UINT64(value as u64),
-                    _ => bail!("cannot set this property type, not implemented"),
-                };
-
-                println!("setting {:#X?} to {:#X?}", property_code, property_value);
-
-                ensure(&interface, property_code, property_value).await?;
+    Ok(match req {
+        CameraCommandGetRequest::ExposureMode => match prop_info.current {
+            ptp::PtpData::UINT16(mode) => CameraCommandResponse::ExposureMode(
+                FromPrimitive::from_u16(mode)
+                    .context("invalid camera exposure mode (wrong value)")?,
+            ),
+            _ => bail!("invalid camera exposure mode (wrong data type)"),
+        },
+        CameraCommandGetRequest::OperatingMode => match prop_info.current {
+            ptp::PtpData::UINT8(mode) => CameraCommandResponse::OperatingMode(
+                FromPrimitive::from_u8(mode)
+                    .context("invalid camera operating mode (wrong value)")?,
+            ),
+            _ => bail!("invalid camera operating mode (wrong data type)"),
+        },
+        CameraCommandGetRequest::SaveMode => match prop_info.current {
+            ptp::PtpData::UINT16(mode) => CameraCommandResponse::SaveMode(
+                FromPrimitive::from_u16(mode).context("invalid camera save mode (wrong value)")?,
+            ),
+            _ => bail!("invalid camera save mode (wrong data type)"),
+        },
+        CameraCommandGetRequest::FocusMode => match prop_info.current {
+            ptp::PtpData::UINT16(mode) => CameraCommandResponse::FocusMode(
+                FromPrimitive::from_u16(mode).context("invalid camera focus mode (wrong value)")?,
+            ),
+            _ => bail!("invalid camera focus mode (wrong data type)"),
+        },
+        CameraCommandGetRequest::ZoomLevel => match prop_info.current {
+            ptp::PtpData::UINT16(level) => CameraCommandResponse::ZoomLevel(level as u8),
+            _ => bail!("invalid camera zoom level (wrong data type)"),
+        },
+        CameraCommandGetRequest::CcInterval => match prop_info.current {
+            ptp::PtpData::UINT16(interval) => {
+                CameraCommandResponse::CcInterval(interval as f32 / 10.0)
             }
+            _ => bail!("invalid camera zoom level (wrong data type)"),
+        },
+        CameraCommandGetRequest::Other(_) => todo!(),
+    })
+}
+
+pub(super) async fn cmd_set(
+    interface: CameraInterfaceRequestBuffer,
+    req: CameraCommandSetRequest,
+) -> anyhow::Result<CameraCommandResponse> {
+    let (prop, data) = match req {
+        CameraCommandSetRequest::ExposureMode { mode } => (
+            CameraPropertyCode::ExposureMode,
+            ptp::PtpData::UINT16(mode as u16),
+        ),
+        CameraCommandSetRequest::OperatingMode { mode } => (
+            CameraPropertyCode::OperatingMode,
+            ptp::PtpData::UINT8(mode as u8),
+        ),
+        CameraCommandSetRequest::SaveMode { mode } => (
+            CameraPropertyCode::SaveMedia,
+            ptp::PtpData::UINT16(mode as u16),
+        ),
+        CameraCommandSetRequest::FocusMode { mode } => (
+            CameraPropertyCode::FocusMode,
+            ptp::PtpData::UINT16(mode as u16),
+        ),
+        CameraCommandSetRequest::ZoomLevel { level } => (
+            CameraPropertyCode::ZoomAbsolutePosition,
+            ptp::PtpData::UINT16(level as u16),
+        ),
+        CameraCommandSetRequest::CcInterval { interval } => {
+            let mut interval = (interval * 10.) as u16;
+
+            if interval < 10 {
+                bail!("minimum interval is 1 second");
+            }
+
+            if interval > 300 {
+                bail!("maximum interval is 30 seconds");
+            }
+
+            if interval % 5 != 0 {
+                warn!("valid intervals are in increments of 0.5 seconds; rounding down");
+                interval -= interval % 5;
+            }
+
+            (
+                CameraPropertyCode::IntervalTime,
+                ptp::PtpData::UINT16(interval),
+            )
         }
-    } else {
-        warn!("dumping entire state is unimplemented");
-    }
+        CameraCommandSetRequest::Other(_) => todo!(),
+    };
+
+    ensure(&interface, prop, data).await?;
 
     Ok(CameraCommandResponse::Unit)
 }
@@ -143,29 +216,6 @@ pub(super) async fn cmd_continuous_capture(
                     .context("failed to start interval recording")
                 })
                 .await?;
-        }
-        CameraCommandContinuousCaptureRequest::Interval { interval } => {
-            let interval = (interval * 10.) as u16;
-
-            if interval < 10 {
-                bail!("minimum interval is 1 second");
-            }
-
-            if interval > 300 {
-                bail!("maximum interval is 30 seconds");
-            }
-
-            if interval % 5 != 0 {
-                bail!("valid intervals are in increments of 0.5 seconds");
-            }
-
-            ensure(
-                &interface,
-                CameraPropertyCode::IntervalTime,
-                ptp::PtpData::UINT16(interval),
-            )
-            .await
-            .context("failed to set camera interval")?;
         }
     }
 
@@ -296,82 +346,5 @@ pub(super) async fn cmd_file(
                 name: info.filename,
             })
         }
-    }
-}
-
-pub(super) async fn cmd_zoom(
-    interface: CameraInterfaceRequestBuffer,
-    req: CameraCommandZoomRequest,
-) -> anyhow::Result<CameraCommandResponse> {
-    match req {
-        CameraCommandZoomRequest::Level(req) => match req {
-            CameraZoomLevelRequest::Set { level } => {
-                ensure(
-                    &interface,
-                    CameraPropertyCode::ZoomAbsolutePosition,
-                    ptp::PtpData::UINT16(level as u16),
-                )
-                .await?;
-
-                return Ok(CameraCommandResponse::ZoomLevel { zoom_level: level });
-            }
-            CameraZoomLevelRequest::Get => {
-                let zoom_value = interface
-                    .enter(|i| async move {
-                        i.get_value(CameraPropertyCode::ZoomAbsolutePosition)
-                            .await
-                            .context("failed to query zoom level")
-                    })
-                    .await?;
-
-                if let ptp::PtpData::UINT16(level) = zoom_value {
-                    return Ok(CameraCommandResponse::ZoomLevel {
-                        zoom_level: level as u8,
-                    });
-                }
-
-                bail!("invalid zoom level");
-            }
-        },
-        CameraCommandZoomRequest::Mode(_req) => bail!("unimplemented"),
-    }
-}
-
-pub(super) async fn cmd_exposure(
-    interface: CameraInterfaceRequestBuffer,
-    req: CameraCommandExposureRequest,
-) -> anyhow::Result<CameraCommandResponse> {
-    match req {
-        CameraCommandExposureRequest::Mode(req) => match req {
-            CameraExposureModeRequest::Set { mode } => {
-                ensure(
-                    &interface,
-                    CameraPropertyCode::ExposureMode,
-                    ptp::PtpData::UINT16(mode as u16),
-                )
-                .await?;
-
-                return Ok(CameraCommandResponse::ExposureMode {
-                    exposure_mode: mode,
-                });
-            }
-            CameraExposureModeRequest::Get => {
-                let exposure_value = interface
-                    .enter(|i| async move {
-                        i.get_value(CameraPropertyCode::ExposureMode)
-                            .await
-                            .context("failed to query exposure mode")
-                    })
-                    .await?;
-
-                if let ptp::PtpData::UINT16(mode) = exposure_value {
-                    if let Some(exposure_mode) = CameraExposureMode::from_u16(mode) {
-                        return Ok(CameraCommandResponse::ExposureMode { exposure_mode });
-                    }
-                }
-
-                bail!("invalid exposure level");
-            }
-        },
     }
 }

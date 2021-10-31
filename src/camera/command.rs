@@ -198,19 +198,10 @@ pub enum CameraCommandResponse {
     ObjectInfo {
         objects: HashMap<ptp::ObjectHandle, ptp::PtpObjectInfo>,
     },
-    ZoomLevel {
-        zoom_level: u8,
-    },
-    SaveMode {
-        save_mode: CameraSaveMode,
-    },
-    OperatingMode {
-        operating_mode: CameraOperatingMode,
-    },
-    ExposureMode {
-        exposure_mode: CameraExposureMode,
-    },
-    FocusMode {
-        focus_mode: CameraFocusMode,
-    },
+    ZoomLevel(u8),
+    CcInterval(f32),
+    SaveMode(CameraSaveMode),
+    OperatingMode(CameraOperatingMode),
+    ExposureMode(CameraExposureMode),
+    FocusMode(CameraFocusMode),
 }
