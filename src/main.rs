@@ -3,7 +3,6 @@ use std::{process::exit, str::FromStr, sync::Arc, time::Duration};
 use anyhow::Context;
 use ctrlc;
 use futures::channel::oneshot;
-use image::ImageClient;
 use structopt::StructOpt;
 use tokio::{
     spawn,

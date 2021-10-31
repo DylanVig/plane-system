@@ -1,9 +1,8 @@
 use anyhow::Context;
-use futures::{Future, FutureExt};
+use futures::Future;
 use num_traits::FromPrimitive;
 use std::{collections::HashMap, sync::Arc, time::Duration};
-use tokio::sync::{broadcast, oneshot, OwnedSemaphorePermit, RwLock, Semaphore, SemaphorePermit};
-use tokio::task::block_in_place;
+use tokio::sync::{broadcast, oneshot, OwnedSemaphorePermit, Semaphore};
 
 use crate::Channels;
 
@@ -500,7 +499,6 @@ async fn run_commands(
         let command = command_rx.recv_async().await?;
 
         let result = match command.request {
-            CameraCommandRequest::Debug(req) => cmd_debug(interface.clone(), req).await,
             CameraCommandRequest::Capture => cmd_capture(interface.clone(), &mut ptp_rx).await,
             CameraCommandRequest::ContinuousCapture(req) => {
                 cmd_continuous_capture(interface.clone(), req).await
@@ -510,11 +508,8 @@ async fn run_commands(
                 cmd_file(interface.clone(), req, client_tx.clone()).await
             }
             CameraCommandRequest::Reconnect => todo!(),
-            CameraCommandRequest::Zoom(req) => cmd_zoom(interface.clone(), req).await,
-            CameraCommandRequest::Exposure(req) => cmd_exposure(interface.clone(), req).await,
-            CameraCommandRequest::SaveMode(_) => todo!(),
-            CameraCommandRequest::OperationMode(_) => todo!(),
-            CameraCommandRequest::FocusMode(_) => todo!(),
+            CameraCommandRequest::Get(req) => cmd_get(interface.clone(), req).await,
+            CameraCommandRequest::Set(req) => cmd_set(interface.clone(), req).await,
             CameraCommandRequest::Record(_) => todo!(),
         };
 

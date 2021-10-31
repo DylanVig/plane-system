@@ -1,15 +1,14 @@
 use std::sync::Arc;
 
-use anyhow::Context;
 use colored::Colorize;
-use futures::FutureExt;
 use humansize::FileSize;
 use prettytable::{cell, row, Table};
 use structopt::StructOpt;
 
 use crate::{
-    camera::CameraRequest, camera::CameraResponse, dummy::DummyRequest, gimbal::GimbalRequest,
-    gs::GroundServerRequest, save::SaveRequest, stream::StreamRequest, Channels, Command,
+    camera::CameraCommandRequest, camera::CameraCommandResponse, dummy::DummyRequest,
+    gimbal::GimbalRequest, gs::GroundServerRequest, save::SaveRequest, stream::StreamRequest,
+    Channels, Command,
 };
 
 #[derive(StructOpt, Debug)]
@@ -84,12 +83,12 @@ pub async fn run(channels: Arc<Channels>) -> anyhow::Result<()> {
                 ReplRequest::Stream(request) => {
                     let (cmd, chan) = Command::new(request);
                     channels.stream_cmd.clone().send(cmd)?;
-                    let _ = chan.await?;
+                    let _ = rt_handle.block_on(chan)?;
                 }
                 ReplRequest::Save(request) => {
                     let (cmd, chan) = Command::new(request);
                     channels.save_cmd.clone().send(cmd)?;
-                    let _ = chan.await?;
+                    let _ = rt_handle.block_on(chan)?;
                 }
                 ReplRequest::Dummy(request) => {
                     let (cmd, chan) = Command::new(request);
@@ -314,10 +313,10 @@ fn format_camera_response(response: CameraCommandResponse) -> () {
             table.printstd();
         }
 
-        CameraCommandResponse::ZoomLevel { zoom_level } => {
+        CameraCommandResponse::ZoomLevel(zoom_level) => {
             println!("zoom level: {}", zoom_level);
         }
-        CameraCommandResponse::SaveMode { save_mode } => match save_mode {
+        CameraCommandResponse::SaveMode(save_mode) => match save_mode {
             crate::camera::CameraSaveMode::HostDevice => {
                 println!("saving to host device");
             }
@@ -325,14 +324,17 @@ fn format_camera_response(response: CameraCommandResponse) -> () {
                 println!("saving to camera memory");
             }
         },
-        CameraCommandResponse::ExposureMode { exposure_mode } => {
-            println!("new exposure mode: {:?}", exposure_mode);
+        CameraCommandResponse::ExposureMode(exposure_mode) => {
+            println!("exposure mode: {:?}", exposure_mode);
         }
-        CameraCommandResponse::OperatingMode { operating_mode } => {
-            println!("new operating mode: {:?}", operating_mode);
+        CameraCommandResponse::OperatingMode(operating_mode) => {
+            println!("operating mode: {:?}", operating_mode);
         }
-        CameraCommandResponse::FocusMode { focus_mode } => {
-            println!("new focus mode: {:?}", focus_mode);
+        CameraCommandResponse::FocusMode(focus_mode) => {
+            println!("focus mode: {:?}", focus_mode);
+        }
+        CameraCommandResponse::CcInterval(interval) => {
+            println!("continuous capture interval: {:?}", interval);
         }
     }
 }

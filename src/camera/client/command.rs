@@ -14,11 +14,11 @@ pub(super) async fn cmd_get(
 ) -> anyhow::Result<CameraCommandResponse> {
     let prop = match req {
         CameraCommandGetRequest::ExposureMode => CameraPropertyCode::ExposureMode,
-        CameraCommandGetRequest::OperatingMode => (CameraPropertyCode::OperatingMode),
-        CameraCommandGetRequest::SaveMode => (CameraPropertyCode::SaveMedia),
-        CameraCommandGetRequest::FocusMode => (CameraPropertyCode::FocusMode),
-        CameraCommandGetRequest::ZoomLevel => (CameraPropertyCode::ZoomAbsolutePosition),
-        CameraCommandGetRequest::CcInterval => (CameraPropertyCode::IntervalTime),
+        CameraCommandGetRequest::OperatingMode => CameraPropertyCode::OperatingMode,
+        CameraCommandGetRequest::SaveMode => CameraPropertyCode::SaveMedia,
+        CameraCommandGetRequest::FocusMode => CameraPropertyCode::FocusMode,
+        CameraCommandGetRequest::ZoomLevel => CameraPropertyCode::ZoomAbsolutePosition,
+        CameraCommandGetRequest::CcInterval => CameraPropertyCode::IntervalTime,
         CameraCommandGetRequest::Other(_) => todo!(),
     };
 
