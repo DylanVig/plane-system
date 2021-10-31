@@ -20,10 +20,9 @@
         }
       },
       "env": {
-        "RUST_LOG": "plane_system=debug,plane_system::cli=trace,plane_system::dummy=trace,plane_system::camera::client=trace",
+        "RUST_LOG": "plane_system=debug",
         "RUST_LOG_STYLE": "always",
         "RUST_BACKTRACE": "1",
-        "RUSTFLAGS": "-g"
       },
       "args": [],
       "cwd": "${workspaceFolder}"
