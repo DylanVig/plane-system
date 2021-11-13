@@ -51,11 +51,6 @@ impl DummyClient {
                     cmd.respond(result).expect("help");
                 }
                 telemetry = telemetry_stream.next() => {
-                    // this is only None if the telemetry stream closes for some reason
-                    let telemetry = telemetry.unwrap();
-                    if let Some(_telemetry) = telemetry {
-                        
-                    }
                 }
                 _ = &mut interrupt_fut => break,
             }
