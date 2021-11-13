@@ -15,9 +15,11 @@ use camera::{client::CameraClient, state::CameraEvent};
 use gimbal::client::GimbalClient;
 use gs::GroundServerClient;
 use pixhawk::{client::PixhawkClient, state::PixhawkEvent};
+#[cfg(feature = "gstreamer")]
 use save::client::SaveClient;
 use scheduler::Scheduler;
 use state::TelemetryInfo;
+#[cfg(feature = "gstreamer")]
 use stream::client::StreamClient;
 use telemetry::TelemetryStream;
 
@@ -37,10 +39,12 @@ mod gimbal;
 mod gs;
 mod image;
 mod pixhawk;
+#[cfg(feature = "gstreamer")]
 mod save;
 mod scheduler;
 mod server;
 mod state;
+#[cfg(feature = "gstreamer")]
 mod stream;
 mod telemetry;
 mod util;
@@ -69,9 +73,11 @@ pub struct Channels {
     gimbal_cmd: flume::Sender<gimbal::GimbalCommand>,
 
     ///Channel for starting stream.
+    #[cfg(feature = "gstreamer")]
     stream_cmd: flume::Sender<stream::StreamCommand>,
 
     ///Channel for starting saver.
+    #[cfg(feature = "gstreamer")]
     save_cmd: flume::Sender<save::SaveCommand>,
 
     /// Channel for sending instructions to the gimbal.
@@ -147,7 +153,9 @@ async fn main() -> anyhow::Result<()> {
     let (camera_event_sender, _) = broadcast::channel(256);
     let (camera_cmd_sender, camera_cmd_receiver) = flume::unbounded();
     let (gimbal_cmd_sender, gimbal_cmd_receiver) = flume::unbounded();
+    #[cfg(feature = "gstreamer")]
     let (stream_cmd_sender, stream_cmd_receiver) = flume::unbounded();
+    #[cfg(feature = "gstreamer")]
     let (save_cmd_sender, save_cmd_receiver) = flume::unbounded();
     let (image_event_sender, _) = broadcast::channel(256);
     let (pixhawk_cmd_sender, pixhawk_cmd_receiver) = flume::unbounded();
@@ -161,7 +169,9 @@ async fn main() -> anyhow::Result<()> {
         camera_event: camera_event_sender,
         camera_cmd: camera_cmd_sender,
         gimbal_cmd: gimbal_cmd_sender,
+        #[cfg(feature = "gstreamer")]
         stream_cmd: stream_cmd_sender,
+        #[cfg(feature = "gstreamer")]
         save_cmd: save_cmd_sender,
         dummy_cmd: dummy_cmd_sender,
         image_event: image_event_sender,
@@ -317,6 +327,7 @@ async fn main() -> anyhow::Result<()> {
     task_names.push("server");
     futures.push(server_task);
 
+    #[cfg(feature = "gstreamer")]
     if config.stream {
         info!("initializing stream");
         let stream_task = spawn({
@@ -335,6 +346,7 @@ async fn main() -> anyhow::Result<()> {
         futures.push(stream_task);
     }
 
+    #[cfg(feature = "gstreamer")]
     if config.save {
         info!("initializing saver");
         let save_task = spawn({

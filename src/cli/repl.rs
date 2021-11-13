@@ -9,8 +9,11 @@ use structopt::StructOpt;
 
 use crate::{
     camera::CameraRequest, camera::CameraResponse, dummy::DummyRequest, gimbal::GimbalRequest,
-    gs::GroundServerRequest, save::SaveRequest, stream::StreamRequest, Channels, Command,
+    gs::GroundServerRequest, Channels, Command,
 };
+
+#[cfg(feature = "gstreamer")]
+use crate::{save::SaveRequest, stream::StreamRequest};
 
 #[derive(StructOpt, Debug)]
 #[structopt(setting(clap::AppSettings::NoBinaryName))]
@@ -19,7 +22,9 @@ enum ReplRequest {
     Dummy(DummyRequest),
     Camera(CameraRequest),
     Gimbal(GimbalRequest),
+    #[cfg(feature = "gstreamer")]
     Stream(StreamRequest),
+    #[cfg(feature = "gstreamer")]
     Save(SaveRequest),
     GroundServer(GroundServerRequest),
     Exit,
@@ -84,11 +89,13 @@ pub async fn run(channels: Arc<Channels>) -> anyhow::Result<()> {
                     let _ = channels.interrupt.send(());
                     break;
                 }
+                #[cfg(feature = "gstreamer")]
                 ReplRequest::Stream(request) => {
                     let (cmd, chan) = Command::new(request);
                     channels.stream_cmd.clone().send(cmd)?;
                     let _ = chan.await?;
                 }
+                #[cfg(feature = "gstreamer")]
                 ReplRequest::Save(request) => {
                     let (cmd, chan) = Command::new(request);
                     channels.save_cmd.clone().send(cmd)?;
@@ -105,6 +112,9 @@ pub async fn run(channels: Arc<Channels>) -> anyhow::Result<()> {
                         Ok(_) => println!("dummy done"),
                         Err(err) => println!("{}", format!("error: {}", err).red()),
                     };
+                }
+                _ => {
+                    error!("this command is not available");
                 }
             };
         }
