@@ -20,9 +20,10 @@
         }
       },
       "env": {
-        "RUST_LOG": "plane_system=debug,plane_system::cli=trace,plane_system::dummy=trace",
+        "RUST_LOG": "plane_system=debug,plane_system::cli=trace,plane_system::dummy=trace,plane_system::camera::client=trace",
         "RUST_LOG_STYLE": "always",
-        "RUST_BACKTRACE": "1"
+        "RUST_BACKTRACE": "1",
+        "RUSTFLAGS": "-g"
       },
       "args": [],
       "cwd": "${workspaceFolder}"
@@ -56,6 +57,19 @@
       "env": {
         "MAVLINK20": "1"
       }
+    },
+    {
+      "name": "Replay plane-system",
+      "type": "lldb",
+      "request": "custom",
+      "targetCreateCommands": [
+        "target create ${workspaceFolder}/target/debug/plane-system"
+      ],
+      "processCreateCommands": [
+        "gdb-remote 127.0.0.1:14000"
+      ],
+      "reverseDebugging": true,
+      "sourceLanguages": ["rust"]
     }
   ]
 }

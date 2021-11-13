@@ -3,7 +3,6 @@ use std::{process::exit, str::FromStr, sync::Arc, time::Duration};
 use anyhow::Context;
 use ctrlc;
 use futures::channel::oneshot;
-use image::ImageClient;
 use structopt::StructOpt;
 use tokio::{
     spawn,
@@ -11,7 +10,6 @@ use tokio::{
     time::sleep,
 };
 
-use camera::{client::CameraClient, state::CameraEvent};
 use gimbal::client::GimbalClient;
 use gs::GroundServerClient;
 use pixhawk::{client::PixhawkClient, state::PixhawkEvent};
@@ -60,7 +58,7 @@ pub struct Channels {
     pixhawk_cmd: flume::Sender<pixhawk::PixhawkCommand>,
 
     /// Channel for broadcasting updates to the state of the camera.
-    camera_event: broadcast::Sender<camera::CameraEvent>,
+    camera_event: broadcast::Sender<camera::CameraClientEvent>,
 
     /// Channel for sending instructions to the camera.
     camera_cmd: flume::Sender<camera::CameraCommand>,
@@ -77,7 +75,7 @@ pub struct Channels {
     /// Channel for sending instructions to the gimbal.
     dummy_cmd: flume::Sender<dummy::DummyCommand>,
 
-    image_event: broadcast::Sender<image::ImageEvent>,
+    image_event: broadcast::Sender<image::ImageClientEvent>,
 }
 
 #[derive(Debug)]
@@ -125,7 +123,7 @@ impl<Req, Res, Err> Command<Req, Res, Err> {
     }
 }
 
-#[tokio::main]
+#[tokio::main(flavor = "multi_thread", worker_threads = 2)]
 async fn main() -> anyhow::Result<()> {
     pretty_env_logger::init_timed();
 
@@ -141,6 +139,10 @@ async fn main() -> anyhow::Result<()> {
 
     let config = config.context("failed to read config file")?;
 
+    run_tasks(config).await
+}
+
+async fn run_tasks(config: cli::config::PlaneSystemConfig) -> anyhow::Result<()> {
     let (telemetry_sender, telemetry_receiver) = watch::channel(None);
     let (interrupt_sender, _) = broadcast::channel(1);
     let (pixhawk_event_sender, _) = broadcast::channel(64);
@@ -227,11 +229,7 @@ async fn main() -> anyhow::Result<()> {
             cli::config::CameraKind::R10C => {
                 trace!("camera kind set to Sony R10C");
 
-                spawn({
-                    let mut camera_client =
-                        CameraClient::connect(channels.clone(), camera_cmd_receiver)?;
-                    async move { camera_client.run().await }
-                })
+                spawn(camera::run(channels.clone(), camera_cmd_receiver))
             }
 
             // for the future when we switch to a different type of camera
@@ -248,13 +246,10 @@ async fn main() -> anyhow::Result<()> {
     if let Some(image_config) = config.image {
         info!("starting image download task");
 
-        let camera_task = spawn({
-            let image_client = ImageClient::new(channels.clone(), image_config);
-            async move { image_client.run().await }
-        });
+        let image_task = spawn(image::run(channels.clone(), image_config));
 
         task_names.push("image");
-        futures.push(camera_task);
+        futures.push(image_task);
     }
 
     if let Some(gimbal_config) = config.gimbal {
@@ -366,12 +361,7 @@ async fn main() -> anyhow::Result<()> {
         let (result, i, remaining) = futures::future::select_all(futures).await;
         let task_name = task_names.remove(i);
 
-        info!(
-            "{} ({}) task ended, {} remaining",
-            task_name,
-            i,
-            remaining.len()
-        );
+        info!("{} ({}) task ended, {} remaining", task_name, i, task_names.join(", "));
 
         // if a task ended with an error or did not join properly, end the process
         // with an interrupt

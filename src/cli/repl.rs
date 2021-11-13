@@ -1,15 +1,14 @@
 use std::sync::Arc;
 
-use anyhow::Context;
 use colored::Colorize;
-use futures::FutureExt;
 use humansize::FileSize;
 use prettytable::{cell, row, Table};
 use structopt::StructOpt;
 
 use crate::{
-    camera::CameraRequest, camera::CameraResponse, dummy::DummyRequest, gimbal::GimbalRequest,
-    gs::GroundServerRequest, save::SaveRequest, stream::StreamRequest, Channels, Command,
+    camera::CameraCommandRequest, camera::CameraCommandResponse, dummy::DummyRequest,
+    gimbal::GimbalRequest, gs::GroundServerRequest, save::SaveRequest, stream::StreamRequest,
+    Channels, Command,
 };
 
 #[derive(StructOpt, Debug)]
@@ -17,7 +16,7 @@ use crate::{
 #[structopt(rename_all = "kebab-case")]
 enum ReplRequest {
     Dummy(DummyRequest),
-    Camera(CameraRequest),
+    Camera(CameraCommandRequest),
     Gimbal(GimbalRequest),
     Stream(StreamRequest),
     Save(SaveRequest),
@@ -27,46 +26,43 @@ enum ReplRequest {
 
 pub async fn run(channels: Arc<Channels>) -> anyhow::Result<()> {
     let mut interrupt_recv = channels.interrupt.subscribe();
-    let interrupt_fut = interrupt_recv.recv();
 
-    let repl_fut = async {
-        let mut rl = rustyline::Editor::<()>::new();
+    let repl_fut = tokio::task::spawn_blocking(move || {
+        let rt_handle = tokio::runtime::Handle::current();
+        let mut rl_editor = rustyline::Editor::<()>::new();
+
         loop {
             let current_prompt = "\n\nplane-system> ".bright_white();
 
-            let line = match rl.readline(&current_prompt) {
-                Ok(line) => line,
-                Err(err) => match err {
-                    rustyline::error::ReadlineError::Interrupted => {
-                        let _ = channels.interrupt.send(());
-                        break;
+            let request = match rl_editor.readline(&current_prompt) {
+                Ok(line) => {
+                    let request: Result<ReplRequest, _> =
+                        StructOpt::from_iter_safe(line.split_ascii_whitespace());
+
+                    match request {
+                        Ok(request) => {
+                            rl_editor.add_history_entry(line);
+                            request
+                        }
+                        Err(err) => {
+                            println!("{}", err.message);
+                            continue;
+                        }
                     }
-                    _ => return Err(err.into()),
+                }
+                Err(err) => match err {
+                    rustyline::error::ReadlineError::Interrupted => ReplRequest::Exit,
+                    err => break Err::<_, anyhow::Error>(err.into()),
                 },
             };
-
-            trace!("got line: {:#?}", line);
-
-            let request =
-                match <ReplRequest as StructOpt>::from_iter_safe(line.split_ascii_whitespace()) {
-                    Ok(cmd) => {
-                        rl.add_history_entry(line);
-                        cmd
-                    }
-                    Err(err) => {
-                        println!("{}", err.message);
-                        continue;
-                    }
-                };
-
-            trace!("got command: {:#?}", request);
 
             match request {
                 ReplRequest::Camera(request) => {
                     let (cmd, chan) = Command::new(request);
                     channels.camera_cmd.clone().send(cmd)?;
+
                     trace!("command sent, awaiting response");
-                    let result = chan.await?;
+                    let result = rt_handle.block_on(chan)?;
                     trace!("command completed, received response");
 
                     match result {
@@ -77,28 +73,28 @@ pub async fn run(channels: Arc<Channels>) -> anyhow::Result<()> {
                 ReplRequest::Gimbal(request) => {
                     let (cmd, chan) = Command::new(request);
                     channels.gimbal_cmd.clone().send(cmd)?;
-                    let _ = chan.await?;
+                    let _ = rt_handle.block_on(chan)?;
                 }
                 ReplRequest::GroundServer(request) => match request {},
                 ReplRequest::Exit => {
                     let _ = channels.interrupt.send(());
-                    break;
+                    break Ok(());
                 }
                 ReplRequest::Stream(request) => {
                     let (cmd, chan) = Command::new(request);
                     channels.stream_cmd.clone().send(cmd)?;
-                    let _ = chan.await?;
+                    let _ = rt_handle.block_on(chan)?;
                 }
                 ReplRequest::Save(request) => {
                     let (cmd, chan) = Command::new(request);
                     channels.save_cmd.clone().send(cmd)?;
-                    let _ = chan.await?;
+                    let _ = rt_handle.block_on(chan)?;
                 }
                 ReplRequest::Dummy(request) => {
                     let (cmd, chan) = Command::new(request);
                     channels.dummy_cmd.clone().send(cmd)?;
                     trace!("dummy command sent, awaiting response");
-                    let result = chan.await?;
+                    let result = rt_handle.block_on(chan)?;
                     trace!("dummy command completed, received response");
 
                     match result {
@@ -108,17 +104,13 @@ pub async fn run(channels: Arc<Channels>) -> anyhow::Result<()> {
                 }
             };
         }
+    });
 
-        Result::<(), anyhow::Error>::Ok(())
-    };
+    let _ = interrupt_recv.recv().await;
 
-    futures::pin_mut!(repl_fut);
-    futures::pin_mut!(interrupt_fut);
+    repl_fut.abort();
 
-    match futures::future::select(repl_fut, interrupt_fut).await {
-        futures::future::Either::Left((res, _)) => res,
-        futures::future::Either::Right(_) => Ok(()),
-    }
+    Ok(())
 }
 
 fn table_format() -> prettytable::format::TableFormat {
@@ -136,11 +128,11 @@ fn table_format() -> prettytable::format::TableFormat {
         .build()
 }
 
-fn format_camera_response(response: CameraResponse) -> () {
+fn format_camera_response(response: CameraCommandResponse) -> () {
     match response {
-        CameraResponse::Unit => println!("done"),
+        CameraCommandResponse::Unit => println!("done"),
 
-        CameraResponse::Data { data } => {
+        CameraCommandResponse::Data { data } => {
             let size = data
                 .len()
                 .file_size(humansize::file_size_opts::BINARY)
@@ -149,11 +141,11 @@ fn format_camera_response(response: CameraResponse) -> () {
             println!("received {} of data", size);
         }
 
-        CameraResponse::Download { name: path } => {
+        CameraCommandResponse::Download { name: path } => {
             println!("received file: {}", path);
         }
 
-        CameraResponse::StorageInfo { storages } => {
+        CameraCommandResponse::StorageInfo { storages } => {
             let mut table = Table::new();
             table.add_row(row![
                 "id",
@@ -228,7 +220,7 @@ fn format_camera_response(response: CameraResponse) -> () {
             table.printstd();
         }
 
-        CameraResponse::ObjectInfo { objects } => {
+        CameraCommandResponse::ObjectInfo { objects } => {
             let mut table = Table::new();
 
             table.add_row(row![
@@ -321,10 +313,10 @@ fn format_camera_response(response: CameraResponse) -> () {
             table.printstd();
         }
 
-        CameraResponse::ZoomLevel { zoom_level } => {
+        CameraCommandResponse::ZoomLevel(zoom_level) => {
             println!("zoom level: {}", zoom_level);
         }
-        CameraResponse::SaveMode { save_mode } => match save_mode {
+        CameraCommandResponse::SaveMode(save_mode) => match save_mode {
             crate::camera::CameraSaveMode::HostDevice => {
                 println!("saving to host device");
             }
@@ -332,14 +324,17 @@ fn format_camera_response(response: CameraResponse) -> () {
                 println!("saving to camera memory");
             }
         },
-        CameraResponse::ExposureMode { exposure_mode } => {
-            println!("new exposure mode: {:?}", exposure_mode);
+        CameraCommandResponse::ExposureMode(exposure_mode) => {
+            println!("exposure mode: {:?}", exposure_mode);
         }
-        CameraResponse::OperatingMode { operating_mode } => {
-            println!("new operating mode: {:?}", operating_mode);
+        CameraCommandResponse::OperatingMode(operating_mode) => {
+            println!("operating mode: {:?}", operating_mode);
         }
-        CameraResponse::FocusMode { focus_mode } => {
-            println!("new focus mode: {:?}", focus_mode);
+        CameraCommandResponse::FocusMode(focus_mode) => {
+            println!("focus mode: {:?}", focus_mode);
+        }
+        CameraCommandResponse::CcInterval(interval) => {
+            println!("continuous capture interval: {:?}", interval);
         }
     }
 }

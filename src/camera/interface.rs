@@ -2,12 +2,8 @@ use anyhow::Context;
 use num_traits::{FromPrimitive, ToPrimitive};
 use ptp::{ObjectFormatCode, ObjectHandle, PtpRead, StandardCommandCode, StorageId};
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, collections::HashSet, fmt::Debug, time::Duration};
-use std::{
-    io::Cursor,
-    sync::{Arc, Mutex},
-};
-
+use std::io::Cursor;
+use std::{collections::HashSet, fmt::Debug, time::Duration};
 
 /// Sony's USB vendor ID
 const SONY_USB_VID: u16 = 0x054C;
@@ -270,14 +266,8 @@ impl CameraInterface {
 
     /// Queries the camera for its current state and updates the hashmap held by
     /// this interface. Returns only the properties that have changed.
-    pub fn update(&mut self) -> anyhow::Result<Vec<ptp::PtpPropInfo>> {
+    pub fn update(&self) -> anyhow::Result<Vec<ptp::PtpPropInfo>> {
         let timeout = self.timeout();
-
-        let state = if let Some(ref mut state) = self.state {
-            state
-        } else {
-            bail!("the camera is not connected")
-        };
 
         trace!("sending SDIO_GetAllExtDevicePropInfo");
 
@@ -298,8 +288,6 @@ impl CameraInterface {
 
         for _ in 0..num_entries {
             let current_prop = ptp::PtpPropInfo::decode(&mut cursor)?;
-            let prop_code = CameraPropertyCode::from_u16(current_prop.property_code);
-
             properties.push(current_prop);
         }
 
@@ -310,12 +298,6 @@ impl CameraInterface {
     /// to update() and a check to make sure that the intended result was
     /// achieved.
     pub fn set(&self, code: CameraPropertyCode, new_value: ptp::PtpData) -> anyhow::Result<()> {
-        let state = if let Some(ref state) = self.state {
-            state
-        } else {
-            bail!("set() called when camera is not connected");
-        };
-
         let buf = new_value.encode();
 
         trace!("sending SDIO_SetExtDevicePropValue");
@@ -354,7 +336,9 @@ impl CameraInterface {
     /// Receives an event from the camera.
     pub fn recv(&self, timeout: Option<Duration>) -> anyhow::Result<Option<ptp::PtpEvent>> {
         let event = self.camera.event(timeout)?;
-        trace!("received event: {:#?}", &event);
+        if let Some(event) = &event {
+            trace!("received event: {:?}", event);
+        }
         Ok(event)
     }
 
