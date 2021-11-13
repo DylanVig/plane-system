@@ -64,9 +64,9 @@ ARG GCC_MULTILIBS
 # build and install gcc
 RUN mkdir -p /tmp/build-gcc
 WORKDIR "/tmp/build-gcc"
-RUN ../gcc-${GCC_VERSION}/configure --prefix=/opt/cross --target=${TARGET_GCC} --enable-languages=c,c++ --with-multilib-list=${GCC_MULTILIBS} --disable-bootstrap  --disable-nls
-RUN make all-gcc
-RUN make install-gcc
+RUN ../gcc-${GCC_VERSION}/configure --prefix=/opt/cross --target=${TARGET_GCC} --enable-languages=c,c++ --with-float=hard --disable-bootstrap --disable-nls
+RUN make -j8 all-gcc
+RUN make -j8 install-gcc
 
 ARG GLIBC_VERSION
 
@@ -78,19 +78,21 @@ RUN tar xf glibc-${GLIBC_VERSION}.tar.xz
 # build glibc stage 1
 RUN mkdir -p /tmp/build-glibc
 WORKDIR "/tmp/build-glibc"
-RUN ../glibc-${GLIBC_VERSION}/configure --prefix=/opt/cross/${TARGET_GCC} --build=$MACHTYPE --host=${TARGET_GCC} --target=${TARGET_GCC} --with-headers=/opt/cross/${TARGET_GCC}/include libc_cv_forced_unwind=yes
+
+ARG CPPFLAGS
+ENV CPPFLAGS=${CPPFLAGS}
+
+RUN ../glibc-${GLIBC_VERSION}/configure --prefix=/opt/cross/${TARGET_GCC} --build=$MACHTYPE --host=${TARGET_GCC} --target=${TARGET_GCC} --with-headers=/opt/cross/${TARGET_GCC}/include libc_cv_forced_unwind=yes || cat config.log
 RUN make install-bootstrap-headers=yes install-headers
-RUN make csu/subdir_lib
+RUN make -j8 csu/subdir_lib
 RUN install csu/crt1.o csu/crti.o csu/crtn.o /opt/cross/${TARGET_GCC}/lib
-RUN ${TARGET_GCC}-gcc -nostdlib -nostartfiles -shared -x c /dev/null -o /opt/cross/${TARGET_GCC}/lib/libc.so
+RUN ${TARGET_GCC}-gcc ${CPPFLAGS} -nostdlib -nostartfiles -shared -x c /dev/null -o /opt/cross/${TARGET_GCC}/lib/libc.so
 RUN touch /opt/cross/${TARGET_GCC}/include/gnu/stubs.h
-RUN touch /opt/cross/${TARGET_GCC}/include/gnu/stubs-hard.h
-RUN touch /opt/cross/${TARGET_GCC}/include/gnu/stubs-soft.h
 
 # build libgcc
 WORKDIR "/tmp/build-gcc"
-RUN make all-target-libgcc
-RUN make install-target-libgcc
+RUN make -j8 all-target-libgcc
+RUN make -j8 install-target-libgcc
 
 # build glibc stage 2
 WORKDIR "/tmp/build-glibc"
@@ -98,10 +100,13 @@ RUN make -j8 && make install
 
 USER root
 
+ARG TARGET_DEBIAN
+ENV TARGET_DEBIAN=${TARGET_DEBIAN}
+
 # install dependencies of GCC and plane system
-RUN dpkg --add-architecture armhf
+RUN dpkg --add-architecture ${TARGET_DEBIAN}
 RUN apt-get update && apt-get install -y --no-install-recommends \
-	libusb-1.0-0-dev:armhf libudev-dev:armhf libgstreamer1.0-dev:armhf \
+	libusb-1.0-0-dev:${TARGET_DEBIAN} libudev-dev:${TARGET_DEBIAN} libgstreamer1.0-dev:${TARGET_DEBIAN} \
 	&& rm -rf /var/lib/apt/lists/*
 
 USER ccuser
