@@ -15,6 +15,7 @@ docker build \
 	--build-arg TARGET_GCC=armv7l-linux-gnueabihf \
 	--build-arg TARGET_LINUX=arm \
 	--build-arg TARGET_DEBIAN=armhf \
+	--build-arg TARGET_PKGCONFIG=arm-linux-gnueabihf \
 	--build-arg TARGET_RUST=armv7-unknown-linux-gnueabihf \
 	--build-arg CPPFLAGS="-mfloat-abi=hard -mfpu=vfp3 -march=armv7-a" \
 	-t dr.cuair.org/x-compiler:rpi3-raspbian-v1 .

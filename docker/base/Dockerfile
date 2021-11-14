@@ -107,6 +107,7 @@ ENV TARGET_DEBIAN=${TARGET_DEBIAN}
 RUN dpkg --add-architecture ${TARGET_DEBIAN}
 RUN apt-get update && apt-get install -y --no-install-recommends \
 	libusb-1.0-0-dev:${TARGET_DEBIAN} libudev-dev:${TARGET_DEBIAN} libgstreamer1.0-dev:${TARGET_DEBIAN} \
+	libglib2.0-dev:${TARGET_DEBIAN} \
 	&& rm -rf /var/lib/apt/lists/*
 
 USER ccuser
@@ -121,13 +122,11 @@ RUN rustup target add ${TARGET_RUST}
 # add rust config
 RUN mkdir -p .cargo && printf "[target.${TARGET_RUST}]\nlinker = \"/opt/cross/bin/${TARGET_GCC}-gcc\"\n" > .cargo/config.toml
 
-# add env vars
-ARG CFLAGS
-ENV CFLAGS=${CFLAGS}
-ENV CC=${TARGET_GCC}-gcc
-
 # run
 VOLUME /app
 WORKDIR "/app"
-ENV TARGET_RUST=${TARGET_RUST}
+
+# add env vars
+ARG TARGET_PKGCONFIG
+ENV CFLAGS=${CPPFLAGS} CC=${TARGET_GCC}-gcc PKG_CONFIG_PATH= PKG_CONFIG_SYSROOT_DIR= PKG_CONFIG_LIBDIR=/usr/lib/${TARGET_PKGCONFIG}/pkgconfig TARGET_RUST=${TARGET_RUST}
 CMD cargo build --target ${TARGET_RUST}
