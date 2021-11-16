@@ -9,7 +9,7 @@ ENV PATH="/opt/cross/bin:${PATH}"
 # install dependencies of GCC and other basic utils
 RUN apt-get update && apt-get install -y --no-install-recommends \
 	libmpfr-dev libmpc-dev libgmp-dev \
-	autotools-dev autoconf file rsync flex bison binutils gawk gcc g++ make \
+	autotools-dev autoconf file rsync flex bison binutils gawk gcc g++ make python3 \
 	ca-certificates curl xz-utils lbzip2 bzip2 \
 	&& rm -rf /var/lib/apt/lists/*
 
@@ -59,12 +59,13 @@ RUN tar xf linux-${LINUX_VERSION}.tar.xz
 WORKDIR "/tmp/linux-${LINUX_VERSION}"
 RUN make ARCH=${TARGET_LINUX} INSTALL_HDR_PATH=/opt/cross/${TARGET_GCC} headers_install
 
-ARG GCC_MULTILIBS
+ARG GCC_CONFIGURE_FLAGS
+ENV GCC_CONFIGURE_FLAGS=${GCC_CONFIGURE_FLAGS}
 
 # build and install gcc
 RUN mkdir -p /tmp/build-gcc
 WORKDIR "/tmp/build-gcc"
-RUN ../gcc-${GCC_VERSION}/configure --prefix=/opt/cross --target=${TARGET_GCC} --enable-languages=c,c++ --with-float=hard --disable-bootstrap --disable-nls
+RUN ../gcc-${GCC_VERSION}/configure --prefix=/opt/cross --target=${TARGET_GCC} --enable-languages=c,c++ --disable-bootstrap --disable-nls ${GCC_CONFIGURE_FLAGS}
 RUN make -j8 all-gcc
 RUN make -j8 install-gcc
 
