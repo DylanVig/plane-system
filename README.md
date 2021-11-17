@@ -14,35 +14,17 @@ also might not. Don't even think about running it on Windows.
   - macOS: `brew install libusb`
 - `cargo build`
 
-## how to cross-compile (fast)
+## how to cross-compile
 
-In practice, our on-board computer is a Raspberry Pi with an ARM processor, so
-unless your laptop is also a Linux ARM laptop you'll need to cross compile. 
+- Log into our Docker registry (DM Ibiyemi for password):
 
-If you're not running Linux, you might just want to skip to the next section,
-b/c getting macOS -> Linux cross-compilation to work is tedious, and Windows ->
-Linux is probably close to impossible.
-
-- Install Rust
-- Install Raspberry Pi toolchain: `rustup target add aarch64-unknown-linux-gnu`
-- Install `aarch64` version of GCC:
-  - Arch/Manjaro: `pacman -S aarch64-linux-gnu-gcc`
-  - Ubuntu/Debian: `apt install gcc-aarch64-linux-gnu`
-- Tell `cargo` to use the `aarch64` linker for cross-compilation by adding this
-  to the end of `~/.cargo/config`:
-  ```toml
-  [target.aarch64-unknown-linux-gnu]
-  linker = "aarch64-linux-gnu-gcc"
+  ```bash
+  docker login dr.cuair.org
   ```
-- Cross-compile: `cargo build --target=aarch64-unknown-linux-gnu`
-
-## how to cross-compile (slow, but easy)
-
-Try this if the fast method fails.
-
-- Install Rust
-- Install Rust Cross: `cargo install cross`
-- Cross-compile: `cross build --target=aarch64-unknown-linux-gnu`
+- Run `docker/user/build.sh <target>` where `<target>` is one of our on-board
+  computer configurations. At the time of writing, there are two:
+  - `rpi3-raspbian-v1`
+  - `rpi4-ubuntu-v1`
 
 ## how to run
 
