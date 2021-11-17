@@ -3,7 +3,7 @@ use std::sync::Arc;
 use serde::Serialize;
 
 #[derive(Debug, Clone)]
-pub enum CameraEvent {
+pub enum CameraClientEvent {
     Capture,
     Download {
         image_name: String,
@@ -35,6 +35,14 @@ pub enum CameraFocusMode {
     AutoFocusStill = 0x0002,
     AutoFocusContinuous = 0x8004,
 }
+
+#[repr(u16)]
+#[derive(Debug, Copy, Clone, FromPrimitive, ToPrimitive, Serialize, Eq, PartialEq)]
+pub enum CameraZoomMode {
+    Optical,
+    OpticalDigital,
+}
+
 
 #[repr(u8)]
 #[derive(Debug, Copy, Clone, FromPrimitive, ToPrimitive, Serialize, Eq, PartialEq)]

@@ -7,13 +7,24 @@
 			"problemMatcher": [
 				"$rustc"
 			],
+			"group": "build",
+			"label": "rust: cargo build aarch64",
+			"args": [
+				"--target=aarch64-unknown-linux-gnu"
+			]
+		},
+		{
+			"type": "cargo",
+			"command": "build",
+			"problemMatcher": [
+				"$rustc"
+			],
 			"group": {
 				"kind": "build",
 				"isDefault": true
 			},
 			"label": "rust: cargo build",
 			"args": [
-				"--target=aarch64-unknown-linux-gnu"
 			]
 		},
 		{
