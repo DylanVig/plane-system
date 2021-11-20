@@ -4,7 +4,7 @@ use anyhow::Context;
 use futures::{select, FutureExt};
 use tokio::io::AsyncWriteExt;
 
-use crate::{camera::CameraClientEvent, cli::config::ImageConfig, state::TelemetryInfo, Channels};
+use crate::{camera::main::CameraClientEvent, cli::config::ImageConfig, state::TelemetryInfo, Channels};
 
 #[derive(Clone, Debug)]
 pub struct ImageClientEvent {
