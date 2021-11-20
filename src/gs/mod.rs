@@ -1,5 +1,6 @@
-use std::{ffi::OsStr, path::Path, sync::Arc};
+use std::{ffi::OsStr, path::Path, str::FromStr, sync::Arc};
 
+use anyhow::Context;
 use clap::AppSettings;
 use futures::{select, FutureExt};
 ///! Functions for interfacing with the ground server.
@@ -24,10 +25,10 @@ pub struct GroundServerClient {
 }
 
 impl GroundServerClient {
-    pub fn new(channels: Arc<Channels>, base_url: reqwest::Url) -> anyhow::Result<Self> {
+    pub fn new(channels: Arc<Channels>, base_url: String) -> anyhow::Result<Self> {
         Ok(GroundServerClient {
             channels,
-            base_url,
+            base_url: reqwest::Url::from_str(&base_url).context("invalid ground server url")?,
             http: reqwest::Client::new(),
         })
     }

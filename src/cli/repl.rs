@@ -15,21 +15,26 @@ use crate::{
 };
 
 #[cfg(feature = "gstreamer")]
-use crate::{save::SaveRequest, stream::StreamRequest};
+use crate::camera::aux::{save::SaveRequest, stream::StreamRequest};
 
 #[derive(StructOpt, Debug)]
 #[structopt(setting(clap::AppSettings::NoBinaryName))]
 #[structopt(rename_all = "kebab-case")]
 enum ReplRequest {
     Dummy(DummyRequest),
-    Camera(CameraCommandRequest),
+    MainCamera(CameraCommandRequest),
+    #[cfg(feature = "gstreamer")]
+    AuxCamera(AuxCameraRequest),
     Gimbal(GimbalRequest),
-    #[cfg(feature = "gstreamer")]
-    Stream(StreamRequest),
-    #[cfg(feature = "gstreamer")]
-    Save(SaveRequest),
     GroundServer(GroundServerRequest),
     Exit,
+}
+
+#[cfg(feature = "gstreamer")]
+#[derive(StructOpt, Debug)]
+enum AuxCameraRequest {
+    Stream(StreamRequest),
+    Save(SaveRequest),
 }
 
 pub async fn run(channels: Arc<Channels>) -> anyhow::Result<()> {
@@ -65,7 +70,7 @@ pub async fn run(channels: Arc<Channels>) -> anyhow::Result<()> {
             };
 
             match request {
-                ReplRequest::Camera(request) => {
+                ReplRequest::MainCamera(request) => {
                     let (cmd, chan) = Command::new(request);
                     if let Err(err) = channels.camera_cmd.clone().send(cmd) {
                         error!("camera client not available: {}", err);
@@ -95,23 +100,24 @@ pub async fn run(channels: Arc<Channels>) -> anyhow::Result<()> {
                     break Ok(());
                 }
                 #[cfg(feature = "gstreamer")]
-                ReplRequest::Stream(request) => {
-                    let (cmd, chan) = Command::new(request);
-                    if let Err(err) = channels.stream_cmd.clone().send(cmd) {
-                        error!("stream client not available: {}", err);
-                        continue;
+                ReplRequest::AuxCamera(request) => match request {
+                    AuxCameraRequest::Stream(request) => {
+                        let (cmd, chan) = Command::new(request);
+                        if let Err(err) = channels.stream_cmd.clone().send(cmd) {
+                            error!("stream client not available: {}", err);
+                            continue;
+                        }
+                        let _ = rt_handle.block_on(chan)?;
                     }
-                    let _ = rt_handle.block_on(chan)?;
-                }
-                #[cfg(feature = "gstreamer")]
-                ReplRequest::Save(request) => {
-                    let (cmd, chan) = Command::new(request);
-                    if let Err(err) = channels.save_cmd.clone().send(cmd) {
-                        error!("save client not available: {}", err);
-                        continue;
+                    AuxCameraRequest::Save(request) => {
+                        let (cmd, chan) = Command::new(request);
+                        if let Err(err) = channels.save_cmd.clone().send(cmd) {
+                            error!("save client not available: {}", err);
+                            continue;
+                        }
+                        let _ = rt_handle.block_on(chan)?;
                     }
-                    let _ = rt_handle.block_on(chan)?;
-                }
+                },
                 ReplRequest::Dummy(request) => {
                     let (cmd, chan) = Command::new(request);
                     if let Err(err) = channels.dummy_cmd.clone().send(cmd) {

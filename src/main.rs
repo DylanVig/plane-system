@@ -13,12 +13,8 @@ use tokio::{
 use gimbal::client::GimbalClient;
 use gs::GroundServerClient;
 use pixhawk::{client::PixhawkClient, state::PixhawkEvent};
-#[cfg(feature = "gstreamer")]
-use save::client::SaveClient;
 use scheduler::Scheduler;
 use state::TelemetryInfo;
-#[cfg(feature = "gstreamer")]
-use stream::client::StreamClient;
 use telemetry::TelemetryStream;
 
 #[macro_use]
@@ -291,11 +287,7 @@ async fn run_tasks(config: cli::config::PlaneSystemConfig) -> anyhow::Result<()>
         if let Some(gs_config) = config.ground_server {
             info!("initializing ground server client");
             let gs_task = spawn({
-                let gs_client = GroundServerClient::new(
-                    channels.clone(),
-                    reqwest::Url::from_str(&gs_config.address)
-                        .context("invalid ground server address")?,
-                )?;
+                let gs_client = GroundServerClient::new(channels.clone(), gs_config.address)?;
 
                 async move { gs_client.run().await }
             });
@@ -316,11 +308,7 @@ async fn run_tasks(config: cli::config::PlaneSystemConfig) -> anyhow::Result<()>
         }
 
         info!("initializing plane server");
-        let server_address = config
-            .plane_server
-            .address
-            .parse()
-            .context("invalid server address")?;
+        let server_address = config.plane_server.address;
 
         let server_task = spawn({
             let channels = channels.clone();
@@ -330,41 +318,38 @@ async fn run_tasks(config: cli::config::PlaneSystemConfig) -> anyhow::Result<()>
         task_names.push("server");
         futures.push(server_task);
 
-        #[cfg(feature = "gstreamer")]
-        if config.stream {
-            info!("initializing stream");
-            let stream_task = spawn({
-                let mut stream_client = StreamClient::connect(
-                    channels.clone(),
-                    stream_cmd_receiver,
-                    config.stream_rpi,
-                    config.stream_address,
-                    config.rpi_cameras.clone(),
-                    config.test_cameras.clone(),
-                    config.stream_port,
-                )?;
-                async move { stream_client.run().await }
-            });
-            task_names.push("stream");
-            futures.push(stream_task);
-        }
+        if let Some(aux_config) = config.aux_camera {
+            #[cfg(feature = "gstreamer")]
+            if let Some(stream_config) = aux_config.stream {
+                info!("initializing auxiliary livestream");
+                let stream_task = spawn({
+                    let mut stream_client = camera::aux::stream::StreamClient::connect(
+                        channels.clone(),
+                        stream_cmd_receiver,
+                        stream_config.address,
+                        aux_config.cameras.clone(),
+                    )?;
+                    async move { stream_client.run().await }
+                });
+                task_names.push("stream");
+                futures.push(stream_task);
+            }
 
-        #[cfg(feature = "gstreamer")]
-        if config.save {
-            info!("initializing saver");
-            let save_task = spawn({
-                let mut save_client = SaveClient::connect(
-                    channels.clone(),
-                    save_cmd_receiver,
-                    config.stream_rpi,
-                    config.save_address,
-                    config.rpi_cameras,
-                    config.test_cameras,
-                )?;
-                async move { save_client.run().await }
-            });
-            task_names.push("save");
-            futures.push(save_task);
+            #[cfg(feature = "gstreamer")]
+            if let Some(save_config) = aux_config.save {
+                info!("initializing auxiliary livestream saver");
+                let save_task = spawn({
+                    let mut save_client = camera::aux::save::SaveClient::connect(
+                        channels.clone(),
+                        save_cmd_receiver,
+                        save_config.save_path,
+                        aux_config.cameras.clone(),
+                    )?;
+                    async move { save_client.run().await }
+                });
+                task_names.push("save");
+                futures.push(save_task);
+            }
         }
 
         info!("intializing cli");

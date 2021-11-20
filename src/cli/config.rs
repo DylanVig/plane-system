@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::{net::SocketAddr, path::PathBuf};
 
 use config::{Config, ConfigError};
 use mavlink::MavlinkVersion;
@@ -8,13 +8,13 @@ use crate::{gimbal::GimbalKind, state::Coords2D};
 
 #[derive(Debug, Deserialize)]
 pub struct PixhawkConfig {
-    pub address: String,
+    pub address: SocketAddr,
     pub mavlink: MavlinkVersion,
 }
 
 #[derive(Debug, Deserialize)]
 pub struct PlaneServerConfig {
-    pub address: String,
+    pub address: SocketAddr,
 }
 
 #[derive(Debug, Deserialize)]
@@ -67,12 +67,12 @@ pub struct AuxCameraConfig {
 
 #[derive(Debug, Deserialize)]
 pub struct AuxCameraStreamConfig {
-    pub address: String,
+    pub address: SocketAddr,
 }
 
 #[derive(Debug, Deserialize)]
 pub struct AuxCameraSaveConfig {
-    pub save_path: String,
+    pub save_path: PathBuf,
 }
 
 #[derive(Debug, Deserialize)]
@@ -91,19 +91,24 @@ pub struct PlaneSystemConfig {
 
 impl PlaneSystemConfig {
     pub fn read() -> Result<Self, ConfigError> {
+        use config::*;
+
         let mut c = Config::new();
 
-        c.merge(config::File::with_name("plane-system"))?;
-        c.merge(config::Environment::with_prefix("PLANE_SYSTEM"))?;
+        c.merge(File::with_name("plane-system").format(FileFormat::Json))?;
+        c.merge(File::with_name("plane-system").format(FileFormat::Toml))?;
+        c.merge(Environment::with_prefix("PLANE_SYSTEM"))?;
 
         c.try_into()
     }
 
     pub fn read_from_path(path: PathBuf) -> Result<Self, ConfigError> {
+        use config::*;
+
         let mut c = Config::new();
 
-        c.merge(config::File::from(path))?;
-        c.merge(config::Environment::with_prefix("PLANE_SYSTEM"))?;
+        c.merge(File::from(path))?;
+        c.merge(Environment::with_prefix("PLANE_SYSTEM"))?;
 
         c.try_into()
     }
