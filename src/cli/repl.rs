@@ -8,9 +8,12 @@ use structopt::StructOpt;
 
 use crate::{
     camera::CameraCommandRequest, camera::CameraCommandResponse, dummy::DummyRequest,
-    gimbal::GimbalRequest, gs::GroundServerRequest, save::SaveRequest, stream::StreamRequest,
-    Channels, Command,
+    gimbal::GimbalRequest, gs::GroundServerRequest,
+    Channels, Command
 };
+
+#[cfg(feature = "gstreamer")]
+use crate::{save::SaveRequest, stream::StreamRequest};
 
 #[derive(StructOpt, Debug)]
 #[structopt(setting(clap::AppSettings::NoBinaryName))]
@@ -19,7 +22,9 @@ enum ReplRequest {
     Dummy(DummyRequest),
     Camera(CameraCommandRequest),
     Gimbal(GimbalRequest),
+    #[cfg(feature = "gstreamer")]
     Stream(StreamRequest),
+    #[cfg(feature = "gstreamer")]
     Save(SaveRequest),
     GroundServer(GroundServerRequest),
     Exit,
@@ -87,6 +92,7 @@ pub async fn run(channels: Arc<Channels>) -> anyhow::Result<()> {
                     let _ = channels.interrupt.send(());
                     break Ok(());
                 }
+                #[cfg(feature = "gstreamer")]
                 ReplRequest::Stream(request) => {
                     let (cmd, chan) = Command::new(request);
                     if let Err(err) = channels.stream_cmd.clone().send(cmd) {
@@ -95,6 +101,7 @@ pub async fn run(channels: Arc<Channels>) -> anyhow::Result<()> {
                     }
                     let _ = rt_handle.block_on(chan)?;
                 }
+                #[cfg(feature = "gstreamer")]
                 ReplRequest::Save(request) => {
                     let (cmd, chan) = Command::new(request);
                     if let Err(err) = channels.save_cmd.clone().send(cmd) {
@@ -118,6 +125,9 @@ pub async fn run(channels: Arc<Channels>) -> anyhow::Result<()> {
                         Ok(_) => println!("dummy done"),
                         Err(err) => println!("{}", format!("error: {}", err).red()),
                     };
+                }
+                _ => {
+                    error!("this command is not available");
                 }
             };
         }
