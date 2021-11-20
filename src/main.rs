@@ -37,13 +37,9 @@ mod gimbal;
 mod gs;
 mod image;
 mod pixhawk;
-#[cfg(feature = "gstreamer")]
-mod save;
 mod scheduler;
 mod server;
 mod state;
-#[cfg(feature = "gstreamer")]
-mod stream;
 mod telemetry;
 mod util;
 
@@ -62,21 +58,21 @@ pub struct Channels {
     pixhawk_cmd: flume::Sender<pixhawk::PixhawkCommand>,
 
     /// Channel for broadcasting updates to the state of the camera.
-    camera_event: broadcast::Sender<camera::CameraClientEvent>,
+    camera_event: broadcast::Sender<camera::main::CameraClientEvent>,
 
     /// Channel for sending instructions to the camera.
-    camera_cmd: flume::Sender<camera::CameraCommand>,
+    camera_cmd: flume::Sender<camera::main::CameraCommand>,
 
     /// Channel for sending instructions to the gimbal.
     gimbal_cmd: flume::Sender<gimbal::GimbalCommand>,
 
     ///Channel for starting stream.
     #[cfg(feature = "gstreamer")]
-    stream_cmd: flume::Sender<stream::StreamCommand>,
+    stream_cmd: flume::Sender<camera::aux::stream::StreamCommand>,
 
     ///Channel for starting saver.
     #[cfg(feature = "gstreamer")]
-    save_cmd: flume::Sender<save::SaveCommand>,
+    save_cmd: flume::Sender<camera::aux::save::SaveCommand>,
 
     /// Channel for sending instructions to the gimbal.
     dummy_cmd: flume::Sender<dummy::DummyCommand>,
@@ -236,14 +232,14 @@ async fn run_tasks(config: cli::config::PlaneSystemConfig) -> anyhow::Result<()>
             );
         }
 
-        if let Some(camera_config) = config.camera {
+        if let Some(camera_config) = config.main_camera {
             info!("connecting to camera");
 
             let camera_task = match camera_config.kind {
                 cli::config::CameraKind::R10C => {
                     trace!("camera kind set to Sony R10C");
 
-                    spawn(camera::run(channels.clone(), camera_cmd_receiver))
+                    spawn(camera::main::run(channels.clone(), camera_cmd_receiver))
                 }
 
                 // for the future when we switch to a different type of camera

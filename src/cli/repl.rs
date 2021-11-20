@@ -7,9 +7,11 @@ use prettytable::{cell, row, Table};
 use structopt::StructOpt;
 
 use crate::{
-    camera::CameraCommandRequest, camera::CameraCommandResponse, dummy::DummyRequest,
-    gimbal::GimbalRequest, gs::GroundServerRequest,
-    Channels, Command
+    camera::main::{CameraCommandRequest, CameraCommandResponse, CameraSaveMode},
+    dummy::DummyRequest,
+    gimbal::GimbalRequest,
+    gs::GroundServerRequest,
+    Channels, Command,
 };
 
 #[cfg(feature = "gstreamer")]
@@ -350,10 +352,10 @@ fn format_camera_response(response: CameraCommandResponse) -> () {
             println!("zoom level: {}", zoom_level);
         }
         CameraCommandResponse::SaveMode(save_mode) => match save_mode {
-            crate::camera::CameraSaveMode::HostDevice => {
+            CameraSaveMode::HostDevice => {
                 println!("saving to host device");
             }
-            crate::camera::CameraSaveMode::MemoryCard1 => {
+            CameraSaveMode::MemoryCard1 => {
                 println!("saving to camera memory");
             }
         },

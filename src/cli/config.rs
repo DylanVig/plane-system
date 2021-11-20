@@ -52,25 +52,37 @@ pub enum CameraKind {
 }
 
 #[derive(Debug, Deserialize)]
-pub struct CameraConfig {
+pub struct MainCameraConfig {
     pub kind: CameraKind,
 }
 
 #[derive(Debug, Deserialize)]
+pub struct AuxCameraConfig {
+    pub stream: Option<AuxCameraStreamConfig>,
+    pub save: Option<AuxCameraSaveConfig>,
+
+    // a list of gstreamer camera specifications
+    pub cameras: Vec<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct AuxCameraStreamConfig {
+    pub address: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct AuxCameraSaveConfig {
+    pub save_path: String,
+}
+
+#[derive(Debug, Deserialize)]
 pub struct PlaneSystemConfig {
-    pub stream: bool,
-    pub save: bool,
-    pub stream_rpi: bool,
-    pub stream_address: String,
-    pub save_address: String,
-    pub stream_port: u32,
-    pub rpi_cameras: Vec<String>,
-    pub test_cameras: Vec<String>,
     pub pixhawk: Option<PixhawkConfig>,
     pub plane_server: PlaneServerConfig,
     pub ground_server: Option<GroundServerConfig>,
     pub image: Option<ImageConfig>,
-    pub camera: Option<CameraConfig>,
+    pub main_camera: Option<MainCameraConfig>,
+    pub aux_camera: Option<AuxCameraConfig>,
     pub gimbal: Option<GimbalConfig>,
     pub scheduler: Option<SchedulerConfig>,
     #[serde(default = "bool::default")]
