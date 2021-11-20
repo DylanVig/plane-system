@@ -95,8 +95,8 @@ impl PlaneSystemConfig {
 
         let mut c = Config::new();
 
-        c.merge(File::with_name("plane-system").format(FileFormat::Json))?;
-        c.merge(File::with_name("plane-system").format(FileFormat::Toml))?;
+        c.merge(File::with_name("plane-system.json").format(FileFormat::Json))?;
+        // c.merge(File::with_name("plane-system.toml").format(FileFormat::Toml))?;
         c.merge(Environment::with_prefix("PLANE_SYSTEM"))?;
 
         c.try_into()

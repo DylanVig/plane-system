@@ -53,6 +53,6 @@ tokio-serial = { git = "https://github.com/CUAir/tokio-serial.git", default-feat
 tokio-util = { version = "0.6.2", features = ["codec"] }
 
 [features]
-default = ["udev"]
+default = ["udev", "gstreamer"]
 udev = ["tokio-serial/libudev", "serialport/libudev"]
 gstreamer = ["gst"]
