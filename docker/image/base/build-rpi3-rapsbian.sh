@@ -12,6 +12,7 @@ docker build \
 	--build-arg LINUX_VERSION=5.10.3 \
 	--build-arg GCC_VERSION=8.5.0 \
 	--build-arg GCC_MULTILIBS=aprofile \
+	--build-arg GCC_CONFIGURE_FLAGS="--with-float=hard" \
 	--build-arg TARGET_GCC=armv7l-linux-gnueabihf \
 	--build-arg TARGET_LINUX=arm \
 	--build-arg TARGET_DEBIAN=armhf \
