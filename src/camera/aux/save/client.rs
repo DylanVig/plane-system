@@ -23,7 +23,11 @@ impl SaveClient {
         path: PathBuf,
         cameras: Vec<String>,
     ) -> anyhow::Result<Self> {
-        let iface = SaveInterface::new(path, cameras).context("failed to create save interface")?;
+        let iface =
+            SaveInterface::new(path.clone(), cameras).context("failed to create save interface")?;
+        if !path.exists() {
+            std::fs::create_dir("./videos").unwrap_or_else(|e| panic!("Error creating dir: {}", e));
+        }
         Ok(Self {
             iface,
             channels,
@@ -33,10 +37,6 @@ impl SaveClient {
 
     pub fn init(&self) -> anyhow::Result<()> {
         trace!("initializing saver");
-        let path = Path::new("./videos");
-        if !path.exists() {
-            std::fs::create_dir("./videos").unwrap_or_else(|e| panic!("Error creating dir: {}", e));
-        }
         Ok(())
     }
 
