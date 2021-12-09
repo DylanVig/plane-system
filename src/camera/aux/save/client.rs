@@ -26,7 +26,7 @@ impl SaveClient {
         let iface =
             SaveInterface::new(path.clone(), cameras).context("failed to create save interface")?;
         if !path.exists() {
-            std::fs::create_dir("./videos").unwrap_or_else(|e| panic!("Error creating dir: {}", e));
+            std::fs::create_dir(path).unwrap_or_else(|e| panic!("Error creating dir: {}", e));
         }
         Ok(Self {
             iface,
