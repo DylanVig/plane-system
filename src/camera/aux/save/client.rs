@@ -1,4 +1,5 @@
 use anyhow::Context;
+use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
@@ -22,8 +23,11 @@ impl SaveClient {
         path: PathBuf,
         cameras: Vec<String>,
     ) -> anyhow::Result<Self> {
-        let iface = SaveInterface::new(path, cameras).context("failed to create save interface")?;
-
+        let iface =
+            SaveInterface::new(path.clone(), cameras).context("failed to create save interface")?;
+        if !path.exists() {
+            std::fs::create_dir(path).unwrap_or_else(|e| panic!("Error creating dir: {}", e));
+        }
         Ok(Self {
             iface,
             channels,

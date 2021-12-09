@@ -26,6 +26,7 @@ simplebgc = { git = "https://github.com/laptou/simplebgc-rs" }
 ptp = { git = "https://github.com/CUAir/rust-ptp" }
 num-traits = "0.2"
 num-derive = "0.3"
+serialport = "4.0.1"
 
 # http
 warp = "0.3"
@@ -47,7 +48,6 @@ prettytable-rs = "0.8"
 
 # i/o
 rusb = "0.9"
-serialport = { git = "https://github.com/Susurrus/serialport-rs.git", default-features = false }
 gst = { version = "0.17", package = "gstreamer", optional = true }
 tokio-serial = { git = "https://github.com/CUAir/tokio-serial.git", default-features = false }
 tokio-util = { version = "0.6.2", features = ["codec"] }
