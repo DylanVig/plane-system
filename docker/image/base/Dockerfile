@@ -121,7 +121,8 @@ ENV PATH="/home/ccuser/.cargo/bin:${PATH}"
 RUN rustup target add ${TARGET_RUST}
 
 # add rust config
-RUN mkdir -p .cargo && printf "[target.${TARGET_RUST}]\nrustflags=[\"-C\",\"link_args=-Wl,-rpath-link,/usr/lib/${TARGET_GCC}/:/lib/${TARGET_GCC}\"]\nlinker = \"/opt/cross/bin/${TARGET_GCC}-gcc\"\n" > .cargo/config.toml
+ARG TARGET_PKGCONFIG
+RUN mkdir -p .cargo && printf "[target.${TARGET_RUST}]\nrustflags=[\"-C\",\"link_args=-Wl,-rpath-link,/usr/lib/${TARGET_PKGCONFIG}/:/lib/${TARGET_PKGCONFIG}\"]\nlinker = \"/opt/cross/bin/${TARGET_GCC}-gcc\"\n" > .cargo/config.toml
 RUN cat .cargo/config.toml
 
 # run
@@ -129,6 +130,5 @@ VOLUME /app
 WORKDIR "/app"
 
 # add env vars
-ARG TARGET_PKGCONFIG
 ENV CFLAGS=${CPPFLAGS} CC=${TARGET_GCC}-gcc PKG_CONFIG_PATH= PKG_CONFIG_SYSROOT_DIR= PKG_CONFIG_LIBDIR=/usr/lib/${TARGET_PKGCONFIG}/pkgconfig TARGET_RUST=${TARGET_RUST}
 CMD cargo build --target ${TARGET_RUST}
