@@ -4,6 +4,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
+use crate::util::run_loop;
 use crate::Channels;
 
 use super::interface::*;
@@ -24,9 +25,11 @@ impl SaveClient {
     ) -> anyhow::Result<Self> {
         let iface =
             SaveInterface::new(path.clone(), cameras).context("failed to create save interface")?;
+
         if !path.exists() {
-            std::fs::create_dir(path).unwrap_or_else(|e| panic!("Error creating dir: {}", e));
+            std::fs::create_dir(path).context("failed to create save directory")?;
         }
+
         Ok(Self {
             iface,
             channels,
@@ -34,28 +37,29 @@ impl SaveClient {
         })
     }
 
-    pub fn init(&self) -> anyhow::Result<()> {
-        trace!("initializing saver");
-        Ok(())
-    }
-
     pub async fn run(&mut self) -> anyhow::Result<()> {
-        self.init()?;
+        trace!("initializing saver");
 
-        let mut interrupt_recv = self.channels.interrupt.subscribe();
+        let mut interrupt_rx = self.channels.interrupt.subscribe();
 
-        loop {
-            if let Ok(cmd) = self.cmd.try_recv() {
-                let result = self.exec(cmd.request()).await;
-                let _ = cmd.respond(result);
-            }
+        if let Some(Err(err)) = run_loop(
+            async {
+                loop {
+                    if let Ok(cmd) = self.cmd.try_recv() {
+                        let result = self.exec(cmd.request()).await;
+                        let _ = cmd.respond(result);
+                    }
 
-            if interrupt_recv.try_recv().is_ok() {
-                break;
-            }
-
-            tokio::time::sleep(Duration::from_millis(10)).await;
+                    tokio::time::sleep(Duration::from_millis(10)).await;
+                }
+            },
+            interrupt_rx.recv(),
+        )
+        .await
+        {
+            return Err(err);
         }
+
         Ok(())
     }
 
