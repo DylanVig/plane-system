@@ -44,14 +44,12 @@ impl SaveClient {
 
         if let Some(Err(err)) = run_loop(
             async {
-                loop {
-                    if let Ok(cmd) = self.cmd.try_recv() {
-                        let result = self.exec(cmd.request()).await;
-                        let _ = cmd.respond(result);
-                    }
-
-                    tokio::time::sleep(Duration::from_millis(10)).await;
+                while let Ok(cmd) = self.cmd.recv() {
+                    let result = self.exec(cmd.request()).await;
+                    let _ = cmd.respond(result);
                 }
+
+                Ok(())
             },
             interrupt_rx.recv(),
         )
