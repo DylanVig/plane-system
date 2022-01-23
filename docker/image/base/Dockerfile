@@ -121,7 +121,8 @@ ENV PATH="/home/ccuser/.cargo/bin:${PATH}"
 RUN rustup target add ${TARGET_RUST}
 
 # add rust config
-RUN mkdir -p .cargo && printf "[target.${TARGET_RUST}]\nlinker = \"/opt/cross/bin/${TARGET_GCC}-gcc\"\n" > .cargo/config.toml
+RUN mkdir -p .cargo && printf "[target.${TARGET_RUST}]\nrustflags=[\"-C\",\"link_args=-Wl,-rpath-link,/usr/lib/${TARGET_GCC}/:/lib/${TARGET_GCC}\"]\nlinker = \"/opt/cross/bin/${TARGET_GCC}-gcc\"\n" > .cargo/config.toml
+RUN cat .cargo/config.toml
 
 # run
 VOLUME /app
