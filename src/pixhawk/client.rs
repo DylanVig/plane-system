@@ -8,7 +8,7 @@ use std::{
 use anyhow::Context;
 use bytes::{Buf, BytesMut};
 
-use tokio::{net::ToSocketAddrs};
+use tokio::net::ToSocketAddrs;
 
 use mavlink::{
     ardupilotmega as apm, common, error::MessageReadError, error::ParserError, MavHeader,

@@ -43,7 +43,6 @@ pub enum CameraZoomMode {
     OpticalDigital,
 }
 
-
 #[repr(u8)]
 #[derive(Debug, Copy, Clone, FromPrimitive, ToPrimitive, Serialize, Eq, PartialEq)]
 pub enum CameraCompressionMode {

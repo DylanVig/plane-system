@@ -34,11 +34,10 @@ pub trait SimpleBgcGimbalInterface: GimbalInterface {
     async fn send_command(&mut self, cmd: OutgoingCommand) -> anyhow::Result<()>;
 
     async fn recv_command(&mut self) -> anyhow::Result<Option<IncomingCommand>>;
-
 }
 
 #[async_trait]
-impl <T: SimpleBgcGimbalInterface> GimbalInterface for T {
+impl<T: SimpleBgcGimbalInterface> GimbalInterface for T {
     async fn control_angles(&mut self, roll: f64, pitch: f64) -> anyhow::Result<()> {
         let factor: f64 = (2 ^ 14) as f64 / 360.0;
 

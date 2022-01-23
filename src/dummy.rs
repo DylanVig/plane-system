@@ -1,4 +1,4 @@
-use std::{time::Duration, sync::Arc};
+use std::{sync::Arc, time::Duration};
 
 use futures::{FutureExt, StreamExt};
 use serde::Serialize;
@@ -39,7 +39,7 @@ impl DummyClient {
         let telemetry_chan = self.channels.telemetry.clone();
         let mut telemetry_stream = tokio_stream::wrappers::WatchStream::new(telemetry_chan).fuse();
         let mut cmd_stream = self.cmd.clone().into_stream().fuse();
-        
+
         loop {
             futures::select! {
                 cmd = cmd_stream.next() => {

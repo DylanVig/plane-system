@@ -5,7 +5,7 @@ use std::time::{Duration, Instant};
 use std::f32::consts::PI;
 use tokio::{spawn, sync::*, time::interval};
 
-use super::{SimpleBgcGimbalInterface};
+use super::SimpleBgcGimbalInterface;
 
 pub struct SoftwareGimbalInterface {
     tx: broadcast::Sender<OutgoingCommand>,

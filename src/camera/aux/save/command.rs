@@ -10,11 +10,11 @@ pub type SaveCommand = Command<SaveRequest, SaveResponse>;
 #[structopt(setting(AppSettings::NoBinaryName))]
 #[structopt(rename_all = "kebab-case")]
 pub enum SaveRequest {
-  Start {},
-  End {},
+    Start {},
+    End {},
 }
 
 #[derive(Debug, Clone, Serialize)]
 pub enum SaveResponse {
-  Unit,
+    Unit,
 }

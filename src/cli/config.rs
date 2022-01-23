@@ -1,6 +1,6 @@
 use std::{net::SocketAddr, path::PathBuf};
 
-use config::{ConfigError};
+use config::ConfigError;
 use mavlink::MavlinkVersion;
 use serde::Deserialize;
 
