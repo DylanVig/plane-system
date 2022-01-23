@@ -1,6 +1,6 @@
 use std::net::SocketAddr;
 
-use anyhow::Context;
+
 use gst::prelude::*;
 
 pub struct StreamInterface {

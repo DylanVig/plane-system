@@ -317,7 +317,7 @@ pub(super) async fn cmd_file(
                 .await
         }
 
-        CameraCommandFileRequest::Get { handle } => {
+        CameraCommandFileRequest::Get { handle: _ } => {
             ensure_mode(&interface, CameraOperatingMode::ContentsTransfer).await?;
 
             let (info, data) = interface

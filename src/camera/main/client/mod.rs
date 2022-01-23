@@ -288,11 +288,11 @@ fn run_interface(
 
 fn run_events(
     interface: Arc<CameraInterface>,
-    semaphore: Arc<Semaphore>,
+    _semaphore: Arc<Semaphore>,
     events_ptp: broadcast::Sender<ptp::PtpEvent>,
     mut interrupt_rx: broadcast::Receiver<()>,
 ) -> anyhow::Result<()> {
-    let rt_handle = tokio::runtime::Handle::current();
+    let _rt_handle = tokio::runtime::Handle::current();
 
     loop {
         let event = {

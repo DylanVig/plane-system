@@ -7,8 +7,8 @@ use std::{
 
 use anyhow::Context;
 use bytes::{Buf, BytesMut};
-use futures::StreamExt;
-use tokio::{net::ToSocketAddrs, sync::mpsc};
+
+use tokio::{net::ToSocketAddrs};
 
 use mavlink::{
     ardupilotmega as apm, common, error::MessageReadError, error::ParserError, MavHeader,
@@ -222,7 +222,7 @@ impl PixhawkClient {
 
         let mut interrupt_recv = self.channels.interrupt.subscribe();
 
-        let mut loop_fut = async {
+        let loop_fut = async {
             // no delay b/c this is an I/O-bound loop
             loop {
                 if let Ok(cmd) = self.cmd.try_recv() {
@@ -236,7 +236,7 @@ impl PixhawkClient {
             Result::<(), anyhow::Error>::Ok(())
         };
 
-        let mut interrupt_fut = interrupt_recv.recv();
+        let interrupt_fut = interrupt_recv.recv();
 
         futures::pin_mut!(loop_fut);
         futures::pin_mut!(interrupt_fut);

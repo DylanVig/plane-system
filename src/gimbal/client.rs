@@ -35,7 +35,7 @@ impl GimbalClient {
         kind: GimbalKind,
     ) -> anyhow::Result<Self> {
         let iface: Box<dyn GimbalInterface + Send> = match kind {
-            GimbalKind::Hardware { protocol } => Box::new(
+            GimbalKind::Hardware { protocol: _ } => Box::new(
                 HardwareGimbalInterface::new()
                     .context("failed to create hardware gimbal interface")?,
             ),

@@ -50,7 +50,7 @@ impl DummyClient {
                     trace!("command completed, sending response");
                     cmd.respond(result).expect("help");
                 }
-                telemetry = telemetry_stream.next() => {
+                _telemetry = telemetry_stream.next() => {
                 }
                 _ = &mut interrupt_fut => break,
             }

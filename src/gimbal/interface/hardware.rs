@@ -5,7 +5,7 @@ use tokio_serial::{Serial, SerialPortSettings};
 use tokio_util::codec::{Decoder, Framed};
 use std::path::Path;
 
-use super::{GimbalInterface, SimpleBgcGimbalInterface};
+use super::{SimpleBgcGimbalInterface};
 
 pub struct HardwareGimbalInterface {
     inner: Framed<Serial, V1Codec>,

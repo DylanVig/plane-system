@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use colored::Colorize;
-use futures::FutureExt;
+
 use humansize::FileSize;
 use prettytable::{cell, row, Table};
 use structopt::StructOpt;
