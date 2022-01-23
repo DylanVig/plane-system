@@ -1,4 +1,4 @@
-use std::{process::exit, str::FromStr, sync::Arc, time::Duration};
+use std::{process::exit, sync::Arc, time::Duration};
 
 use anyhow::Context;
 use ctrlc;

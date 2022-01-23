@@ -103,7 +103,7 @@ impl Coords3D {
             latitude,
             longitude,
             altitude_msl,
-            altitude_rel
+            altitude_rel,
         }
     }
 }

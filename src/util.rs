@@ -7,10 +7,17 @@ pub fn parse_hex_u32(src: &str) -> Result<u32, ParseIntError> {
     u32::from_str_radix(src, 16)
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Change<T> {
-    pub old: T,
-    pub new: T,
+pub async fn run_loop<C>(
+    loop_fut: impl Future<Output = Result<(), anyhow::Error>>,
+    cancellation_fut: impl Future<Output = C>,
+) -> Option<anyhow::Result<(), anyhow::Error>> {
+    futures::pin_mut!(loop_fut);
+    futures::pin_mut!(cancellation_fut);
+
+    match futures::future::select(loop_fut, cancellation_fut).await {
+        futures::future::Either::Left((out, _)) => Some(out),
+        futures::future::Either::Right(_) => None,
+    }
 }
 
 /// This is an extension trait for channel receivers.

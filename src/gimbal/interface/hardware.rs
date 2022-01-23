@@ -1,11 +1,11 @@
 use anyhow::Context;
 use futures::{SinkExt, StreamExt};
 use simplebgc::*;
+use std::path::Path;
 use tokio_serial::{Serial, SerialPortSettings};
 use tokio_util::codec::{Decoder, Framed};
-use std::path::Path;
 
-use super::{GimbalInterface, SimpleBgcGimbalInterface};
+use super::SimpleBgcGimbalInterface;
 
 pub struct HardwareGimbalInterface {
     inner: Framed<Serial, V1Codec>,
@@ -24,7 +24,6 @@ impl HardwareGimbalInterface {
     fn find_usb_device_path() -> anyhow::Result<Option<String>> {
         #[cfg(feature = "udev")]
         {
-
             const SBGC_VID: u16 = 0x10C4;
             const SBGC_PID: u16 = 0xEA60;
             const FTDI_VID: u16 = 0x0403;

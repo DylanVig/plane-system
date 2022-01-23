@@ -1,10 +1,9 @@
-use anyhow::Context;
 use futures::StreamExt;
 use serde::{Deserialize, Serialize};
 use std::{convert::Infallible, net::SocketAddr, sync::Arc};
 use warp::{self, Filter};
 
-use crate::state::{RegionOfInterest, TelemetryInfo};
+use crate::state::RegionOfInterest;
 use crate::Channels;
 
 #[derive(Clone)]

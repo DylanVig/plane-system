@@ -10,11 +10,11 @@ pub type StreamCommand = Command<StreamRequest, StreamResponse>;
 #[structopt(setting(AppSettings::NoBinaryName))]
 #[structopt(rename_all = "kebab-case")]
 pub enum StreamRequest {
-  Start {},
-  End {},
+    Start {},
+    End {},
 }
 
 #[derive(Debug, Clone, Serialize)]
 pub enum StreamResponse {
-  Unit,
+    Unit,
 }

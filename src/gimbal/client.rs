@@ -3,9 +3,12 @@ use anyhow::Context;
 use futures::FutureExt;
 use std::{path::Path, sync::Arc};
 
-use crate::{Channels};
+use crate::Channels;
 
-use super::{GimbalCommand, GimbalKind, GimbalRequest, GimbalResponse, interface::{GimbalInterface, HardwareGimbalInterface, SoftwareGimbalInterface}};
+use super::{
+    interface::{GimbalInterface, HardwareGimbalInterface, SoftwareGimbalInterface},
+    GimbalCommand, GimbalKind, GimbalRequest, GimbalResponse,
+};
 
 pub struct GimbalClient {
     iface: Box<dyn GimbalInterface + Send>,
@@ -19,8 +22,8 @@ impl GimbalClient {
         cmd: flume::Receiver<GimbalCommand>,
         path: P,
     ) -> anyhow::Result<Self> {
-        let iface =
-            HardwareGimbalInterface::with_path(path).context("failed to create gimbal interface")?;
+        let iface = HardwareGimbalInterface::with_path(path)
+            .context("failed to create gimbal interface")?;
 
         Ok(Self {
             iface: Box::new(iface),
@@ -35,7 +38,7 @@ impl GimbalClient {
         kind: GimbalKind,
     ) -> anyhow::Result<Self> {
         let iface: Box<dyn GimbalInterface + Send> = match kind {
-            GimbalKind::Hardware { protocol } => Box::new(
+            GimbalKind::Hardware { protocol: _ } => Box::new(
                 HardwareGimbalInterface::new()
                     .context("failed to create hardware gimbal interface")?,
             ),
@@ -75,7 +78,7 @@ impl GimbalClient {
                 _ = interrupt_fut => break,
             }
         }
-        
+
         Ok(())
     }
 

@@ -1,4 +1,4 @@
-use std::{ffi::OsStr, path::Path, str::FromStr, sync::Arc};
+use std::{ffi::OsStr, str::FromStr, sync::Arc};
 
 use anyhow::Context;
 use clap::AppSettings;

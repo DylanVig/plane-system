@@ -52,8 +52,8 @@ impl SchedulerBackend {
         let altitude = self.telemetry.position.altitude_rel as f64;
 
         // roll, pitch, yaw in degrees, need radians
-        let plane_roll = self.telemetry.plane_attitude.roll.to_radians() as f64;
-        let plane_pitch = self.telemetry.plane_attitude.pitch.to_radians() as f64;
+        let _plane_roll = self.telemetry.plane_attitude.roll.to_radians() as f64;
+        let _plane_pitch = self.telemetry.plane_attitude.pitch.to_radians() as f64;
         let plane_yaw = self.telemetry.plane_attitude.yaw.to_radians() as f64;
 
         // next we need to get the distance from the plane to the gps location
