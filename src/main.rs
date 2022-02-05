@@ -2,11 +2,12 @@ use std::{process::exit, sync::Arc, time::Duration};
 
 use anyhow::Context;
 use ctrlc;
-use futures::channel::oneshot;
+use futures::{channel::oneshot, Future};
 use structopt::StructOpt;
 use tokio::{
     spawn,
     sync::{broadcast, watch},
+    task::JoinHandle,
     time::sleep,
 };
 
@@ -28,7 +29,6 @@ extern crate async_trait;
 
 mod camera;
 mod cli;
-mod dummy;
 mod gimbal;
 mod gs;
 mod image;
@@ -70,9 +70,6 @@ pub struct Channels {
     #[cfg(feature = "gstreamer")]
     save_cmd: flume::Sender<camera::aux::save::SaveCommand>,
 
-    /// Channel for sending instructions to the gimbal.
-    dummy_cmd: flume::Sender<dummy::DummyCommand>,
-
     image_event: broadcast::Sender<image::ImageClientEvent>,
 }
 
@@ -111,13 +108,51 @@ impl<Req, Res, Err> Command<Req, Res, Err> {
 
         chan.send(result)
     }
+}
 
-    fn success(self, data: Res) -> Result<(), Result<Res, Err>> {
-        self.channel().send(Ok(data))
+struct TaskBag {
+    names: Vec<String>,
+    tasks: Vec<JoinHandle<anyhow::Result<()>>>,
+}
+
+impl TaskBag {
+    pub fn new() -> Self {
+        Self {
+            names: vec![],
+            tasks: vec![],
+        }
     }
 
-    fn error(self, error: Err) -> Result<(), Result<Res, Err>> {
-        self.channel().send(Err(error))
+    pub fn add(
+        &mut self,
+        name: &str,
+        task: impl Future<Output = anyhow::Result<()>> + Send + 'static,
+    ) {
+        info!("spawning task {}", name);
+        self.names.push(name.to_owned());
+        self.tasks.push(spawn(task));
+    }
+
+    pub async fn wait(&mut self) -> anyhow::Result<()> {
+        while self.tasks.len() > 0 {
+            let tasks = std::mem::replace(&mut self.tasks, vec![]);
+
+            // wait for each task to end
+            let (result, i, remaining) = futures::future::select_all(tasks).await;
+            let name = self.names.remove(i);
+
+            info!("task {} ended, {} remaining", name, self.names.join(", "));
+
+            // if a task ended with an error, end the process with an interrupt
+            if let Err(err) = result.unwrap() {
+                error!("got error from task {}: {:?}", name, err);
+                return Err(err);
+            }
+
+            self.tasks = remaining;
+        }
+
+        Ok(())
     }
 }
 
@@ -152,8 +187,7 @@ async fn run_tasks(config: cli::config::PlaneSystemConfig) -> anyhow::Result<()>
     })
     .expect("could not set ctrl+c handler");
 
-    let mut task_names = Vec::new();
-    let mut futures = Vec::new();
+    let mut tasks = TaskBag::new();
 
     {
         let (telemetry_sender, telemetry_receiver) = watch::channel(None);
@@ -167,7 +201,6 @@ async fn run_tasks(config: cli::config::PlaneSystemConfig) -> anyhow::Result<()>
         let (save_cmd_sender, save_cmd_receiver) = flume::unbounded();
         let (image_event_sender, _) = broadcast::channel(256);
         let (pixhawk_cmd_sender, pixhawk_cmd_receiver) = flume::unbounded();
-        let (dummy_cmd_sender, dummy_cmd_receiver) = flume::unbounded();
 
         let channels = Arc::new(Channels {
             interrupt: interrupt_sender.clone(),
@@ -181,47 +214,28 @@ async fn run_tasks(config: cli::config::PlaneSystemConfig) -> anyhow::Result<()>
             stream_cmd: stream_cmd_sender,
             #[cfg(feature = "gstreamer")]
             save_cmd: save_cmd_sender,
-            dummy_cmd: dummy_cmd_sender,
             image_event: image_event_sender,
         });
 
-        if config.dummy {
-            info!("starting dummy");
-
-            let dummy_task = spawn({
-                let mut dummy_client =
-                    dummy::DummyClient::create(channels.clone(), dummy_cmd_receiver)?;
-                async move { dummy_client.run().await }
-            });
-
-            task_names.push("dummy");
-            futures.push(dummy_task);
-        }
-
         if let Some(pixhawk_config) = config.pixhawk {
-            info!("connecting to pixhawk at {}", pixhawk_config.address);
-            let pixhawk_task = spawn({
-                let pixhawk_client = PixhawkClient::connect(
-                    channels.clone(),
-                    pixhawk_cmd_receiver,
-                    pixhawk_config.address,
-                    pixhawk_config.mavlink,
-                )
-                .await?;
-                async move { pixhawk_client.run().await }
+            tasks.add("pixhawk", {
+                let channels = channels.clone();
+                async move {
+                    let pixhawk_client = PixhawkClient::connect(
+                        channels.clone(),
+                        pixhawk_cmd_receiver,
+                        pixhawk_config.address,
+                        pixhawk_config.mavlink,
+                    )
+                    .await?;
+                    pixhawk_client.run().await
+                }
             });
 
-            futures.push(pixhawk_task);
-            task_names.push("pixhawk");
-
-            info!("initializing telemetry stream");
-            let telemetry_task = spawn({
+            tasks.add("telemetry", {
                 let telemetry = TelemetryStream::new(channels.clone(), telemetry_sender);
                 async move { telemetry.run().await }
             });
-
-            task_names.push("telemetry");
-            futures.push(telemetry_task);
         } else {
             info!(
                 "pixhawk address not specified, disabling pixhawk connection and telemetry stream"
@@ -229,100 +243,39 @@ async fn run_tasks(config: cli::config::PlaneSystemConfig) -> anyhow::Result<()>
         }
 
         if let Some(camera_config) = config.main_camera {
-            info!("connecting to camera");
-
-            let camera_task = match camera_config.kind {
-                cli::config::CameraKind::R10C => {
-                    trace!("camera kind set to Sony R10C");
-
-                    spawn(camera::main::run(channels.clone(), camera_cmd_receiver))
-                }
-
-                // for the future when we switch to a different type of camera
-                #[allow(unreachable_patterns)]
-                unknown_kind => {
-                    bail!("camera kind {:?} is not implemented", unknown_kind)
-                }
-            };
-
-            task_names.push("camera");
-            futures.push(camera_task);
+            tasks.add("camera", {
+                camera::main::run(channels.clone(), camera_cmd_receiver)
+            });
         }
 
         if let Some(image_config) = config.image {
-            info!("starting image download task");
-
-            let image_task = spawn(image::run(channels.clone(), image_config));
-
-            task_names.push("image");
-            futures.push(image_task);
+            tasks.add("image download", {
+                image::run(channels.clone(), image_config)
+            });
         }
 
         if let Some(gimbal_config) = config.gimbal {
-            trace!("gimbal kind set to {:?}", gimbal_config.kind);
-
-            info!("initializing gimbal");
-            let gimbal_task = spawn({
-                let mut gimbal_client = if let Some(gimbal_path) = gimbal_config.device_path {
-                    GimbalClient::connect_with_path(
-                        channels.clone(),
-                        gimbal_cmd_receiver,
-                        gimbal_path,
-                    )?
-                } else {
-                    GimbalClient::connect(
-                        channels.clone(),
-                        gimbal_cmd_receiver,
-                        gimbal_config.kind,
-                    )?
-                };
-
-                async move { gimbal_client.run().await }
-            });
-
-            task_names.push("gimbal");
-            futures.push(gimbal_task);
+            panic!("gimbal not implemented");
         }
 
         if let Some(gs_config) = config.ground_server {
-            info!("initializing ground server client");
-            let gs_task = spawn({
+            tasks.add("ground server", {
                 let gs_client = GroundServerClient::new(channels.clone(), gs_config.address)?;
-
                 async move { gs_client.run().await }
             });
-
-            task_names.push("ground server client");
-            futures.push(gs_task);
         }
 
         if let Some(scheduler_config) = config.scheduler {
-            info!("initializing scheduler");
-            let scheduler_task = spawn({
+            tasks.add("scheduler", {
                 let mut scheduler = Scheduler::new(channels.clone(), scheduler_config.gps);
                 async move { scheduler.run().await }
             });
-
-            task_names.push("scheduler");
-            futures.push(scheduler_task);
         }
-
-        info!("initializing plane server");
-        let server_address = config.plane_server.address;
-
-        let server_task = spawn({
-            let channels = channels.clone();
-            server::serve(channels, server_address)
-        });
-
-        task_names.push("server");
-        futures.push(server_task);
 
         if let Some(aux_config) = config.aux_camera {
             #[cfg(feature = "gstreamer")]
             if let Some(stream_config) = aux_config.stream {
-                info!("initializing auxiliary livestream");
-                let stream_task = spawn({
+                tasks.add("aux camera live stream", {
                     let mut stream_client = camera::aux::stream::StreamClient::connect(
                         channels.clone(),
                         stream_cmd_receiver,
@@ -331,14 +284,11 @@ async fn run_tasks(config: cli::config::PlaneSystemConfig) -> anyhow::Result<()>
                     )?;
                     async move { stream_client.run().await }
                 });
-                task_names.push("stream");
-                futures.push(stream_task);
             }
 
             #[cfg(feature = "gstreamer")]
             if let Some(save_config) = aux_config.save {
-                info!("initializing auxiliary livestream saver");
-                let save_task = spawn({
+                tasks.add("aux camera live record", {
                     let mut save_client = camera::aux::save::SaveClient::connect(
                         channels.clone(),
                         save_cmd_receiver,
@@ -347,58 +297,33 @@ async fn run_tasks(config: cli::config::PlaneSystemConfig) -> anyhow::Result<()>
                     )?;
                     async move { save_client.run().await }
                 });
-                task_names.push("save");
-                futures.push(save_task);
             }
         }
 
-        info!("intializing cli");
-        let cli_task = spawn({
+        tasks.add("command line interface", {
             let channels = channels.clone();
             cli::repl::run(channels)
         });
 
-        task_names.push("cli");
-        futures.push(cli_task);
+        tasks.add("plane server", {
+            let channels = channels.clone();
+            server::serve(channels, config.plane_server.address)
+        });
     }
 
-    while futures.len() > 0 {
-        // wait for each task to end
-        let (result, i, remaining) = futures::future::select_all(futures).await;
-        let task_name = task_names.remove(i);
+    if let Err(_) = tasks.wait().await {
+        let _ = interrupt_sender.send(());
 
         info!(
-            "{} ({}) task ended, {} remaining",
-            task_name,
-            i,
-            task_names.join(", ")
+            "terminating in 5 seconds, remaining tasks: {}",
+            tasks.names.join(", ")
         );
-
-        // if a task ended with an error or did not join properly, end the process
-        // with an interrupt
-        if let Err(err) = result? {
-            error!(
-                "got error from {} task, sending interrupt: {:?}",
-                task_name, err
-            );
-
-            info!("remaining tasks: {:?}", task_names.join(", "));
-
-            let _ = interrupt_sender.send(());
-
-            spawn({
-                let task_names = task_names.clone();
-
-                async move {
-                    info!("remaining tasks: {:?}", task_names.join(", "));
-                    sleep(Duration::from_secs(5)).await;
-                    warn!("tasks did not end after 5 seconds, force-quitting");
-                    exit(1);
-                }
-            });
-        }
-
-        futures = remaining;
+        sleep(Duration::from_secs(5)).await;
+        info!(
+            "terminating now, remaining tasks: {}",
+            tasks.names.join(", ")
+        );
+        exit(1);
     }
 
     info!("exit");

@@ -8,7 +8,6 @@ use structopt::StructOpt;
 
 use crate::{
     camera::main::{CameraCommandRequest, CameraCommandResponse, CameraSaveMode},
-    dummy::DummyRequest,
     gimbal::GimbalRequest,
     gs::GroundServerRequest,
     Channels, Command,
@@ -21,12 +20,11 @@ use crate::camera::aux::{save::SaveRequest, stream::StreamRequest};
 #[structopt(setting(clap::AppSettings::NoBinaryName))]
 #[structopt(rename_all = "kebab-case")]
 enum ReplRequest {
-    Dummy(DummyRequest),
     MainCamera(CameraCommandRequest),
-    #[cfg(feature = "gstreamer")]
-    AuxCamera(AuxCameraRequest),
     Gimbal(GimbalRequest),
     GroundServer(GroundServerRequest),
+    #[cfg(feature = "gstreamer")]
+    AuxCamera(AuxCameraRequest),
     Exit,
 }
 
@@ -118,22 +116,6 @@ pub async fn run(channels: Arc<Channels>) -> anyhow::Result<()> {
                         let _ = rt_handle.block_on(chan)?;
                     }
                 },
-                ReplRequest::Dummy(request) => {
-                    let (cmd, chan) = Command::new(request);
-                    if let Err(err) = channels.dummy_cmd.clone().send(cmd) {
-                        error!("dummy client not available: {}", err);
-                        continue;
-                    }
-
-                    trace!("dummy command sent, awaiting response");
-                    let result = rt_handle.block_on(chan)?;
-                    trace!("dummy command completed, received response");
-
-                    match result {
-                        Ok(_) => println!("dummy done"),
-                        Err(err) => println!("{}", format!("error: {}", err).red()),
-                    };
-                }
                 _ => {
                     error!("this command is not available");
                 }
