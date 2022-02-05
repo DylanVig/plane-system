@@ -128,7 +128,7 @@ impl TaskBag {
         name: &str,
         task: impl Future<Output = anyhow::Result<()>> + Send + 'static,
     ) {
-        info!("spawning task {}", name);
+        info!("spawning task \"{}\"", name);
         self.names.push(name.to_owned());
         self.tasks.push(spawn(task));
     }
@@ -141,11 +141,22 @@ impl TaskBag {
             let (result, i, remaining) = futures::future::select_all(tasks).await;
             let name = self.names.remove(i);
 
-            info!("task {} ended, {} remaining", name, self.names.join(", "));
+            if self.names.len() > 0 {
+                let names_quoted = self
+                    .names
+                    .iter()
+                    .map(|n| format!("\"{}\"", n))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+
+                info!("task \"{}\" ended, tasks {} remaining", name, names_quoted);
+            } else {
+                info!("task \"{}\" ended, no tasks remaining", name);
+            }
 
             // if a task ended with an error, end the process with an interrupt
             if let Err(err) = result.unwrap() {
-                error!("got error from task {}: {:?}", name, err);
+                error!("got error from task \"{}\": {:?}", name, err);
                 return Err(err);
             }
 
