@@ -17,7 +17,7 @@ use mavlink::{
 
 use crate::{
     state::{Attitude, Coords3D},
-    util::run_loop,
+    util::{run_loop, run_loop_impl},
     Channels,
 };
 
@@ -224,7 +224,7 @@ impl PixhawkClient {
 
         let mut interrupt_recv = self.channels.interrupt.subscribe();
 
-        if let Some(Err(err)) = run_loop(
+        run_loop!(
             async move {
                 // no delay b/c this is an I/O-bound loop
                 loop {
@@ -235,12 +235,8 @@ impl PixhawkClient {
                     let _ = self.recv().await?;
                 }
             },
-            interrupt_recv.recv(),
-        )
-        .await
-        {
-            return Err(err);
-        }
+            interrupt_recv.recv()
+        );
 
         Ok(())
     }

@@ -4,7 +4,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
-use crate::util::run_loop;
+use crate::util::{run_loop, run_loop_impl};
 use crate::Channels;
 
 use super::interface::*;
@@ -42,7 +42,7 @@ impl SaveClient {
 
         let mut interrupt_rx = self.channels.interrupt.subscribe();
 
-        if let Some(Err(err)) = run_loop(
+        run_loop!(
             async {
                 while let Ok(cmd) = self.cmd.recv() {
                     let result = self.exec(cmd.request()).await;
@@ -51,12 +51,8 @@ impl SaveClient {
 
                 Ok(())
             },
-            interrupt_rx.recv(),
-        )
-        .await
-        {
-            return Err(err);
-        }
+            interrupt_rx.recv()
+        );
 
         Ok(())
     }

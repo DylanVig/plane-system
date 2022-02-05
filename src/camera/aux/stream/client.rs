@@ -2,7 +2,7 @@ use anyhow::Context;
 use std::net::SocketAddr;
 use std::sync::Arc;
 
-use crate::util::run_loop;
+use crate::util::{run_loop, run_loop_impl};
 use crate::Channels;
 
 use super::interface::*;
@@ -41,7 +41,7 @@ impl StreamClient {
 
         let mut interrupt_recv = self.channels.interrupt.subscribe();
 
-        if let Some(Err(err)) = run_loop(
+        run_loop!(
             async move {
                 while let Ok(cmd) = self.cmd.recv() {
                     let result = self.exec(cmd.request()).await;
@@ -50,12 +50,8 @@ impl StreamClient {
 
                 Ok(())
             },
-            interrupt_recv.recv(),
-        )
-        .await
-        {
-            return Err(err);
-        }
+            interrupt_recv.recv()
+        );
 
         Ok(())
     }

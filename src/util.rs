@@ -7,7 +7,8 @@ pub fn parse_hex_u32(src: &str) -> Result<u32, ParseIntError> {
     u32::from_str_radix(src, 16)
 }
 
-pub async fn run_loop<C>(
+#[doc(hidden)]
+pub(crate) async fn run_loop_impl<C>(
     loop_fut: impl Future<Output = Result<(), anyhow::Error>>,
     cancellation_fut: impl Future<Output = C>,
 ) -> Option<anyhow::Result<(), anyhow::Error>> {
@@ -19,6 +20,18 @@ pub async fn run_loop<C>(
         futures::future::Either::Right(_) => None,
     }
 }
+
+/// Runs `loop_fut` until `cancellation_fut` resolves. If `loop_fut` exits with
+/// an error, then the error is returned from the current method.
+macro_rules! run_loop {
+    ($loop_fut: expr, $cancellation_fut: expr) => {
+        if let Some(res) = $crate::util::run_loop_impl($loop_fut, $cancellation_fut).await {
+            res?
+        }
+    };
+}
+
+pub(crate) use run_loop;
 
 /// This is an extension trait for channel receivers.
 #[async_trait]
