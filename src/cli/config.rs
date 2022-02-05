@@ -85,8 +85,6 @@ pub struct PlaneSystemConfig {
     pub aux_camera: Option<AuxCameraConfig>,
     pub gimbal: Option<GimbalConfig>,
     pub scheduler: Option<SchedulerConfig>,
-    #[serde(default = "bool::default")]
-    pub dummy: bool,
 }
 
 impl PlaneSystemConfig {

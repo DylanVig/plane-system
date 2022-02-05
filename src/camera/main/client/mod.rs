@@ -1,4 +1,5 @@
 use anyhow::Context;
+use futures::future::Either;
 use futures::Future;
 use num_traits::FromPrimitive;
 use std::{collections::HashMap, sync::Arc, time::Duration};
@@ -206,9 +207,12 @@ fn run_interface(
     req_rx: flume::Receiver<CameraInterfaceRequest>,
     mut interrupt_rx: broadcast::Receiver<()>,
 ) -> anyhow::Result<()> {
-    loop {
-        let req = req_rx.recv()?;
+    let rt = tokio::runtime::Handle::current();
 
+    while let Either::Left((Ok(req), _)) = rt.block_on(futures::future::select(
+        Box::pin(req_rx.recv_async()),
+        Box::pin(interrupt_rx.recv()),
+    )) {
         match req {
             CameraInterfaceRequest::GetPropertyInfo { property, ret } => {
                 let _ = ret.send(state.get(&property).cloned());
@@ -276,14 +280,9 @@ fn run_interface(
                 let _ = ret.send(interface.object_data(handle, Some(TIMEOUT)));
             }
         }
-
-        if let Ok(()) = interrupt_rx.try_recv() {
-            debug!("camera interface runner interrupted");
-            break Ok(());
-        }
-
-        std::thread::sleep(Duration::from_millis(10));
     }
+
+    Ok(())
 }
 
 fn run_events(

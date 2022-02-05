@@ -17,6 +17,7 @@ use mavlink::{
 
 use crate::{
     state::{Attitude, Coords3D},
+    util::{run_loop},
     Channels,
 };
 
@@ -216,32 +217,26 @@ impl PixhawkClient {
         }
     }
 
-    pub async fn run(&mut self) -> anyhow::Result<()> {
+    pub async fn run(mut self) -> anyhow::Result<()> {
         info!("initializing pixhawk");
+
         self.init().await?;
 
         let mut interrupt_recv = self.channels.interrupt.subscribe();
 
-        let loop_fut = async {
-            // no delay b/c this is an I/O-bound loop
-            loop {
-                if let Ok(cmd) = self.cmd.try_recv() {
-                    self.exec(cmd).await?;
+        run_loop!(
+            async move {
+                // no delay b/c this is an I/O-bound loop
+                loop {
+                    if let Ok(cmd) = self.cmd.try_recv() {
+                        self.exec(cmd).await?;
+                    }
+
+                    let _ = self.recv().await?;
                 }
-
-                let _ = self.recv().await?;
-            }
-
-            #[allow(unreachable_code)]
-            Result::<(), anyhow::Error>::Ok(())
-        };
-
-        let interrupt_fut = interrupt_recv.recv();
-
-        futures::pin_mut!(loop_fut);
-        futures::pin_mut!(interrupt_fut);
-
-        futures::future::select(loop_fut, interrupt_fut).await;
+            },
+            interrupt_recv.recv()
+        );
 
         Ok(())
     }
