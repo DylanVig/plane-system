@@ -201,7 +201,7 @@ async fn run_tasks(config: cli::config::PlaneSystemConfig) -> anyhow::Result<()>
         if let Some(pixhawk_config) = config.pixhawk {
             info!("connecting to pixhawk at {}", pixhawk_config.address);
             let pixhawk_task = spawn({
-                let mut pixhawk_client = PixhawkClient::connect(
+                let pixhawk_client = PixhawkClient::connect(
                     channels.clone(),
                     pixhawk_cmd_receiver,
                     pixhawk_config.address,

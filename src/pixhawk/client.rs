@@ -17,7 +17,7 @@ use mavlink::{
 
 use crate::{
     state::{Attitude, Coords3D},
-    util::{run_loop, run_loop_impl},
+    util::{run_loop},
     Channels,
 };
 

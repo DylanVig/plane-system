@@ -2,9 +2,9 @@ use anyhow::Context;
 
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::time::Duration;
 
-use crate::util::{run_loop, run_loop_impl};
+
+use crate::util::{run_loop};
 use crate::Channels;
 
 use super::interface::*;
