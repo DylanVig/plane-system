@@ -156,7 +156,7 @@ impl TaskBag {
     }
 }
 
-#[tokio::main(flavor = "multi_thread", worker_threads = 2)]
+#[tokio::main(flavor = "multi_thread")]
 async fn main() -> anyhow::Result<()> {
     pretty_env_logger::init_timed();
     color_backtrace::install();
