@@ -58,6 +58,7 @@ rusb = "0.9"
 gst = { version = "0.17", package = "gstreamer", optional = true }
 tokio-serial = { git = "https://github.com/CUAir/tokio-serial.git", default-features = false }
 tokio-util = { version = "0.6.2", features = ["codec"] }
+color-backtrace = "0.5.1"
 
 [features]
 default = ["udev", "gstreamer"]
