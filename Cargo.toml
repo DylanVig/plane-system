@@ -8,6 +8,7 @@ edition = "2018"
 # logging + error handling
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "registry"] }
+tracing-appender = "0.2"
 color-backtrace = "0.5.1"
 console-subscriber = "0.1.2"
 anyhow = "1.0"

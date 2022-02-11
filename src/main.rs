@@ -10,7 +10,8 @@ use tokio::{
     task::JoinHandle,
     time::sleep,
 };
-use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, Layer};
+use tracing::metadata::LevelFilter;
+use tracing_subscriber::{filter::Targets, layer::SubscriberExt, util::SubscriberInitExt, Layer};
 
 use gimbal::client::GimbalClient;
 use gs::GroundServerClient;
@@ -185,23 +186,34 @@ async fn main() -> anyhow::Result<()> {
             if let Some((target, level)) = directive.split_once('=') {
                 targets = targets.with_target(
                     target,
-                    level
-                        .parse::<tracing::metadata::LevelFilter>()
-                        .context("invalid log level")?,
+                    level.parse::<LevelFilter>().context("invalid log level")?,
                 );
             } else {
                 targets = targets.with_default(
                     directive
-                        .parse::<tracing::metadata::LevelFilter>()
+                        .parse::<LevelFilter>()
                         .context("invalid log level")?,
                 );
             }
         }
     }
 
+    let (writer, _guard) =
+        tracing_appender::non_blocking(tracing_appender::rolling::hourly("logs", "plane-system"));
+
     tracing_subscriber::registry()
         .with(console_subscriber::spawn())
+        // writer that outputs to console
         .with(tracing_subscriber::fmt::layer().with_filter(targets))
+        // writer that outputs to files
+        .with(
+            tracing_subscriber::fmt::layer()
+                .with_ansi(false)
+                .with_writer(writer)
+                .with_filter(
+                    Targets::new().with_targets(vec![("plane_system", LevelFilter::DEBUG)]),
+                ),
+        )
         .init();
 
     let main_args: cli::args::MainArgs = cli::args::MainArgs::from_args();
