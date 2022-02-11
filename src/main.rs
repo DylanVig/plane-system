@@ -40,7 +40,6 @@ mod state;
 mod telemetry;
 mod util;
 
-#[derive(Debug)]
 pub struct Channels {
     /// Channel for broadcasting a signal when the system should terminate.
     interrupt: broadcast::Sender<()>,
@@ -72,6 +71,12 @@ pub struct Channels {
     save_cmd: flume::Sender<camera::aux::save::SaveCommand>,
 
     image_event: broadcast::Sender<image::ImageClientEvent>,
+}
+
+impl std::fmt::Debug for Channels {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Channels").finish()
+    }
 }
 
 #[derive(Debug)]
@@ -131,7 +136,8 @@ impl TaskBag {
     ) {
         info!("spawning task \"{}\"", name);
         self.names.push(name.to_owned());
-        self.tasks.push(spawn(task));
+        self.tasks
+            .push(tokio::task::Builder::new().name(name).spawn(task));
     }
 
     pub async fn wait(&mut self) -> anyhow::Result<()> {
