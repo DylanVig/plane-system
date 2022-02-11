@@ -23,9 +23,9 @@ pub async fn run(channels: Arc<Channels>, config: ImageConfig) -> anyhow::Result
 
     futures::pin_mut!(interrupt_fut);
 
-    tokio::fs::create_dir_all(&config.save_path)
-        .await
-        .context("could not create image save directory")?;
+    if let Err(err) = tokio::fs::create_dir_all(&config.save_path).await {
+        warn!("could not create image save directory: {}", err);
+    }
 
     loop {
         select! {
