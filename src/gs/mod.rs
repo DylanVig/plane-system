@@ -125,7 +125,29 @@ impl GroundServerClient {
                 }
             })
         } else {
-            serde_json::Value::Null
+            if cfg!(debug_assertions) {
+                warn!("no telemetry information available, uploading filler telemetry info");
+
+                json!({
+                    "timestamp": timestamp,
+                    "imgMode": "fixed",
+                    "fov": 60.0,
+                    "telemetry": {
+                        "altitude": 0.0,
+                        "planeYaw": 0.0,
+                        "gps": {
+                            "latitude": 0.0,
+                            "longitude": 0.0,
+                        },
+                        "gimOrt": {
+                            "pitch": 0.0,
+                            "roll": 0.0,
+                        }
+                    }
+                })
+            } else {
+                bail!("no telemetry information available, cannot upload to ground server");
+            }
         };
 
         let form = reqwest::multipart::Form::new()
@@ -137,7 +159,10 @@ impl GroundServerClient {
                     .mime_str(mime_type)?,
             );
 
-        self.http.post(endpoint).multipart(form).send().await?;
+        let res = self.http.post(endpoint).multipart(form).send().await?;
+
+        res.error_for_status()
+            .context("uploading image and telemetry to ground server failed")?;
 
         debug!("uploaded image and telemetry to ground server");
 
