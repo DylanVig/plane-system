@@ -23,6 +23,10 @@ pub async fn run(channels: Arc<Channels>, config: ImageConfig) -> anyhow::Result
 
     futures::pin_mut!(interrupt_fut);
 
+    tokio::fs::create_dir_all(&config.save_path)
+        .await
+        .context("could not create image save directory")?;
+
     loop {
         select! {
             camera_evt = camera_recv.recv().fuse() => {
