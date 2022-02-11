@@ -10,6 +10,7 @@ use tokio::{
     task::JoinHandle,
     time::sleep,
 };
+use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, Layer};
 
 use gimbal::client::GimbalClient;
 use gs::GroundServerClient;
@@ -19,7 +20,7 @@ use state::TelemetryInfo;
 use telemetry::TelemetryStream;
 
 #[macro_use]
-extern crate log;
+extern crate tracing;
 #[macro_use]
 extern crate anyhow;
 #[macro_use]
@@ -169,8 +170,33 @@ impl TaskBag {
 
 #[tokio::main(flavor = "multi_thread")]
 async fn main() -> anyhow::Result<()> {
-    pretty_env_logger::init_timed();
     color_backtrace::install();
+
+    let mut targets = tracing_subscriber::filter::Targets::new();
+
+    if let Ok(directives) = std::env::var("RUST_LOG") {
+        for directive in directives.split(',') {
+            if let Some((target, level)) = directive.split_once('=') {
+                targets = targets.with_target(
+                    target,
+                    level
+                        .parse::<tracing::metadata::LevelFilter>()
+                        .context("invalid log level")?,
+                );
+            } else {
+                targets = targets.with_default(
+                    directive
+                        .parse::<tracing::metadata::LevelFilter>()
+                        .context("invalid log level")?,
+                );
+            }
+        }
+    }
+
+    tracing_subscriber::registry()
+        .with(console_subscriber::spawn())
+        .with(tracing_subscriber::fmt::layer().with_filter(targets))
+        .init();
 
     let main_args: cli::args::MainArgs = cli::args::MainArgs::from_args();
 
