@@ -4,6 +4,7 @@ use futures::Future;
 use num_traits::FromPrimitive;
 use std::{collections::HashMap, sync::Arc, time::Duration};
 use tokio::sync::{broadcast, oneshot, OwnedSemaphorePermit, Semaphore};
+use tracing::Level;
 
 use crate::Channels;
 
@@ -207,6 +208,9 @@ fn run_interface(
     req_rx: flume::Receiver<CameraInterfaceRequest>,
     mut interrupt_rx: broadcast::Receiver<()>,
 ) -> anyhow::Result<()> {
+    let span = tracing::span!(Level::TRACE, "run_interface");
+    let _enter = span.enter();
+
     let rt = tokio::runtime::Handle::current();
 
     while let Either::Left((Ok(req), _)) = rt.block_on(futures::future::select(
@@ -323,7 +327,7 @@ fn run_events(
     Ok(())
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 struct CameraInterfaceRequestBuffer {
     chan: flume::Sender<CameraInterfaceRequest>,
     semaphore: Arc<Semaphore>,
@@ -488,6 +492,7 @@ impl CameraInterfaceRequestBufferGuard {
     }
 }
 
+#[tracing::instrument]
 async fn run_commands(
     interface: CameraInterfaceRequestBuffer,
     mut ptp_rx: broadcast::Receiver<ptp::PtpEvent>,
@@ -516,6 +521,7 @@ async fn run_commands(
     }
 }
 
+#[tracing::instrument]
 async fn run_download(
     interface: CameraInterfaceRequestBuffer,
     mut ptp_rx: broadcast::Receiver<ptp::PtpEvent>,

@@ -6,12 +6,15 @@ edition = "2018"
 
 [dependencies]
 # logging + error handling
-pretty_env_logger = "0.4"
-log = "0.4.11"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "registry"] }
+tracing-appender = "0.2"
+color-backtrace = "0.5.1"
+console-subscriber = "0.1.2"
 anyhow = "1.0"
 
 # async 
-tokio = { version = "1.11.0", features = ["full"] }
+tokio = { version = "1.16", features = ["full"] }
 tokio-stream = { version = "0.1", features = ["sync"] }
 futures = "0.3"
 flume = "0.10"
@@ -58,7 +61,6 @@ rusb = "0.9"
 gst = { version = "0.17", package = "gstreamer", optional = true }
 tokio-serial = { git = "https://github.com/CUAir/tokio-serial.git", default-features = false }
 tokio-util = { version = "0.6.2", features = ["codec"] }
-color-backtrace = "0.5.1"
 
 [features]
 default = ["udev", "gstreamer"]

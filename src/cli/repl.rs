@@ -5,6 +5,7 @@ use colored::Colorize;
 use humansize::FileSize;
 use prettytable::{cell, row, Table};
 use structopt::StructOpt;
+use tracing::Level;
 
 use crate::{
     camera::main::{CameraCommandRequest, CameraCommandResponse, CameraSaveMode},
@@ -35,17 +36,17 @@ enum AuxCameraRequest {
     Save(SaveRequest),
 }
 
+#[tracing::instrument]
 pub async fn run(channels: Arc<Channels>) -> anyhow::Result<()> {
     let mut interrupt_recv = channels.interrupt.subscribe();
 
-    let repl_fut = tokio::task::spawn_blocking(move || {
-        let rt_handle = tokio::runtime::Handle::current();
+    let repl_fut = async move {
         let mut rl_editor = rustyline::Editor::<()>::new();
 
         loop {
-            let current_prompt = "\n\nplane-system> ".bright_white();
-
-            let request = match rl_editor.readline(&current_prompt) {
+            let request = match tokio::task::block_in_place(|| {
+                rl_editor.readline(&"\n\nplane-system> ".bright_white())
+            }) {
                 Ok(line) => {
                     let request: Result<ReplRequest, _> =
                         StructOpt::from_iter_safe(line.split_ascii_whitespace());
@@ -67,6 +68,9 @@ pub async fn run(channels: Arc<Channels>) -> anyhow::Result<()> {
                 },
             };
 
+            let span = span!(Level::TRACE, "command parsed", ?request);
+            let _enter = span.enter();
+
             match request {
                 ReplRequest::MainCamera(request) => {
                     let (cmd, chan) = Command::new(request);
@@ -76,7 +80,7 @@ pub async fn run(channels: Arc<Channels>) -> anyhow::Result<()> {
                     }
 
                     trace!("command sent, awaiting response");
-                    let result = rt_handle.block_on(chan)?;
+                    let result = chan.await?;
                     trace!("command completed, received response");
 
                     match result {
@@ -90,7 +94,7 @@ pub async fn run(channels: Arc<Channels>) -> anyhow::Result<()> {
                         error!("gimbal client not available: {}", err);
                         continue;
                     }
-                    let _ = rt_handle.block_on(chan)?;
+                    let _ = chan.await?;
                 }
                 ReplRequest::GroundServer(request) => match request {},
                 ReplRequest::Exit => {
@@ -105,7 +109,7 @@ pub async fn run(channels: Arc<Channels>) -> anyhow::Result<()> {
                             error!("stream client not available: {}", err);
                             continue;
                         }
-                        let _ = rt_handle.block_on(chan)?;
+                        let _ = chan.await?;
                     }
                     AuxCameraRequest::Save(request) => {
                         let (cmd, chan) = Command::new(request);
@@ -113,7 +117,7 @@ pub async fn run(channels: Arc<Channels>) -> anyhow::Result<()> {
                             error!("save client not available: {}", err);
                             continue;
                         }
-                        let _ = rt_handle.block_on(chan)?;
+                        let _ = chan.await?;
                     }
                 },
                 _ => {
@@ -121,7 +125,7 @@ pub async fn run(channels: Arc<Channels>) -> anyhow::Result<()> {
                 }
             };
         }
-    });
+    };
 
     let interrupt_fut = interrupt_recv.recv();
 
@@ -129,8 +133,8 @@ pub async fn run(channels: Arc<Channels>) -> anyhow::Result<()> {
     futures::pin_mut!(interrupt_fut);
 
     match futures::future::select(interrupt_fut, repl_fut).await {
-        futures::future::Either::Left((_, repl_fut)) => repl_fut.abort(),
-        futures::future::Either::Right((repl_result, _)) => repl_result??,
+        futures::future::Either::Left((_, repl_fut)) => {}
+        futures::future::Either::Right((repl_result, _)) => repl_result?,
     }
 
     Ok(())

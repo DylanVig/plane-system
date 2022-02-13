@@ -10,6 +10,8 @@ use tokio::{
     task::JoinHandle,
     time::sleep,
 };
+use tracing::metadata::LevelFilter;
+use tracing_subscriber::{filter::Targets, layer::SubscriberExt, util::SubscriberInitExt, Layer};
 
 use gimbal::client::GimbalClient;
 use gs::GroundServerClient;
@@ -19,7 +21,7 @@ use state::TelemetryInfo;
 use telemetry::TelemetryStream;
 
 #[macro_use]
-extern crate log;
+extern crate tracing;
 #[macro_use]
 extern crate anyhow;
 #[macro_use]
@@ -39,7 +41,6 @@ mod state;
 mod telemetry;
 mod util;
 
-#[derive(Debug)]
 pub struct Channels {
     /// Channel for broadcasting a signal when the system should terminate.
     interrupt: broadcast::Sender<()>,
@@ -71,6 +72,12 @@ pub struct Channels {
     save_cmd: flume::Sender<camera::aux::save::SaveCommand>,
 
     image_event: broadcast::Sender<image::ImageClientEvent>,
+}
+
+impl std::fmt::Debug for Channels {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Channels").finish()
+    }
 }
 
 #[derive(Debug)]
@@ -130,7 +137,8 @@ impl TaskBag {
     ) {
         info!("spawning task \"{}\"", name);
         self.names.push(name.to_owned());
-        self.tasks.push(spawn(task));
+        self.tasks
+            .push(tokio::task::Builder::new().name(name).spawn(task));
     }
 
     pub async fn wait(&mut self) -> anyhow::Result<()> {
@@ -169,8 +177,44 @@ impl TaskBag {
 
 #[tokio::main(flavor = "multi_thread")]
 async fn main() -> anyhow::Result<()> {
-    pretty_env_logger::init_timed();
     color_backtrace::install();
+
+    let mut targets = tracing_subscriber::filter::Targets::new();
+
+    if let Ok(directives) = std::env::var("RUST_LOG") {
+        for directive in directives.split(',') {
+            if let Some((target, level)) = directive.split_once('=') {
+                targets = targets.with_target(
+                    target,
+                    level.parse::<LevelFilter>().context("invalid log level")?,
+                );
+            } else {
+                targets = targets.with_default(
+                    directive
+                        .parse::<LevelFilter>()
+                        .context("invalid log level")?,
+                );
+            }
+        }
+    }
+
+    let (writer, _guard) =
+        tracing_appender::non_blocking(tracing_appender::rolling::hourly("logs", "plane-system"));
+
+    tracing_subscriber::registry()
+        .with(console_subscriber::spawn())
+        // writer that outputs to console
+        .with(tracing_subscriber::fmt::layer().with_filter(targets))
+        // writer that outputs to files
+        .with(
+            tracing_subscriber::fmt::layer()
+                .with_ansi(false)
+                .with_writer(writer)
+                .with_filter(
+                    Targets::new().with_targets(vec![("plane_system", LevelFilter::DEBUG)]),
+                ),
+        )
+        .init();
 
     let main_args: cli::args::MainArgs = cli::args::MainArgs::from_args();
 
