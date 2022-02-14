@@ -1,14 +1,14 @@
-use clap::AppSettings;
+use clap::{AppSettings, Subcommand};
 use serde::Serialize;
-use structopt::StructOpt;
+use clap::StructOpt;
 
 use crate::Command;
 
 pub type SaveCommand = Command<SaveRequest, SaveResponse>;
 
-#[derive(StructOpt, Debug, Clone)]
-#[structopt(setting(AppSettings::NoBinaryName))]
-#[structopt(rename_all = "kebab-case")]
+#[derive(Subcommand, Debug, Clone)]
+#[clap(setting(AppSettings::NoBinaryName))]
+#[clap(rename_all = "kebab-case")]
 pub enum SaveRequest {
     Start {},
     End {},

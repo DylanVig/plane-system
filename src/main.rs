@@ -3,7 +3,7 @@ use std::{process::exit, sync::Arc, time::Duration};
 use anyhow::Context;
 use ctrlc;
 use futures::{channel::oneshot, Future};
-use structopt::StructOpt;
+use clap::Parser;
 use tokio::{
     spawn,
     sync::{broadcast, watch},

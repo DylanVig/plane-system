@@ -2,9 +2,9 @@ use std::sync::Arc;
 
 use colored::Colorize;
 
+use clap::{Parser, Subcommand};
 use humansize::FileSize;
 use prettytable::{cell, row, Table};
-use structopt::StructOpt;
 use tracing::Level;
 
 use crate::{
@@ -17,22 +17,35 @@ use crate::{
 #[cfg(feature = "gstreamer")]
 use crate::camera::aux::{save::SaveRequest, stream::StreamRequest};
 
-#[derive(StructOpt, Debug)]
-#[structopt(setting(clap::AppSettings::NoBinaryName))]
-#[structopt(rename_all = "kebab-case")]
-enum ReplRequest {
+#[derive(Parser, Debug)]
+#[clap(setting(clap::AppSettings::NoBinaryName))]
+struct Cli {
+    #[clap(subcommand)]
+    command: Commands,
+}
+
+#[derive(Subcommand, Debug)]
+#[clap(rename_all = "kebab-case")]
+enum Commands {
+    #[clap(subcommand)]
     MainCamera(CameraCommandRequest),
+    #[clap(subcommand)]
     Gimbal(GimbalRequest),
+    #[clap(subcommand)]
     GroundServer(GroundServerRequest),
-    #[cfg(feature = "gstreamer")]
-    AuxCamera(AuxCameraRequest),
     Exit,
+
+    #[cfg(feature = "gstreamer")]
+    #[clap(subcommand)]
+    AuxCamera(AuxCameraRequest),
 }
 
 #[cfg(feature = "gstreamer")]
-#[derive(StructOpt, Debug)]
+#[derive(Subcommand, Debug)]
 enum AuxCameraRequest {
+    #[clap(subcommand)]
     Stream(StreamRequest),
+    #[clap(subcommand)]
     Save(SaveRequest),
 }
 
@@ -48,22 +61,22 @@ pub async fn run(channels: Arc<Channels>) -> anyhow::Result<()> {
                 rl_editor.readline(&"\n\nplane-system> ".bright_white())
             }) {
                 Ok(line) => {
-                    let request: Result<ReplRequest, _> =
-                        StructOpt::from_iter_safe(line.split_ascii_whitespace());
+                    let request: Result<Cli, _> =
+                        Parser::try_parse_from(line.split_ascii_whitespace());
 
                     match request {
                         Ok(request) => {
                             rl_editor.add_history_entry(line);
-                            request
+                            request.command
                         }
                         Err(err) => {
-                            println!("{}", err.message);
+                            println!("{}", err);
                             continue;
                         }
                     }
                 }
                 Err(err) => match err {
-                    rustyline::error::ReadlineError::Interrupted => ReplRequest::Exit,
+                    rustyline::error::ReadlineError::Interrupted => Commands::Exit,
                     err => break Err::<_, anyhow::Error>(err.into()),
                 },
             };
@@ -72,7 +85,7 @@ pub async fn run(channels: Arc<Channels>) -> anyhow::Result<()> {
             let _enter = span.enter();
 
             match request {
-                ReplRequest::MainCamera(request) => {
+                Commands::MainCamera(request) => {
                     let (cmd, chan) = Command::new(request);
                     if let Err(err) = channels.camera_cmd.clone().send(cmd) {
                         error!("camera client not available: {}", err);
@@ -88,7 +101,7 @@ pub async fn run(channels: Arc<Channels>) -> anyhow::Result<()> {
                         Err(err) => println!("{}", format!("error: {}", err).red()),
                     };
                 }
-                ReplRequest::Gimbal(request) => {
+                Commands::Gimbal(request) => {
                     let (cmd, chan) = Command::new(request);
                     if let Err(err) = channels.gimbal_cmd.clone().send(cmd) {
                         error!("gimbal client not available: {}", err);
@@ -96,13 +109,13 @@ pub async fn run(channels: Arc<Channels>) -> anyhow::Result<()> {
                     }
                     let _ = chan.await?;
                 }
-                ReplRequest::GroundServer(request) => match request {},
-                ReplRequest::Exit => {
+                Commands::GroundServer(request) => match request {},
+                Commands::Exit => {
                     let _ = channels.interrupt.send(());
                     break Ok(());
                 }
                 #[cfg(feature = "gstreamer")]
-                ReplRequest::AuxCamera(request) => match request {
+                Commands::AuxCamera(request) => match request {
                     AuxCameraRequest::Stream(request) => {
                         let (cmd, chan) = Command::new(request);
                         if let Err(err) = channels.stream_cmd.clone().send(cmd) {
