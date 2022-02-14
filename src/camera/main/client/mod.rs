@@ -512,6 +512,7 @@ async fn run_commands(
                 cmd_file(interface.clone(), req, client_tx.clone()).await
             }
             CameraCommandRequest::Reconnect => todo!(),
+            CameraCommandRequest::Status => cmd_status(interface.clone()).await,
             CameraCommandRequest::Get(req) => cmd_get(interface.clone(), req).await,
             CameraCommandRequest::Set(req) => cmd_set(interface.clone(), req).await,
             CameraCommandRequest::Record(_) => todo!(),

@@ -5,7 +5,7 @@ use serde::Serialize;
 
 use crate::Command;
 
-use super::{interface::CameraOperatingMode, state::*};
+use super::{interface::OperatingMode, state::*};
 
 pub type CameraCommand = Command<CameraCommandRequest, CameraCommandResponse>;
 
@@ -24,6 +24,8 @@ pub enum CameraCommandRequest {
 
     /// disconnect and reconnect to the camera
     Reconnect,
+
+    Status,
 
     /// get a property of the camera's state
     #[clap(subcommand)]
@@ -59,16 +61,16 @@ pub enum CameraCommandGetRequest {
 #[derive(Subcommand, Debug, Clone)]
 pub enum CameraCommandSetRequest {
     ExposureMode {
-        mode: CameraExposureMode,
+        mode: ExposureMode,
     },
     OperatingMode {
-        mode: CameraOperatingMode,
+        mode: OperatingMode,
     },
     SaveMode {
-        mode: CameraSaveMode,
+        mode: SaveMedia,
     },
     FocusMode {
-        mode: CameraFocusMode,
+        mode: FocusMode,
     },
     ZoomLevel {
         level: u16,
@@ -105,46 +107,46 @@ pub enum CameraCommandFileRequest {
     },
 }
 
-impl FromStr for CameraExposureMode {
+impl FromStr for ExposureMode {
     type Err = anyhow::Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
-            "m" | "manual" | "manual-exposure" => Ok(CameraExposureMode::ManualExposure),
-            "p" | "program-auto" => Ok(CameraExposureMode::ProgramAuto),
-            "a" | "aperture" | "apeture-priority" => Ok(CameraExposureMode::AperturePriority),
-            "s" | "shutter" | "shutter-priority" => Ok(CameraExposureMode::ShutterPriority),
-            "i" | "intelligent-auto" => Ok(CameraExposureMode::IntelligentAuto),
-            "superior-auto" => Ok(CameraExposureMode::SuperiorAuto),
-            "movie-program-auto" => Ok(CameraExposureMode::MovieProgramAuto),
-            "movie-aperture-priority" => Ok(CameraExposureMode::MovieAperturePriority),
-            "movie-shutter-priority" => Ok(CameraExposureMode::MovieShutterPriority),
-            "movie-manual-exposure" => Ok(CameraExposureMode::MovieManualExposure),
-            "movie-intelligent-auto" => Ok(CameraExposureMode::MovieIntelligentAuto),
+            "m" | "manual" | "manual-exposure" => Ok(ExposureMode::ManualExposure),
+            "p" | "program-auto" => Ok(ExposureMode::ProgramAuto),
+            "a" | "aperture" | "apeture-priority" => Ok(ExposureMode::AperturePriority),
+            "s" | "shutter" | "shutter-priority" => Ok(ExposureMode::ShutterPriority),
+            "i" | "intelligent-auto" => Ok(ExposureMode::IntelligentAuto),
+            "superior-auto" => Ok(ExposureMode::SuperiorAuto),
+            "movie-program-auto" => Ok(ExposureMode::MovieProgramAuto),
+            "movie-aperture-priority" => Ok(ExposureMode::MovieAperturePriority),
+            "movie-shutter-priority" => Ok(ExposureMode::MovieShutterPriority),
+            "movie-manual-exposure" => Ok(ExposureMode::MovieManualExposure),
+            "movie-intelligent-auto" => Ok(ExposureMode::MovieIntelligentAuto),
             _ => bail!("invalid camera exposure mode"),
         }
     }
 }
 
-impl FromStr for CameraSaveMode {
+impl FromStr for SaveMedia {
     type Err = anyhow::Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
-            "host" | "host-device" => Ok(CameraSaveMode::HostDevice),
-            "cam" | "camera" => Ok(CameraSaveMode::MemoryCard1),
+            "host" | "host-device" => Ok(SaveMedia::HostDevice),
+            "cam" | "camera" => Ok(SaveMedia::MemoryCard1),
             _ => bail!("invalid camera save mode"),
         }
     }
 }
 
-impl FromStr for CameraZoomMode {
+impl FromStr for ZoomMode {
     type Err = anyhow::Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
-            "o" | "optical" => Ok(CameraZoomMode::Optical),
-            "od" | "optical-digital" => Ok(CameraZoomMode::OpticalDigital),
+            "o" | "optical" => Ok(ZoomMode::Optical),
+            "od" | "optical-digital" => Ok(ZoomMode::OpticalDigital),
             _ => bail!("invalid camera zoom mode"),
         }
     }
@@ -162,7 +164,7 @@ pub enum CameraCommandRecordRequest {
     Stop,
 }
 
-impl FromStr for CameraOperatingMode {
+impl FromStr for OperatingMode {
     type Err = anyhow::Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
@@ -176,7 +178,7 @@ impl FromStr for CameraOperatingMode {
     }
 }
 
-impl FromStr for CameraFocusMode {
+impl FromStr for FocusMode {
     type Err = anyhow::Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
@@ -206,8 +208,8 @@ pub enum CameraCommandResponse {
     },
     ZoomLevel(u8),
     CcInterval(f32),
-    SaveMode(CameraSaveMode),
-    OperatingMode(CameraOperatingMode),
-    ExposureMode(CameraExposureMode),
-    FocusMode(CameraFocusMode),
+    SaveMode(SaveMedia),
+    OperatingMode(OperatingMode),
+    ExposureMode(ExposureMode),
+    FocusMode(FocusMode),
 }

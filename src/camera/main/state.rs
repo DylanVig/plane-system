@@ -1,5 +1,6 @@
-use std::sync::Arc;
+use std::{fmt::Display, sync::Arc};
 
+use num_traits::{FromPrimitive, ToPrimitive};
 use serde::Serialize;
 
 #[derive(Debug, Clone)]
@@ -9,12 +10,12 @@ pub enum CameraClientEvent {
         image_name: String,
         image_data: Arc<Vec<u8>>,
     },
-    Error(CameraErrorMode),
+    Error(ErrorMode),
 }
 
 #[repr(u16)]
 #[derive(Debug, Copy, Clone, FromPrimitive, ToPrimitive, Serialize, Eq, PartialEq)]
-pub enum CameraExposureMode {
+pub enum ExposureMode {
     ManualExposure = 0x0001,
     ProgramAuto,
     AperturePriority,
@@ -30,22 +31,32 @@ pub enum CameraExposureMode {
 
 #[repr(u16)]
 #[derive(Debug, Copy, Clone, FromPrimitive, ToPrimitive, Serialize, Eq, PartialEq)]
-pub enum CameraFocusMode {
+pub enum FocusMode {
     Manual = 0x0001,
     AutoFocusStill = 0x0002,
     AutoFocusContinuous = 0x8004,
 }
 
+impl Display for FocusMode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            FocusMode::Manual => write!(f, "Manual"),
+            FocusMode::AutoFocusStill => write!(f, "Auto (Still)"),
+            FocusMode::AutoFocusContinuous => write!(f, "Auto (Continuous)"),
+        }
+    }
+}
+
 #[repr(u16)]
 #[derive(Debug, Copy, Clone, FromPrimitive, ToPrimitive, Serialize, Eq, PartialEq)]
-pub enum CameraZoomMode {
+pub enum ZoomMode {
     Optical,
     OpticalDigital,
 }
 
 #[repr(u8)]
 #[derive(Debug, Copy, Clone, FromPrimitive, ToPrimitive, Serialize, Eq, PartialEq)]
-pub enum CameraCompressionMode {
+pub enum CompressionMode {
     Std = 0x02,
     Fine = 0x03,
     RawJpeg = 0x13,
@@ -53,14 +64,163 @@ pub enum CameraCompressionMode {
 
 #[repr(u16)]
 #[derive(Debug, Copy, Clone, FromPrimitive, ToPrimitive, Serialize, Eq, PartialEq)]
-pub enum CameraSaveMode {
+pub enum SaveMedia {
     HostDevice = 0x0001,
     MemoryCard1 = 0x0002,
 }
 
+#[derive(Debug, Copy, Clone, Serialize, Eq, PartialEq)]
+pub enum ShutterSpeed {
+    /// Bulb
+    Bulb,
+    Fraction {
+        numerator: u16,
+        denominator: u16,
+    },
+}
+
+impl FromPrimitive for ShutterSpeed {
+    fn from_i64(n: i64) -> Option<Self> {
+        None
+    }
+
+    fn from_u64(n: u64) -> Option<Self> {
+        if n == 0xFFFF_FFFE {
+            Some(ShutterSpeed::Bulb)
+        } else {
+            Some(ShutterSpeed::Fraction {
+                numerator: ((n >> 16) & 0xFFFF) as u16,
+                denominator: (n & 0xFFFF) as u16,
+            })
+        }
+    }
+}
+
+impl ToPrimitive for ShutterSpeed {
+    fn to_i64(&self) -> Option<i64> {
+        None
+    }
+
+    fn to_u64(&self) -> Option<u64> {
+        match *self {
+            ShutterSpeed::Bulb => Some(0xFFFF_FFFE),
+            ShutterSpeed::Fraction {
+                numerator,
+                denominator,
+            } => Some((numerator as u64) << 16 | (denominator as u64)),
+        }
+    }
+}
+
+impl Display for ShutterSpeed {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match *self {
+            Self::Bulb => write!(f, "BULB"),
+            Self::Fraction {
+                numerator,
+                denominator,
+            } => {
+                if numerator > denominator {
+                    if numerator % denominator == 0 {
+                        write!(f, "{}\"", numerator / denominator)
+                    } else {
+                        write!(f, "{:.1}\"", numerator as f32 / denominator as f32)
+                    }
+                } else {
+                    write!(f, "{}/{}", numerator, denominator)
+                }
+            }
+        }
+    }
+}
+
+#[derive(Debug, Copy, Clone, Serialize, Eq, PartialEq)]
+pub enum Iso {
+    Auto,
+    Value(u16),
+}
+
+impl FromPrimitive for Iso {
+    fn from_i64(n: i64) -> Option<Self> {
+        None
+    }
+
+    fn from_u64(n: u64) -> Option<Self> {
+        if n == 0x00FF_FFFF {
+            Some(Self::Auto)
+        } else {
+            Some(Self::Value((n & 0xFFFF) as u16))
+        }
+    }
+}
+
+impl ToPrimitive for Iso {
+    fn to_i64(&self) -> Option<i64> {
+        None
+    }
+
+    fn to_u64(&self) -> Option<u64> {
+        match self {
+            Self::Auto => Some(0x00FF_FFFF),
+            Self::Value(n) => Some(*n as u64),
+        }
+    }
+}
+
+impl Display for Iso {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Auto => write!(f, "ISO Auto"),
+            Self::Value(v) => write!(f, "ISO {}", v),
+        }
+    }
+}
+
+#[derive(Debug, Copy, Clone, Serialize, Eq, PartialEq)]
+pub enum Aperture {
+    Undefined,
+    Value(u16),
+}
+
+impl FromPrimitive for Aperture {
+    fn from_i64(n: i64) -> Option<Self> {
+        None
+    }
+
+    fn from_u64(n: u64) -> Option<Self> {
+        if n == 0xFFFE {
+            Some(Self::Undefined)
+        } else {
+            Some(Self::Value((n & 0xFFFF) as u16))
+        }
+    }
+}
+
+impl ToPrimitive for Aperture {
+    fn to_i64(&self) -> Option<i64> {
+        None
+    }
+
+    fn to_u64(&self) -> Option<u64> {
+        match self {
+            Self::Undefined => Some(0xFFFE),
+            Self::Value(n) => Some(*n as u64),
+        }
+    }
+}
+
+impl Display for Aperture {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match *self {
+            Self::Undefined => write!(f, "F??.?"),
+            Self::Value(v) => write!(f, "F{:.1}", v as f32 / 100.),
+        }
+    }
+}
+
 #[repr(u16)]
 #[derive(Debug, Copy, Clone, FromPrimitive, ToPrimitive, Serialize, Eq, PartialEq)]
-pub enum CameraErrorMode {
+pub enum ErrorMode {
     /// Hardware failure, etc
     Fatal = 0x8000,
 

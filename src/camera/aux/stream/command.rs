@@ -1,4 +1,3 @@
-use clap::StructOpt;
 use clap::{AppSettings, Subcommand};
 use serde::Serialize;
 

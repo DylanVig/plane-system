@@ -8,7 +8,7 @@ use prettytable::{cell, row, Table};
 use tracing::Level;
 
 use crate::{
-    camera::main::{CameraCommandRequest, CameraCommandResponse, CameraSaveMode},
+    camera::main::{CameraCommandRequest, CameraCommandResponse, SaveMedia},
     gimbal::GimbalRequest,
     gs::GroundServerRequest,
     Channels, Command,
@@ -28,15 +28,21 @@ struct Cli {
 #[clap(rename_all = "kebab-case")]
 enum Commands {
     #[clap(subcommand)]
+    #[clap(name = "camera")]
     MainCamera(CameraCommandRequest),
+
     #[clap(subcommand)]
     Gimbal(GimbalRequest),
+
     #[clap(subcommand)]
+    #[clap(name = "gs")]
     GroundServer(GroundServerRequest),
+
     Exit,
 
     #[cfg(feature = "gstreamer")]
     #[clap(subcommand)]
+    #[clap(name = "aux-camera")]
     AuxCamera(AuxCameraRequest),
 }
 
@@ -133,9 +139,6 @@ pub async fn run(channels: Arc<Channels>) -> anyhow::Result<()> {
                         let _ = chan.await?;
                     }
                 },
-                _ => {
-                    error!("this command is not available");
-                }
             };
         }
     };
@@ -357,10 +360,10 @@ fn format_camera_response(response: CameraCommandResponse) -> () {
             println!("zoom level: {}", zoom_level);
         }
         CameraCommandResponse::SaveMode(save_mode) => match save_mode {
-            CameraSaveMode::HostDevice => {
+            SaveMedia::HostDevice => {
                 println!("saving to host device");
             }
-            CameraSaveMode::MemoryCard1 => {
+            SaveMedia::MemoryCard1 => {
                 println!("saving to camera memory");
             }
         },

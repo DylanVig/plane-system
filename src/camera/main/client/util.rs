@@ -36,7 +36,7 @@ pub(super) async fn ensure(
 
 pub(super) async fn ensure_mode(
     interface: &CameraInterfaceRequestBuffer,
-    mode: CameraOperatingMode,
+    mode: OperatingMode,
 ) -> anyhow::Result<()> {
     ensure(
         interface,

@@ -8,6 +8,66 @@ use crate::util::retry_async;
 use super::util::*;
 use super::*;
 
+macro_rules! get_camera_property {
+    ($interface: expr, $prop: ident, $ty: ident) => {
+        match $interface.get_info(CameraPropertyCode::$prop).await {
+            Some(ptp::PtpPropInfo {
+                current: ptp::PtpData::$ty(v),
+                ..
+            }) => Ok(v),
+            _ => Err(anyhow::anyhow!("could not get camera's date")),
+        }
+    };
+}
+
+pub(super) async fn cmd_status(
+    interface: CameraInterfaceRequestBuffer,
+) -> anyhow::Result<CameraCommandResponse> {
+    let (date, exposure, focus, save_media, shutter_speed, iso, aperture, compression) = interface
+        .enter(|i| async move {
+            let date = get_camera_property!(i, DateTime, STR)?;
+            let exposure = ExposureMode::from_u16(get_camera_property!(i, ExposureMode, UINT16)?)
+                .context("invalid exposure mode")?;
+            let focus = FocusMode::from_u16(get_camera_property!(i, FocusMode, UINT16)?)
+                .context("invalid focus mode")?;
+            let save_media = SaveMedia::from_u16(get_camera_property!(i, SaveMedia, UINT16)?)
+                .context("invalid save media")?;
+            let shutter_speed =
+                ShutterSpeed::from_u32(get_camera_property!(i, ShutterSpeed, UINT32)?)
+                    .context("invalid shutter speed")?;
+            let iso =
+                Iso::from_u32(get_camera_property!(i, ISO, UINT32)?).context("invalid iso")?;
+            let aperture = Aperture::from_u32(get_camera_property!(i, FNumber, UINT32)?)
+                .context("invalid aperture width")?;
+            let compression = CompressionMode::from_u8(get_camera_property!(i, ISO, UINT8)?)
+                .context("invalid compression mode")?;
+
+            Ok::<_, anyhow::Error>((
+                date,
+                exposure,
+                focus,
+                save_media,
+                shutter_speed,
+                iso,
+                aperture,
+                compression,
+            ))
+        })
+        .await
+        .context("could not get status of camera")?;
+
+    println!("date: {date}");
+    println!("save media: {save_media:?}");
+    println!("compression mode: {compression:?}");
+    println!("exposure mode: {exposure:?}");
+    println!("focus mode: {focus}");
+    println!("aperture width: {aperture}");
+    println!("iso: {iso}");
+    println!("shutter speed: {shutter_speed}");
+
+    Ok(CameraCommandResponse::Unit)
+}
+
 pub(super) async fn cmd_get(
     interface: CameraInterfaceRequestBuffer,
     req: CameraCommandGetRequest,
@@ -126,7 +186,7 @@ pub(super) async fn cmd_capture(
     interface: CameraInterfaceRequestBuffer,
     ptp_rx: &mut broadcast::Receiver<ptp::PtpEvent>,
 ) -> anyhow::Result<CameraCommandResponse> {
-    ensure_mode(&interface, CameraOperatingMode::StillRec).await?;
+    ensure_mode(&interface, OperatingMode::StillRec).await?;
 
     interface
         .enter(|i| async move {
@@ -228,7 +288,7 @@ pub(super) async fn cmd_storage(
 ) -> anyhow::Result<CameraCommandResponse> {
     match req {
         CameraCommandStorageRequest::List => {
-            ensure_mode(&interface, CameraOperatingMode::ContentsTransfer).await?;
+            ensure_mode(&interface, OperatingMode::ContentsTransfer).await?;
 
             debug!("getting storage ids");
 
@@ -270,7 +330,7 @@ pub(super) async fn cmd_file(
 ) -> anyhow::Result<CameraCommandResponse> {
     match req {
         CameraCommandFileRequest::List { parent } => {
-            ensure_mode(&interface, CameraOperatingMode::ContentsTransfer).await?;
+            ensure_mode(&interface, OperatingMode::ContentsTransfer).await?;
 
             debug!("getting object handles");
 
@@ -318,7 +378,7 @@ pub(super) async fn cmd_file(
         }
 
         CameraCommandFileRequest::Get { handle: _ } => {
-            ensure_mode(&interface, CameraOperatingMode::ContentsTransfer).await?;
+            ensure_mode(&interface, OperatingMode::ContentsTransfer).await?;
 
             let (info, data) = interface
                 .enter(|i| async move {
