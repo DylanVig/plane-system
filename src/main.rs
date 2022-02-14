@@ -214,7 +214,7 @@ async fn main() -> anyhow::Result<()> {
         )
         .init();
 
-    let main_args: cli::args::MainArgs = cli::args::MainArgs::from_args();
+    let main_args: cli::args::MainArgs = cli::args::MainArgs::parse();
 
     let config = if let Some(config_path) = main_args.config {
         debug!("reading config from {:?}", &config_path);
