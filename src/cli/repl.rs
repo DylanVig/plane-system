@@ -146,7 +146,7 @@ pub async fn run(channels: Arc<Channels>) -> anyhow::Result<()> {
     futures::pin_mut!(interrupt_fut);
 
     match futures::future::select(interrupt_fut, repl_fut).await {
-        futures::future::Either::Left((_, repl_fut)) => {}
+        futures::future::Either::Left((_, _repl_fut)) => {}
         futures::future::Either::Right((repl_result, _)) => repl_result?,
     }
 

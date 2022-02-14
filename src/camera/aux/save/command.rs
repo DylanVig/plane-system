@@ -1,6 +1,6 @@
+use clap::StructOpt;
 use clap::{AppSettings, Subcommand};
 use serde::Serialize;
-use clap::StructOpt;
 
 use crate::Command;
 

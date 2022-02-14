@@ -12,11 +12,11 @@ pub type CameraCommand = Command<CameraCommandRequest, CameraCommandResponse>;
 #[derive(Subcommand, Debug, Clone)]
 pub enum CameraCommandRequest {
     /// view information about the storage media inside of the camera
-    #[clap(subcommand)] 
+    #[clap(subcommand)]
     Storage(CameraCommandStorageRequest),
 
     /// view information about the files stored on the camera; download files
-    #[clap(subcommand)] 
+    #[clap(subcommand)]
     File(CameraCommandFileRequest),
 
     /// capture an image
@@ -26,20 +26,20 @@ pub enum CameraCommandRequest {
     Reconnect,
 
     /// get a property of the camera's state
-    #[clap(subcommand)] 
+    #[clap(subcommand)]
     Get(CameraCommandGetRequest),
 
     /// set a property of the camera's state
-    #[clap(subcommand)] 
+    #[clap(subcommand)]
     Set(CameraCommandSetRequest),
 
     /// control continuous capture
     #[clap(name = "cc")]
-    #[clap(subcommand)] 
+    #[clap(subcommand)]
     ContinuousCapture(CameraCommandContinuousCaptureRequest),
 
     /// record videos
-    #[clap(subcommand)] 
+    #[clap(subcommand)]
     Record(CameraCommandRecordRequest),
 }
 

@@ -2,7 +2,7 @@ use anyhow::Context;
 use std::net::SocketAddr;
 use std::sync::Arc;
 
-use crate::util::{run_loop};
+use crate::util::run_loop;
 use crate::Channels;
 
 use super::interface::*;

@@ -3,8 +3,6 @@ use std::{ffi::OsStr, str::FromStr, sync::Arc};
 use anyhow::Context;
 use clap::{AppSettings, Subcommand};
 use futures::{select, FutureExt};
-///! Functions for interfacing with the ground server.
-use clap::StructOpt;
 
 use reqwest;
 
