@@ -223,6 +223,8 @@ fn run_interface(
                         }
                     }
 
+                    trace!("updated property values: {:#?}", state);
+
                     let _ = ret.send(Ok(()));
                 }
                 Err(err) => {
@@ -300,7 +302,6 @@ fn run_events(
         }
 
         if let Ok(()) = interrupt_rx.try_recv() {
-            debug!("camera event querier interrupted");
             break;
         }
     }
