@@ -309,10 +309,16 @@ fn run_events(
     Ok(())
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 struct CameraInterfaceRequestBuffer {
     chan: flume::Sender<CameraInterfaceRequest>,
     semaphore: Arc<Semaphore>,
+}
+
+impl std::fmt::Debug for CameraInterfaceRequestBuffer {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("CameraInterfaceRequestBuffer").finish()
+    }
 }
 
 impl CameraInterfaceRequestBuffer {

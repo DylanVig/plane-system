@@ -25,10 +25,13 @@ macro_rules! get_camera_property {
 pub(super) async fn cmd_status(
     interface: CameraInterfaceRequestBuffer,
 ) -> anyhow::Result<CameraCommandResponse> {
-    let (exposure, focus, save_media, shutter_speed, iso, aperture, compression) = interface
+    let (operating, exposure, focus, save_media, shutter_speed, iso, aperture, compression) = interface
         .enter(|i| async move {
             i.update().await?;
 
+            let operating = get_camera_property!(i, OperatingMode, UINT8)?
+                .and_then(OperatingMode::from_u8)
+                .context("invalid operating mode")?;
             let compression = get_camera_property!(i, Compression, UINT8)?
                 .and_then(CompressionMode::from_u8)
                 .context("invalid compression mode")?;
@@ -47,6 +50,7 @@ pub(super) async fn cmd_status(
             let iso = get_camera_property!(i, ISO, UINT32)?.and_then(Iso::from_u32);
             let aperture = get_camera_property!(i, FNumber, UINT16)?.and_then(Aperture::from_u16);
             Ok::<_, anyhow::Error>((
+                operating,
                 exposure,
                 focus,
                 save_media,
@@ -190,8 +194,7 @@ pub(super) async fn cmd_set(
                 CameraPropertyCode::IntervalTime,
                 ptp::PtpData::UINT16(interval),
             )
-        }
-        CameraCommandSetRequest::Other(_) => todo!(),
+        } // CameraCommandSetRequest::Other(s) => warn!("cannot set {"),
     };
 
     ensure(&interface, prop, data).await?;

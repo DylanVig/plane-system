@@ -79,8 +79,8 @@ pub enum CameraCommandSetRequest {
         interval: f32,
     },
 
-    #[clap(external_subcommand)]
-    Other(Vec<String>),
+    // #[clap(external_subcommand)]
+    // Other(Vec<String>),
 }
 
 #[derive(Subcommand, Debug, Clone)]
