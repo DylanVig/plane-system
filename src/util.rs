@@ -33,6 +33,28 @@ macro_rules! run_loop {
 
 pub(crate) use run_loop;
 
+pub fn spawn_with_name<T: Send + 'static>(
+    name: &str,
+    task: impl Future<Output = T> + Send + 'static,
+) -> tokio::task::JoinHandle<T> {
+    #[cfg(tokio_unstable)]
+    return tokio::task::Builder::new().name(name).spawn(task);
+
+    #[cfg(not(tokio_unstable))]
+    return tokio::task::spawn(task);
+}
+
+pub fn spawn_blocking_with_name<T: Send + 'static>(
+    name: &str,
+    task: impl FnOnce() -> T + Send + 'static,
+) -> tokio::task::JoinHandle<T> {
+    #[cfg(tokio_unstable)]
+    return tokio::task::Builder::new().name(name).spawn_blocking(task);
+
+    #[cfg(not(tokio_unstable))]
+    return tokio::task::spawn_blocking(task);
+}
+
 /// This is an extension trait for channel receivers.
 #[async_trait]
 pub(crate) trait ReceiverExt<T: Clone + Send> {
@@ -53,54 +75,6 @@ impl<T: Clone + Send> ReceiverExt<T> for broadcast::Receiver<T> {
             }
         }
     }
-}
-
-pub fn retry<F: FnMut() -> Result<T, E>, T, E>(
-    times: usize,
-    spacing: Option<Duration>,
-    mut op: F,
-) -> Result<T, E> {
-    if times < 1 {
-        panic!("retry called with times < 1");
-    }
-
-    let mut result = op();
-    let mut tries = 1;
-
-    while tries < times && result.is_err() {
-        result = op();
-
-        if let Some(spacing) = spacing {
-            std::thread::sleep(spacing);
-        }
-
-        tries += 1;
-    }
-
-    result
-}
-
-pub async fn retry_delay<F: FnMut() -> Result<T, E>, T, E>(
-    times: usize,
-    spacing: Duration,
-    mut op: F,
-) -> Result<T, E> {
-    if times < 1 {
-        panic!("retry_delay called with times < 1");
-    }
-
-    let mut result = op();
-    let mut tries = 1;
-
-    while tries < times && result.is_err() {
-        result = op();
-
-        tokio::time::sleep(spacing).await;
-
-        tries += 1;
-    }
-
-    result
 }
 
 pub async fn retry_async<F: FnMut() -> Fut, Fut: Future<Output = Result<T, E>>, T, E>(

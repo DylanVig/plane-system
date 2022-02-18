@@ -23,9 +23,8 @@ macro_rules! get_camera_property {
 pub(super) async fn cmd_status(
     interface: CameraInterfaceRequestBuffer,
 ) -> anyhow::Result<CameraCommandResponse> {
-    let (date, exposure, focus, save_media, shutter_speed, iso, aperture, compression) = interface
+    let (exposure, focus, save_media, shutter_speed, iso, aperture, compression) = interface
         .enter(|i| async move {
-            let date = get_camera_property!(i, DateTime, STR)?;
             let exposure = ExposureMode::from_u16(get_camera_property!(i, ExposureMode, UINT16)?)
                 .context("invalid exposure mode")?;
             let focus = FocusMode::from_u16(get_camera_property!(i, FocusMode, UINT16)?)
@@ -43,7 +42,6 @@ pub(super) async fn cmd_status(
                 .context("invalid compression mode")?;
 
             Ok::<_, anyhow::Error>((
-                date,
                 exposure,
                 focus,
                 save_media,
@@ -56,7 +54,6 @@ pub(super) async fn cmd_status(
         .await
         .context("could not get status of camera")?;
 
-    println!("date: {date}");
     println!("save media: {save_media:?}");
     println!("compression mode: {compression:?}");
     println!("exposure mode: {exposure:?}");

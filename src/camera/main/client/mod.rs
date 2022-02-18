@@ -6,6 +6,8 @@ use std::{collections::HashMap, sync::Arc, time::Duration};
 use tokio::sync::{broadcast, oneshot, OwnedSemaphorePermit, Semaphore};
 use tracing::Level;
 
+use crate::util::spawn_blocking_with_name;
+use crate::util::spawn_with_name;
 use crate::Channels;
 
 use super::interface::*;
@@ -91,26 +93,32 @@ pub async fn run(
     let mut futures = Vec::new();
     let mut task_names = Vec::new();
 
-    let download_task = tokio::spawn(run_download(
-        interface_req_buf.clone(),
-        ptp_tx.subscribe(),
-        channels.camera_event.clone(),
-    ));
+    let download_task = spawn_with_name(
+        "camera download",
+        run_download(
+            interface_req_buf.clone(),
+            ptp_tx.subscribe(),
+            channels.camera_event.clone(),
+        ),
+    );
 
     task_names.push("download");
     futures.push(download_task);
 
-    let cmd_task = tokio::spawn(run_commands(
-        interface_req_buf.clone(),
-        ptp_tx.subscribe(),
-        command_rx,
-        channels.camera_event.clone(),
-    ));
+    let cmd_task = spawn_with_name(
+        "camera cmd",
+        run_commands(
+            interface_req_buf.clone(),
+            ptp_tx.subscribe(),
+            command_rx,
+            channels.camera_event.clone(),
+        ),
+    );
 
     task_names.push("cmd");
     futures.push(cmd_task);
 
-    let interface_task = tokio::task::spawn_blocking({
+    let interface_task = spawn_blocking_with_name("camera interface", {
         let interface = interface.clone();
         let interrupt_rx = channels.interrupt.subscribe();
         move || run_interface(interface, state, interface_rx, interrupt_rx)
@@ -119,7 +127,7 @@ pub async fn run(
     task_names.push("interface");
     futures.push(interface_task);
 
-    let event_task = tokio::task::spawn_blocking({
+    let event_task = spawn_blocking_with_name("camera events", {
         let interface = interface.clone();
         let interrupt_rx = channels.interrupt.subscribe();
         move || run_events(interface, semaphore, ptp_tx, interrupt_rx)
@@ -127,32 +135,6 @@ pub async fn run(
 
     task_names.push("event");
     futures.push(event_task);
-
-    while futures.len() > 0 {
-        // wait for each task to end
-        let (result, i, remaining) = futures::future::select_all(futures).await;
-        let task_name = task_names.remove(i);
-
-        info!(
-            "{} ({}) task ended, {} remaining",
-            task_name,
-            i,
-            task_names.join(", ")
-        );
-
-        // if a task ended with an error or did not join properly, end the process
-        // with an interrupt
-        if let Err(err) = result? {
-            error!(
-                "got error from {} task, sending interrupt: {:?}",
-                task_name, err
-            );
-
-            info!("remaining tasks: {:?}", task_names.join(", "));
-        }
-
-        futures = remaining;
-    }
 
     Ok(())
 }
@@ -305,7 +287,7 @@ fn run_events(
             //     .unwrap();
 
             interface
-                .recv(None)
+                .recv(Some(Duration::from_millis(100)))
                 .context("error while receiving camera event")?
         };
 
@@ -313,7 +295,6 @@ fn run_events(
             debug!("event: recv {:?}", event);
 
             if let Err(_) = events_ptp.send(event) {
-                debug!("camera event querier exited");
                 break;
             }
         }
