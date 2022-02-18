@@ -1,5 +1,6 @@
-use std::{fmt::Display, sync::Arc};
+use std::{fmt::Display, str::FromStr, sync::Arc};
 
+use anyhow::Context;
 use num_traits::{FromPrimitive, ToPrimitive};
 use serde::Serialize;
 
@@ -134,6 +135,38 @@ impl Display for ShutterSpeed {
     }
 }
 
+impl FromStr for ShutterSpeed {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        if s.to_ascii_uppercase() == "bulb" {
+            return Ok(Self::Bulb);
+        }
+
+        if let Ok(mut f) = f32::from_str(s) {
+            if f <= 0. {
+                bail!("shutter speed must be positive");
+            }
+
+            return Ok(Self::Fraction {
+                numerator: (f * 10.) as u16,
+                denominator: 10,
+            });
+        }
+
+        if let Some((num, den)) = s.split_once('/') {
+            if let (Ok(numerator), Ok(denominator)) = (u16::from_str(num), u16::from_str(den)) {
+                return Ok(Self::Fraction {
+                    numerator,
+                    denominator,
+                });
+            }
+        }
+
+        bail!("shutter speed must be 'bulb', a decimal, or a fraction")
+    }
+}
+
 #[derive(Debug, Copy, Clone, Serialize, Eq, PartialEq)]
 pub enum Iso {
     Auto,
@@ -183,7 +216,7 @@ pub enum Aperture {
 }
 
 impl FromPrimitive for Aperture {
-    fn from_i64(n: i64) -> Option<Self> {
+    fn from_i64(_: i64) -> Option<Self> {
         None
     }
 
@@ -215,6 +248,21 @@ impl Display for Aperture {
             Self::Undefined => write!(f, "F??.?"),
             Self::Value(v) => write!(f, "F{:.1}", v as f32 / 100.),
         }
+    }
+}
+
+impl FromStr for Aperture {
+    type Err = anyhow::Error;
+
+    fn from_str(mut s: &str) -> Result<Self, Self::Err> {
+        if s.starts_with('F') || s.starts_with('f') {
+            s = &s[1..];
+        }
+
+        let f =
+            f32::from_str(s).context("aperture must be a decimal, optionally prefixed with F")?;
+
+        Ok(Self::Value((f * 100.) as u16))
     }
 }
 

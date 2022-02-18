@@ -1,5 +1,5 @@
 use anyhow::Context;
-use num_traits::FromPrimitive;
+use num_traits::{FromPrimitive, ToPrimitive};
 use tokio::sync::broadcast;
 use tokio::time::sleep;
 
@@ -25,48 +25,51 @@ macro_rules! get_camera_property {
 pub(super) async fn cmd_status(
     interface: CameraInterfaceRequestBuffer,
 ) -> anyhow::Result<CameraCommandResponse> {
-    let (operating, exposure, focus, save_media, shutter_speed, iso, aperture, compression) = interface
-        .enter(|i| async move {
-            i.update().await?;
+    let (operating, exposure, focus, save_media, shutter_speed, iso, aperture, compression) =
+        interface
+            .enter(|i| async move {
+                i.update().await?;
 
-            let operating = get_camera_property!(i, OperatingMode, UINT8)?
-                .and_then(OperatingMode::from_u8)
-                .context("invalid operating mode")?;
-            let compression = get_camera_property!(i, Compression, UINT8)?
-                .and_then(CompressionMode::from_u8)
-                .context("invalid compression mode")?;
-            let exposure = get_camera_property!(i, ExposureMode, UINT16)?
-                .and_then(ExposureMode::from_u16)
-                .context("invalid exposure mode")?;
-            let focus = get_camera_property!(i, FocusMode, UINT16)?
-                .and_then(FocusMode::from_u16)
-                .context("invalid focus mode")?;
-            let save_media = get_camera_property!(i, SaveMedia, UINT16)?
-                .and_then(SaveMedia::from_u16)
-                .context("invalid save media")?;
+                let operating = get_camera_property!(i, OperatingMode, UINT8)?
+                    .and_then(OperatingMode::from_u8)
+                    .context("invalid operating mode")?;
+                let compression = get_camera_property!(i, Compression, UINT8)?
+                    .and_then(CompressionMode::from_u8)
+                    .context("invalid compression mode")?;
+                let exposure = get_camera_property!(i, ExposureMode, UINT16)?
+                    .and_then(ExposureMode::from_u16)
+                    .context("invalid exposure mode")?;
+                let focus = get_camera_property!(i, FocusMode, UINT16)?
+                    .and_then(FocusMode::from_u16)
+                    .context("invalid focus mode")?;
+                let save_media = get_camera_property!(i, SaveMedia, UINT16)?
+                    .and_then(SaveMedia::from_u16)
+                    .context("invalid save media")?;
 
-            let shutter_speed =
-                get_camera_property!(i, ShutterSpeed, UINT32)?.and_then(ShutterSpeed::from_u32);
-            let iso = get_camera_property!(i, ISO, UINT32)?.and_then(Iso::from_u32);
-            let aperture = get_camera_property!(i, FNumber, UINT16)?.and_then(Aperture::from_u16);
-            Ok::<_, anyhow::Error>((
-                operating,
-                exposure,
-                focus,
-                save_media,
-                shutter_speed,
-                iso,
-                aperture,
-                compression,
-            ))
-        })
-        .await
-        .context("could not get status of camera")?;
+                let shutter_speed =
+                    get_camera_property!(i, ShutterSpeed, UINT32)?.and_then(ShutterSpeed::from_u32);
+                let iso = get_camera_property!(i, ISO, UINT32)?.and_then(Iso::from_u32);
+                let aperture =
+                    get_camera_property!(i, FNumber, UINT16)?.and_then(Aperture::from_u16);
+                Ok::<_, anyhow::Error>((
+                    operating,
+                    exposure,
+                    focus,
+                    save_media,
+                    shutter_speed,
+                    iso,
+                    aperture,
+                    compression,
+                ))
+            })
+            .await
+            .context("could not get status of camera")?;
 
-    println!("save media: {save_media:?}");
+    println!("operating mode: {operating:?}");
     println!("compression mode: {compression:?}");
     println!("exposure mode: {exposure:?}");
     println!("focus mode: {focus}");
+    println!("save media: {save_media:?}");
 
     if let Some(aperture) = aperture {
         println!("aperture width: {aperture}");
@@ -194,8 +197,19 @@ pub(super) async fn cmd_set(
                 CameraPropertyCode::IntervalTime,
                 ptp::PtpData::UINT16(interval),
             )
-        } // CameraCommandSetRequest::Other(s) => warn!("cannot set {"),
+        }
+        CameraCommandSetRequest::ShutterSpeed { speed } => (
+            CameraPropertyCode::ShutterSpeed,
+            ptp::PtpData::UINT32(ToPrimitive::to_u32(&speed).unwrap()),
+        ),
+        CameraCommandSetRequest::Aperture { aperture } => (
+            CameraPropertyCode::FNumber,
+            ptp::PtpData::UINT16(ToPrimitive::to_u16(&aperture).unwrap()),
+        ),
+        // CameraCommandSetRequest::Other(s) => warn!("cannot set {"),
     };
+
+    debug!("setting {:?} to {:x}", prop, data);
 
     ensure(&interface, prop, data).await?;
 

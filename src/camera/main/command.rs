@@ -78,6 +78,12 @@ pub enum CameraCommandSetRequest {
     CcInterval {
         interval: f32,
     },
+    ShutterSpeed {
+        speed: ShutterSpeed,
+    },
+    Aperture {
+        aperture: Aperture,
+    },
 
     // #[clap(external_subcommand)]
     // Other(Vec<String>),
