@@ -1,10 +1,8 @@
 use std::{ffi::OsStr, str::FromStr, sync::Arc};
 
 use anyhow::Context;
-use clap::AppSettings;
+use clap::{AppSettings, Subcommand};
 use futures::{select, FutureExt};
-///! Functions for interfacing with the ground server.
-use structopt::StructOpt;
 
 use reqwest;
 
@@ -13,9 +11,9 @@ use serde_json::json;
 
 use crate::{image::ImageClientEvent, Channels};
 
-#[derive(StructOpt, Debug, Clone)]
-#[structopt(setting(AppSettings::NoBinaryName))]
-#[structopt(rename_all = "kebab-case")]
+#[derive(Subcommand, Debug, Clone)]
+#[clap(setting(AppSettings::NoBinaryName))]
+#[clap(rename_all = "kebab-case")]
 pub enum GroundServerRequest {}
 
 pub struct GroundServerClient {

@@ -3,8 +3,7 @@ use anyhow::Context;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-
-use crate::util::{run_loop};
+use crate::util::run_loop;
 use crate::Channels;
 
 use super::interface::*;

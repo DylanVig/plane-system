@@ -1,7 +1,7 @@
 use std::{collections::HashMap, str::FromStr};
 
+use clap::Subcommand;
 use serde::Serialize;
-use structopt::StructOpt;
 
 use crate::Command;
 
@@ -9,12 +9,14 @@ use super::{interface::CameraOperatingMode, state::*};
 
 pub type CameraCommand = Command<CameraCommandRequest, CameraCommandResponse>;
 
-#[derive(StructOpt, Debug, Clone)]
+#[derive(Subcommand, Debug, Clone)]
 pub enum CameraCommandRequest {
     /// view information about the storage media inside of the camera
+    #[clap(subcommand)]
     Storage(CameraCommandStorageRequest),
 
     /// view information about the files stored on the camera; download files
+    #[clap(subcommand)]
     File(CameraCommandFileRequest),
 
     /// capture an image
@@ -24,20 +26,24 @@ pub enum CameraCommandRequest {
     Reconnect,
 
     /// get a property of the camera's state
+    #[clap(subcommand)]
     Get(CameraCommandGetRequest),
 
     /// set a property of the camera's state
+    #[clap(subcommand)]
     Set(CameraCommandSetRequest),
 
     /// control continuous capture
-    #[structopt(name = "cc")]
+    #[clap(name = "cc")]
+    #[clap(subcommand)]
     ContinuousCapture(CameraCommandContinuousCaptureRequest),
 
     /// record videos
+    #[clap(subcommand)]
     Record(CameraCommandRecordRequest),
 }
 
-#[derive(StructOpt, Debug, Clone)]
+#[derive(Subcommand, Debug, Clone)]
 pub enum CameraCommandGetRequest {
     ExposureMode,
     OperatingMode,
@@ -46,11 +52,11 @@ pub enum CameraCommandGetRequest {
     ZoomLevel,
     CcInterval,
 
-    #[structopt(external_subcommand)]
+    #[clap(external_subcommand)]
     Other(Vec<String>),
 }
 
-#[derive(StructOpt, Debug, Clone)]
+#[derive(Subcommand, Debug, Clone)]
 pub enum CameraCommandSetRequest {
     ExposureMode {
         mode: CameraExposureMode,
@@ -71,30 +77,30 @@ pub enum CameraCommandSetRequest {
         interval: f32,
     },
 
-    #[structopt(external_subcommand)]
+    #[clap(external_subcommand)]
     Other(Vec<String>),
 }
 
-#[derive(StructOpt, Debug, Clone)]
+#[derive(Subcommand, Debug, Clone)]
 pub enum CameraCommandStorageRequest {
     /// list the storage volumes available on the camera
     List,
 }
 
-#[derive(StructOpt, Debug, Clone)]
+#[derive(Subcommand, Debug, Clone)]
 pub enum CameraCommandFileRequest {
     /// list the files available on the camera
     List {
         /// the hexadecimal file handle of a folder; if provided, the contents
         /// of the folder will be listed
-        #[structopt(parse(try_from_str = crate::util::parse_hex_u32))]
+        #[clap(parse(try_from_str = crate::util::parse_hex_u32))]
         parent: Option<u32>,
     },
 
     /// download a file from the camera
     Get {
         /// the hexadecimal file handle of a file
-        #[structopt(parse(try_from_str = crate::util::parse_hex_u32))]
+        #[clap(parse(try_from_str = crate::util::parse_hex_u32))]
         handle: u32,
     },
 }
@@ -144,13 +150,13 @@ impl FromStr for CameraZoomMode {
     }
 }
 
-#[derive(StructOpt, Debug, Clone)]
+#[derive(Subcommand, Debug, Clone)]
 pub enum CameraCommandContinuousCaptureRequest {
     Start,
     Stop,
 }
 
-#[derive(StructOpt, Debug, Clone)]
+#[derive(Subcommand, Debug, Clone)]
 pub enum CameraCommandRecordRequest {
     Start,
     Stop,

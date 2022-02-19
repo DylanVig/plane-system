@@ -1,11 +1,10 @@
 use std::{process::exit, sync::Arc, time::Duration};
 
 use anyhow::Context;
+use clap::Parser;
 use ctrlc;
 use futures::{channel::oneshot, Future};
-use structopt::StructOpt;
 use tokio::{
-    spawn,
     sync::{broadcast, watch},
     task::JoinHandle,
     time::sleep,
@@ -13,7 +12,6 @@ use tokio::{
 use tracing::metadata::LevelFilter;
 use tracing_subscriber::{filter::Targets, layer::SubscriberExt, util::SubscriberInitExt, Layer};
 
-use gimbal::client::GimbalClient;
 use gs::GroundServerClient;
 use pixhawk::{client::PixhawkClient, state::PixhawkEvent};
 use scheduler::Scheduler;
@@ -216,7 +214,7 @@ async fn main() -> anyhow::Result<()> {
         )
         .init();
 
-    let main_args: cli::args::MainArgs = cli::args::MainArgs::from_args();
+    let main_args: cli::args::MainArgs = cli::args::MainArgs::parse();
 
     let config = if let Some(config_path) = main_args.config {
         debug!("reading config from {:?}", &config_path);
@@ -250,7 +248,7 @@ async fn run_tasks(config: cli::config::PlaneSystemConfig) -> anyhow::Result<()>
         let (pixhawk_event_sender, _) = broadcast::channel(64);
         let (camera_event_sender, _) = broadcast::channel(256);
         let (camera_cmd_sender, camera_cmd_receiver) = flume::unbounded();
-        let (gimbal_cmd_sender, gimbal_cmd_receiver) = flume::unbounded();
+        let (gimbal_cmd_sender, _gimbal_cmd_receiver) = flume::unbounded();
         #[cfg(feature = "gstreamer")]
         let (stream_cmd_sender, stream_cmd_receiver) = flume::unbounded();
         #[cfg(feature = "gstreamer")]
@@ -298,7 +296,7 @@ async fn run_tasks(config: cli::config::PlaneSystemConfig) -> anyhow::Result<()>
             );
         }
 
-        if let Some(camera_config) = config.main_camera {
+        if let Some(_camera_config) = config.main_camera {
             tasks.add("camera", {
                 camera::main::run(channels.clone(), camera_cmd_receiver)
             });
@@ -310,7 +308,7 @@ async fn run_tasks(config: cli::config::PlaneSystemConfig) -> anyhow::Result<()>
             });
         }
 
-        if let Some(gimbal_config) = config.gimbal {
+        if let Some(_gimbal_config) = config.gimbal {
             panic!("gimbal not implemented");
         }
 
@@ -328,7 +326,7 @@ async fn run_tasks(config: cli::config::PlaneSystemConfig) -> anyhow::Result<()>
             });
         }
 
-        if let Some(aux_config) = config.aux_camera {
+        if let Some(_aux_config) = config.aux_camera {
             #[cfg(feature = "gstreamer")]
             if let Some(stream_config) = aux_config.stream {
                 tasks.add("aux camera live stream", {
