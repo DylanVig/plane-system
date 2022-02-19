@@ -120,7 +120,7 @@ pub enum CameraControlCode {
 #[derive(
     ToPrimitive, FromPrimitive, Debug, Copy, Clone, Eq, PartialEq, Hash, Serialize, Deserialize,
 )]
-pub enum CameraOperatingMode {
+pub enum OperatingMode {
     Standby = 0x01,
     StillRec,
     MovieRec,

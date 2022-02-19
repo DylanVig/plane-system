@@ -2,7 +2,7 @@ use std::{path::PathBuf, sync::Arc};
 
 use anyhow::Context;
 use futures::{select, FutureExt};
-use tokio::io::AsyncWriteExt;
+use tokio::{io::AsyncWriteExt, fs::File};
 
 use crate::{
     camera::main::CameraClientEvent, cli::config::ImageConfig, state::TelemetryInfo, Channels,
@@ -80,7 +80,7 @@ async fn save(
 
     debug!("writing image to file '{}'", image_path.to_string_lossy());
 
-    let mut image_file = tokio::fs::File::create(&image_path)
+    let mut image_file = File::create(&image_path)
         .await
         .context("failed to create image file")?;
 
@@ -99,7 +99,7 @@ async fn save(
             telem_path.to_string_lossy()
         );
 
-        let mut telem_file = tokio::fs::File::create(telem_path)
+        let mut telem_file = File::create(telem_path)
             .await
             .context("failed to create telemetry file")?;
 

@@ -326,8 +326,8 @@ async fn run_tasks(config: cli::config::PlaneSystemConfig) -> anyhow::Result<()>
             });
         }
 
-        if let Some(_aux_config) = config.aux_camera {
-            #[cfg(feature = "gstreamer")]
+        #[cfg(feature = "gstreamer")]
+        if let Some(aux_config) = config.aux_camera {
             if let Some(stream_config) = aux_config.stream {
                 tasks.add("aux camera live stream", {
                     let mut stream_client = camera::aux::stream::StreamClient::connect(
@@ -340,7 +340,6 @@ async fn run_tasks(config: cli::config::PlaneSystemConfig) -> anyhow::Result<()>
                 });
             }
 
-            #[cfg(feature = "gstreamer")]
             if let Some(save_config) = aux_config.save {
                 tasks.add("aux camera live record", {
                     let mut save_client = camera::aux::save::SaveClient::connect(

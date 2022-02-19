@@ -1,5 +1,5 @@
 use anyhow::Context;
-use num_traits::FromPrimitive;
+use num_traits::{FromPrimitive, ToPrimitive};
 use tokio::sync::broadcast;
 use tokio::time::sleep;
 
@@ -7,6 +7,90 @@ use crate::util::retry_async;
 
 use super::util::*;
 use super::*;
+
+macro_rules! get_camera_property {
+    ($interface: expr, $prop: ident, $ty: ident) => {
+        match $interface.get_value(CameraPropertyCode::$prop).await {
+            Some(ptp::PtpData::$ty(v)) => Ok(Some(v)),
+            Some(data) => Err(anyhow::anyhow!(
+                "could not get {}, invalid value {:?}",
+                stringify!($prop),
+                data
+            )),
+            None => Ok(None),
+        }
+    };
+}
+
+pub(super) async fn cmd_status(
+    interface: CameraInterfaceRequestBuffer,
+) -> anyhow::Result<CameraCommandResponse> {
+    let (operating, exposure, focus, save_media, shutter_speed, iso, aperture, compression) =
+        interface
+            .enter(|i| async move {
+                i.update().await?;
+
+                let operating = get_camera_property!(i, OperatingMode, UINT8)?
+                    .and_then(OperatingMode::from_u8)
+                    .context("invalid operating mode")?;
+                let compression = get_camera_property!(i, Compression, UINT8)?
+                    .and_then(CompressionMode::from_u8)
+                    .context("invalid compression mode")?;
+                let exposure = get_camera_property!(i, ExposureMode, UINT16)?
+                    .and_then(ExposureMode::from_u16)
+                    .context("invalid exposure mode")?;
+                let focus = get_camera_property!(i, FocusMode, UINT16)?
+                    .and_then(FocusMode::from_u16)
+                    .context("invalid focus mode")?;
+                let save_media = get_camera_property!(i, SaveMedia, UINT16)?
+                    .and_then(SaveMedia::from_u16)
+                    .context("invalid save media")?;
+
+                let shutter_speed =
+                    get_camera_property!(i, ShutterSpeed, UINT32)?.and_then(ShutterSpeed::from_u32);
+                let iso = get_camera_property!(i, ISO, UINT32)?.and_then(Iso::from_u32);
+                let aperture =
+                    get_camera_property!(i, FNumber, UINT16)?.and_then(Aperture::from_u16);
+                Ok::<_, anyhow::Error>((
+                    operating,
+                    exposure,
+                    focus,
+                    save_media,
+                    shutter_speed,
+                    iso,
+                    aperture,
+                    compression,
+                ))
+            })
+            .await
+            .context("could not get status of camera")?;
+
+    println!("operating mode: {operating:?}");
+    println!("compression mode: {compression:?}");
+    println!("exposure mode: {exposure:?}");
+    println!("focus mode: {focus}");
+    println!("save media: {save_media:?}");
+
+    if let Some(aperture) = aperture {
+        println!("aperture width: {aperture}");
+    } else {
+        println!("aperture width: <unknown>");
+    }
+
+    if let Some(iso) = iso {
+        println!("iso: {iso}");
+    } else {
+        println!("iso: <unknown>");
+    }
+
+    if let Some(shutter_speed) = shutter_speed {
+        println!("shutter speed: {shutter_speed}");
+    } else {
+        println!("shutter speed: <unknown>");
+    }
+
+    Ok(CameraCommandResponse::Unit)
+}
 
 pub(super) async fn cmd_get(
     interface: CameraInterfaceRequestBuffer,
@@ -114,8 +198,18 @@ pub(super) async fn cmd_set(
                 ptp::PtpData::UINT16(interval),
             )
         }
-        CameraCommandSetRequest::Other(_) => todo!(),
+        CameraCommandSetRequest::ShutterSpeed { speed } => (
+            CameraPropertyCode::ShutterSpeed,
+            ptp::PtpData::UINT32(ToPrimitive::to_u32(&speed).unwrap()),
+        ),
+        CameraCommandSetRequest::Aperture { aperture } => (
+            CameraPropertyCode::FNumber,
+            ptp::PtpData::UINT16(ToPrimitive::to_u16(&aperture).unwrap()),
+        ),
+        // CameraCommandSetRequest::Other(s) => warn!("cannot set {"),
     };
+
+    debug!("setting {:?} to {:x}", prop, data);
 
     ensure(&interface, prop, data).await?;
 
@@ -126,7 +220,7 @@ pub(super) async fn cmd_capture(
     interface: CameraInterfaceRequestBuffer,
     ptp_rx: &mut broadcast::Receiver<ptp::PtpEvent>,
 ) -> anyhow::Result<CameraCommandResponse> {
-    ensure_mode(&interface, CameraOperatingMode::StillRec).await?;
+    ensure_mode(&interface, OperatingMode::StillRec).await?;
 
     interface
         .enter(|i| async move {
@@ -228,7 +322,7 @@ pub(super) async fn cmd_storage(
 ) -> anyhow::Result<CameraCommandResponse> {
     match req {
         CameraCommandStorageRequest::List => {
-            ensure_mode(&interface, CameraOperatingMode::ContentsTransfer).await?;
+            ensure_mode(&interface, OperatingMode::ContentsTransfer).await?;
 
             debug!("getting storage ids");
 
@@ -270,7 +364,7 @@ pub(super) async fn cmd_file(
 ) -> anyhow::Result<CameraCommandResponse> {
     match req {
         CameraCommandFileRequest::List { parent } => {
-            ensure_mode(&interface, CameraOperatingMode::ContentsTransfer).await?;
+            ensure_mode(&interface, OperatingMode::ContentsTransfer).await?;
 
             debug!("getting object handles");
 
@@ -318,7 +412,7 @@ pub(super) async fn cmd_file(
         }
 
         CameraCommandFileRequest::Get { handle: _ } => {
-            ensure_mode(&interface, CameraOperatingMode::ContentsTransfer).await?;
+            ensure_mode(&interface, OperatingMode::ContentsTransfer).await?;
 
             let (info, data) = interface
                 .enter(|i| async move {

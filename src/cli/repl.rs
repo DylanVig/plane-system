@@ -5,10 +5,11 @@ use colored::Colorize;
 use clap::{Parser, Subcommand};
 use humansize::FileSize;
 use prettytable::{cell, row, Table};
+use tokio::task::spawn_blocking;
 use tracing::Level;
 
 use crate::{
-    camera::main::{CameraCommandRequest, CameraCommandResponse, CameraSaveMode},
+    camera::main::{CameraCommandRequest, CameraCommandResponse, SaveMedia},
     gimbal::GimbalRequest,
     gs::GroundServerRequest,
     Channels, Command,
@@ -28,15 +29,21 @@ struct Cli {
 #[clap(rename_all = "kebab-case")]
 enum Commands {
     #[clap(subcommand)]
+    #[clap(name = "camera")]
     MainCamera(CameraCommandRequest),
+
     #[clap(subcommand)]
     Gimbal(GimbalRequest),
+
     #[clap(subcommand)]
+    #[clap(name = "gs")]
     GroundServer(GroundServerRequest),
+
     Exit,
 
     #[cfg(feature = "gstreamer")]
     #[clap(subcommand)]
+    #[clap(name = "aux-camera")]
     AuxCamera(AuxCameraRequest),
 }
 
@@ -53,13 +60,13 @@ enum AuxCameraRequest {
 pub async fn run(channels: Arc<Channels>) -> anyhow::Result<()> {
     let mut interrupt_recv = channels.interrupt.subscribe();
 
-    let repl_fut = async move {
+    let (tx, rx) = flume::bounded(16);
+
+    spawn_blocking(move || {
         let mut rl_editor = rustyline::Editor::<()>::new();
 
         loop {
-            let request = match tokio::task::block_in_place(|| {
-                rl_editor.readline(&"\n\nplane-system> ".bright_white())
-            }) {
+            let request = match rl_editor.readline(&"\n\nplane-system> ".bright_white()) {
                 Ok(line) => {
                     let request: Result<Cli, _> =
                         Parser::try_parse_from(line.split_ascii_whitespace());
@@ -70,17 +77,29 @@ pub async fn run(channels: Arc<Channels>) -> anyhow::Result<()> {
                             request.command
                         }
                         Err(err) => {
-                            println!("{}", err);
+                            error!("error while parsing command: {}", err);
                             continue;
                         }
                     }
                 }
                 Err(err) => match err {
-                    rustyline::error::ReadlineError::Interrupted => Commands::Exit,
-                    err => break Err::<_, anyhow::Error>(err.into()),
+                    rustyline::error::ReadlineError::Interrupted => {
+                        let _ = tx.send(Commands::Exit);
+                        break;
+                    },
+                    err => {
+                        error!("error while reading input: {:?}", err);
+                        break;
+                    }
                 },
             };
 
+            let _ = tx.send(request);
+        }
+    });
+
+    let repl_fut = async move {
+        while let Ok(request) = rx.recv_async().await {
             let span = span!(Level::TRACE, "command parsed", ?request);
             let _enter = span.enter();
 
@@ -98,7 +117,7 @@ pub async fn run(channels: Arc<Channels>) -> anyhow::Result<()> {
 
                     match result {
                         Ok(response) => format_camera_response(response),
-                        Err(err) => println!("{}", format!("error: {}", err).red()),
+                        Err(err) => println!("{}", format!("error: {:?}", err).red()),
                     };
                 }
                 Commands::Gimbal(request) => {
@@ -111,8 +130,9 @@ pub async fn run(channels: Arc<Channels>) -> anyhow::Result<()> {
                 }
                 Commands::GroundServer(request) => match request {},
                 Commands::Exit => {
+                    info!("exiting");
                     let _ = channels.interrupt.send(());
-                    break Ok(());
+                    break;
                 }
                 #[cfg(feature = "gstreamer")]
                 Commands::AuxCamera(request) => match request {
@@ -133,11 +153,10 @@ pub async fn run(channels: Arc<Channels>) -> anyhow::Result<()> {
                         let _ = chan.await?;
                     }
                 },
-                _ => {
-                    error!("this command is not available");
-                }
             };
         }
+
+        Ok::<_, anyhow::Error>(())
     };
 
     let interrupt_fut = interrupt_recv.recv();
@@ -357,10 +376,10 @@ fn format_camera_response(response: CameraCommandResponse) -> () {
             println!("zoom level: {}", zoom_level);
         }
         CameraCommandResponse::SaveMode(save_mode) => match save_mode {
-            CameraSaveMode::HostDevice => {
+            SaveMedia::HostDevice => {
                 println!("saving to host device");
             }
-            CameraSaveMode::MemoryCard1 => {
+            SaveMedia::MemoryCard1 => {
                 println!("saving to camera memory");
             }
         },

@@ -9,9 +9,21 @@ pub(super) async fn ensure(
 ) -> anyhow::Result<()> {
     loop {
         let value = value.clone();
-        let actual = interface
-            .enter(|i| async move { i.get_value(property).await })
+        let (actual, caution) = interface
+            .enter(|i| async move {
+                (
+                    i.get_value(property).await,
+                    i.get_value(CameraPropertyCode::Caution).await,
+                )
+            })
             .await;
+
+        if let Some(caution) = caution {
+            if let ptp::PtpData::UINT16(0x0001) = caution {
+                warn!("camera caution flag is Setting Failed; aborting setting change");
+                break;
+            }
+        }
 
         if let Some(actual) = actual {
             if &actual == &value {
@@ -36,7 +48,7 @@ pub(super) async fn ensure(
 
 pub(super) async fn ensure_mode(
     interface: &CameraInterfaceRequestBuffer,
-    mode: CameraOperatingMode,
+    mode: OperatingMode,
 ) -> anyhow::Result<()> {
     ensure(
         interface,
