@@ -14,7 +14,6 @@ use tracing_subscriber::{filter::Targets, layer::SubscriberExt, util::Subscriber
 
 use gs::GroundServerClient;
 use pixhawk::{client::PixhawkClient, state::PixhawkEvent};
-use scheduler::Scheduler;
 use state::TelemetryInfo;
 use telemetry::TelemetryStream;
 
@@ -70,6 +69,8 @@ pub struct Channels {
     save_cmd: flume::Sender<camera::aux::save::SaveCommand>,
 
     image_event: broadcast::Sender<image::ImageClientEvent>,
+
+    scheduler_cmd: flume::Sender<scheduler::SchedulerCommand>,
 }
 
 impl std::fmt::Debug for Channels {
@@ -249,6 +250,7 @@ async fn run_tasks(config: cli::config::PlaneSystemConfig) -> anyhow::Result<()>
         let (camera_event_sender, _) = broadcast::channel(256);
         let (camera_cmd_sender, camera_cmd_receiver) = flume::unbounded();
         let (gimbal_cmd_sender, _gimbal_cmd_receiver) = flume::unbounded();
+        let (scheduler_cmd_sender, scheduler_cmd_receiver) = flume::unbounded();
         #[cfg(feature = "gstreamer")]
         let (stream_cmd_sender, stream_cmd_receiver) = flume::unbounded();
         #[cfg(feature = "gstreamer")]
@@ -269,6 +271,7 @@ async fn run_tasks(config: cli::config::PlaneSystemConfig) -> anyhow::Result<()>
             #[cfg(feature = "gstreamer")]
             save_cmd: save_cmd_sender,
             image_event: image_event_sender,
+            scheduler_cmd: scheduler_cmd_sender,
         });
 
         if let Some(pixhawk_config) = config.pixhawk {
@@ -321,8 +324,7 @@ async fn run_tasks(config: cli::config::PlaneSystemConfig) -> anyhow::Result<()>
 
         if let Some(scheduler_config) = config.scheduler {
             tasks.add("scheduler", {
-                let mut scheduler = Scheduler::new(channels.clone(), scheduler_config.gps);
-                async move { scheduler.run().await }
+                scheduler::run(channels.clone(), scheduler_cmd_receiver)
             });
         }
 
