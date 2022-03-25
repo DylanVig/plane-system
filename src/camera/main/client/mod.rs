@@ -519,6 +519,14 @@ async fn run_download(
     loop {
         wait(&mut ptp_rx, ptp::EventCode::Vendor(0xC204)).await?;
 
+        let event_timestamp = chrono::Local::now();
+
+        let _ = client_tx.send(CameraClientEvent::Capture {
+            timestamp: event_timestamp.clone(),
+        });
+
+        debug!("received camera capture event");
+
         tokio::time::sleep(Duration::from_millis(500)).await;
 
         let shooting_file_info = interface
@@ -570,6 +578,7 @@ async fn run_download(
             let _ = client_tx.send(CameraClientEvent::Download {
                 image_name: info.filename,
                 image_data: Arc::new(data),
+                cc_timestamp: Some(event_timestamp),
             });
 
             let (new, _) = watch(&interface, CameraPropertyCode::ShootingFileInfo).await?;
