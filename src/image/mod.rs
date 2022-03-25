@@ -1,4 +1,4 @@
-use std::{path::PathBuf, sync::Arc};
+use std::{path::{PathBuf, Path}, sync::Arc};
 
 use anyhow::Context;
 use futures::{select, FutureExt};
@@ -23,7 +23,10 @@ pub async fn run(channels: Arc<Channels>, config: ImageConfig) -> anyhow::Result
 
     futures::pin_mut!(interrupt_fut);
 
-    if let Err(err) = tokio::fs::create_dir_all(&config.save_path).await {
+    let mut image_save_dir = config.save_path.clone();
+    image_save_dir.push(chrono::Local::now().format("%F_%H-%M-%S").to_string());
+
+    if let Err(err) = tokio::fs::create_dir_all(&image_save_dir).await {
         warn!("could not create image save directory: {}", err);
     }
 
@@ -41,7 +44,7 @@ pub async fn run(channels: Arc<Channels>, config: ImageConfig) -> anyhow::Result
                                 warn!("no telemetry data available for image capture")
                             }
 
-                            let image_filename = match save(&config, &image_name, &image_data, &telemetry_info, cc_timestamp).await {
+                            let image_filename = match save(&image_save_dir, &image_name, &image_data, &telemetry_info, cc_timestamp).await {
                                 Ok(image_filename) => image_filename,
                                 Err(err) => {
                                   warn!("failed to download image: {}", err);
@@ -69,16 +72,14 @@ pub async fn run(channels: Arc<Channels>, config: ImageConfig) -> anyhow::Result
 }
 
 async fn save(
-    config: &ImageConfig,
+    save_dir: &Path,
     name: &str,
     image: &Vec<u8>,
     telem: &Option<TelemetryInfo>,
     cc_timestamp: Option<chrono::DateTime<chrono::Local>>,
 ) -> anyhow::Result<PathBuf> {
-    let mut image_path = config.save_path.clone();
-
+    let mut image_path = save_dir.to_owned();
     image_path.push(&name);
-
     debug!("writing image to file '{}'", image_path.to_string_lossy());
 
     let mut image_file = File::create(&image_path)
