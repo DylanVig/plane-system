@@ -1,4 +1,7 @@
-use std::{path::{PathBuf, Path}, sync::Arc};
+use std::{
+    path::{Path, PathBuf},
+    sync::Arc,
+};
 
 use anyhow::Context;
 use futures::{select, FutureExt};
@@ -93,29 +96,29 @@ async fn save(
 
     info!("wrote image to file '{}'", image_path.to_string_lossy());
 
-    if let Some(telem) = telem {
-        let telem_path = image_path.with_extension("json");
+    let telem_path = image_path.with_extension("json");
 
-        debug!(
-            "writing telemetry to file '{}'",
-            telem_path.to_string_lossy()
-        );
+    debug!(
+        "writing telemetry to file '{}'",
+        telem_path.to_string_lossy()
+    );
 
-        let mut telem_file = File::create(telem_path)
-            .await
-            .context("failed to create telemetry file")?;
+    let timestamp = cc_timestamp.map(|c| c.to_rfc3339());
 
-        let telem_bytes = serde_json::to_vec(&serde_json::json!({
-            "telemetry": telem,
-            "cc_timestamp": cc_timestamp.map(|c| c.to_rfc3339()),
-        }))
-        .context("failed to serialize telemetry to JSON")?;
+    let telem_bytes = serde_json::to_vec(&serde_json::json!({
+        "telemetry": telem,
+        "cc_timestamp": timestamp,
+    }))
+    .context("failed to serialize telemetry to JSON")?;
 
-        telem_file
-            .write_all(&telem_bytes[..])
-            .await
-            .context("failed to write telemetry data to file")?;
-    }
+    let mut telem_file = File::create(telem_path)
+        .await
+        .context("failed to create telemetry file")?;
+
+    telem_file
+        .write_all(&telem_bytes[..])
+        .await
+        .context("failed to write telemetry data to file")?;
 
     Ok(image_path)
 }
