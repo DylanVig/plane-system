@@ -86,7 +86,7 @@ pub enum ShutterSpeed {
 }
 
 impl FromPrimitive for ShutterSpeed {
-    fn from_i64(n: i64) -> Option<Self> {
+    fn from_i64(_n: i64) -> Option<Self> {
         None
     }
 
@@ -148,7 +148,7 @@ impl FromStr for ShutterSpeed {
             return Ok(Self::Bulb);
         }
 
-        if let Ok(mut f) = f32::from_str(s) {
+        if let Ok(f) = f32::from_str(s) {
             if f <= 0. {
                 bail!("shutter speed must be positive");
             }
@@ -179,7 +179,7 @@ pub enum Iso {
 }
 
 impl FromPrimitive for Iso {
-    fn from_i64(n: i64) -> Option<Self> {
+    fn from_i64(_n: i64) -> Option<Self> {
         None
     }
 
