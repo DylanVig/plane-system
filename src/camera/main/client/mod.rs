@@ -3,6 +3,7 @@ use futures::future::Either;
 use futures::Future;
 use num_traits::FromPrimitive;
 use std::{collections::HashMap, sync::Arc, time::Duration};
+use tokio::io::AsyncWriteExt;
 use tokio::sync::{broadcast, oneshot, OwnedSemaphorePermit, Semaphore};
 use tracing::Level;
 
@@ -54,7 +55,7 @@ pub async fn run(
         .format("%Y%m%dT%H%M%S%.3f%:z")
         .to_string();
 
-    trace!("setting time on camera to '{}'", &time_str);
+    info!("setting time on camera to '{}'", &time_str);
 
     if let Err(err) = interface.set(CameraPropertyCode::DateTime, ptp::PtpData::STR(time_str)) {
         warn!("could not set date/time on camera: {:?}", err);
@@ -90,10 +91,7 @@ pub async fn run(
         semaphore: semaphore.clone(),
     };
 
-    let mut futures = Vec::new();
-    let mut task_names = Vec::new();
-
-    let download_task = spawn_with_name(
+    spawn_with_name(
         "camera download",
         run_download(
             interface_req_buf.clone(),
@@ -102,10 +100,7 @@ pub async fn run(
         ),
     );
 
-    task_names.push("download");
-    futures.push(download_task);
-
-    let cmd_task = spawn_with_name(
+    spawn_with_name(
         "camera cmd",
         run_commands(
             interface_req_buf.clone(),
@@ -115,26 +110,21 @@ pub async fn run(
         ),
     );
 
-    task_names.push("cmd");
-    futures.push(cmd_task);
+    spawn_with_name("camera live view", {
+        run_live_view(interface_req_buf.clone())
+    });
 
-    let interface_task = spawn_blocking_with_name("camera interface", {
+    spawn_blocking_with_name("camera interface", {
         let interface = interface.clone();
         let interrupt_rx = channels.interrupt.subscribe();
         move || run_interface(interface, state, interface_rx, interrupt_rx)
     });
 
-    task_names.push("interface");
-    futures.push(interface_task);
-
-    let event_task = spawn_blocking_with_name("camera events", {
+    spawn_blocking_with_name("camera events", {
         let interface = interface.clone();
         let interrupt_rx = channels.interrupt.subscribe();
         move || run_events(interface, semaphore, ptp_tx, interrupt_rx)
     });
-
-    task_names.push("event");
-    futures.push(event_task);
 
     Ok(())
 }
@@ -495,6 +485,9 @@ async fn run_commands(
             CameraCommandRequest::ContinuousCapture(req) => {
                 cmd_continuous_capture(interface.clone(), req).await
             }
+            CameraCommandRequest::LiveView(req) => {
+                cmd_live_view(interface.clone(), req).await
+            }
             CameraCommandRequest::Storage(req) => cmd_storage(interface.clone(), req).await,
             CameraCommandRequest::File(req) => {
                 cmd_file(interface.clone(), req, client_tx.clone()).await
@@ -596,4 +589,75 @@ async fn run_download(
 
         info!("download complete");
     }
+}
+
+#[cfg(feature = "gstreamer")]
+#[tracing::instrument]
+async fn run_live_view(
+    interface: CameraInterfaceRequestBuffer,
+    // mut cancellation: oneshot::Receiver<()>,
+) -> anyhow::Result<()> {
+    use nix::sys::stat;
+    use nix::unistd;
+    use tempfile::tempdir;
+
+    let tmp_dir = tempdir().unwrap();
+    let fifo_path = tmp_dir.path().join("r10c-liveview.mjpeg");
+
+    // create new fifo and give read, write and execute rights to the owner
+    match unistd::mkfifo(&fifo_path, stat::Mode::S_IRWXU) {
+        Ok(_) => debug!("created fifo at {:?}", fifo_path),
+        Err(err) => error!("error creating fifo: {}", err),
+    }
+
+    let mut file = tokio::fs::OpenOptions::new()
+        .append(true)
+        .open(&fifo_path)
+        .await?;
+
+    let mut interval = tokio::time::interval(Duration::from_secs_f32(1. / 30.));
+
+    loop {
+        interval.tick().await;
+
+        // if let Ok(_) | Err(oneshot::error::TryRecvError::Closed) = cancellation.try_recv() {
+        //     break;
+        // }
+
+        let frame = interface
+            .enter(move |i| async move {
+                let status = i.get_value(CameraPropertyCode::LiveViewStatus).await;
+
+                if let Some(ptp::PtpData::UINT8(status)) = status {
+                    match status {
+                        0x01 => {
+                            let data = i.object_data(ptp::ObjectHandle::from(0xFFFFC002)).await;
+
+                            match data {
+                                Ok(data) => Some(data),
+                                Err(err) => {
+                                    warn!("failed to get live view image: {}", err);
+                                    None
+                                }
+                            }
+                        }
+                        _ => {
+                            trace!("live view image not available");
+                            None
+                        }
+                    }
+                } else {
+                    None
+                }
+            })
+            .await;
+
+        if let Some(frame) = frame {
+            file.write(&frame[..]).await?;
+        }
+    }
+
+    tokio::fs::remove_file(&fifo_path).await?;
+
+    Ok(())
 }

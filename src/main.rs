@@ -335,30 +335,37 @@ async fn run_tasks(config: cli::config::PlaneSystemConfig) -> anyhow::Result<()>
             });
         }
 
-        #[cfg(feature = "gstreamer")]
         if let Some(aux_config) = config.aux_camera {
-            if let Some(stream_config) = aux_config.stream {
-                tasks.add("aux camera live stream", {
-                    let mut stream_client = camera::aux::stream::StreamClient::connect(
-                        channels.clone(),
-                        stream_cmd_receiver,
-                        stream_config.address,
-                        aux_config.cameras.clone(),
-                    )?;
-                    async move { stream_client.run().await }
-                });
+            #[cfg(feature = "gstreamer")]
+            {
+                if let Some(stream_config) = aux_config.stream {
+                    tasks.add("aux camera live stream", {
+                        let mut stream_client = camera::aux::stream::StreamClient::connect(
+                            channels.clone(),
+                            stream_cmd_receiver,
+                            stream_config.address,
+                            aux_config.cameras.clone(),
+                        )?;
+                        async move { stream_client.run().await }
+                    });
+                }
+
+                if let Some(save_config) = aux_config.save {
+                    tasks.add("aux camera live record", {
+                        let mut save_client = camera::aux::save::SaveClient::connect(
+                            channels.clone(),
+                            save_cmd_receiver,
+                            save_config.save_path,
+                            aux_config.cameras.clone(),
+                        )?;
+                        async move { save_client.run().await }
+                    });
+                }
             }
 
-            if let Some(save_config) = aux_config.save {
-                tasks.add("aux camera live record", {
-                    let mut save_client = camera::aux::save::SaveClient::connect(
-                        channels.clone(),
-                        save_cmd_receiver,
-                        save_config.save_path,
-                        aux_config.cameras.clone(),
-                    )?;
-                    async move { save_client.run().await }
-                });
+            #[cfg(not(feature = "gstreamer"))]
+            {
+                warn!("aux camera is configured, but this plane system binary was not compiled with gstreamer support")
             }
         }
 

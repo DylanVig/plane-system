@@ -40,6 +40,11 @@ pub enum CameraCommandRequest {
     #[clap(subcommand)]
     ContinuousCapture(CameraCommandContinuousCaptureRequest),
 
+    /// control continuous capture
+    #[clap(name = "lv")]
+    #[clap(subcommand)]
+    LiveView(CameraCommandLiveViewRequest),
+
     /// record videos
     #[clap(subcommand)]
     Record(CameraCommandRecordRequest),
@@ -163,6 +168,14 @@ pub enum CameraCommandContinuousCaptureRequest {
     Start,
     Stop,
 }
+
+
+#[derive(Subcommand, Debug, Clone)]
+pub enum CameraCommandLiveViewRequest {
+    Start,
+    Stop,
+}
+
 
 #[derive(Subcommand, Debug, Clone)]
 pub enum CameraCommandRecordRequest {

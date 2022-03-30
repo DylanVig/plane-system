@@ -316,6 +316,15 @@ pub(super) async fn cmd_continuous_capture(
     Ok(CameraCommandResponse::Unit)
 }
 
+pub(super) async fn cmd_live_view(
+    interface: CameraInterfaceRequestBuffer,
+    req: CameraCommandLiveViewRequest,
+) -> anyhow::Result<CameraCommandResponse> {
+
+    Ok(CameraCommandResponse::Unit)
+}
+
+
 pub(super) async fn cmd_storage(
     interface: CameraInterfaceRequestBuffer,
     req: CameraCommandStorageRequest,
