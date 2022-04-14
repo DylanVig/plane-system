@@ -28,7 +28,9 @@ pub enum PixhawkEvent {
         attitude: Attitude,
     },
     Gps {
-        coords: Point3D,
+        position: Point3D,
+        /// Velocity in meters per second (X, Y, Z) / (East, North, Up)
+        velocity: (f32, f32, f32),
     },
     Orientation {
         attitude: Attitude,

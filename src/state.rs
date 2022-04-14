@@ -1,6 +1,4 @@
-use std::{
-    path::PathBuf,
-};
+use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
@@ -46,6 +44,8 @@ pub struct Telemetry {
     pub plane_attitude: Attitude,
     pub gimbal_attitude: Attitude,
     pub position: Point3D,
+    /// Velocity in meters per second (X, Y, Z) / (East, North, Up)
+    pub velocity: (f32, f32, f32),
     pub time: chrono::DateTime<chrono::Local>,
 }
 
@@ -55,6 +55,7 @@ impl Default for Telemetry {
             gimbal_attitude: Default::default(),
             plane_attitude: Default::default(),
             position: Default::default(),
+            velocity: Default::default(),
             time: chrono::Local::now(),
         }
     }

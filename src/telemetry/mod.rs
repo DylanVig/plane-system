@@ -50,9 +50,10 @@ impl TelemetryCollector {
                     .context("pixhawk stream closed")?;
 
                 match message {
-                    PixhawkEvent::Gps { coords } => {
+                    PixhawkEvent::Gps { position, velocity } => {
                         let mut state = self.state.lock().unwrap();
-                        state.position = coords;
+                        state.position = position;
+                        state.velocity = velocity;
                         state.time = chrono::Local::now();
                     }
                     PixhawkEvent::Orientation { attitude } => {
