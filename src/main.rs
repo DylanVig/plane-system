@@ -322,7 +322,7 @@ async fn run_tasks(config: cli::config::PlaneSystemConfig) -> anyhow::Result<()>
             });
         }
 
-        if let Some(scheduler_config) = config.scheduler {
+        if let Some(_scheduler_config) = config.scheduler {
             tasks.add("scheduler", {
                 scheduler::run(channels.clone(), scheduler_cmd_receiver)
             });

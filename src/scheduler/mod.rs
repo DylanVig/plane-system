@@ -1,11 +1,10 @@
-use anyhow::Context;
+
 use serde::{Deserialize, Serialize};
 use tokio::sync::oneshot;
 
 use crate::{
-    gimbal::{GimbalPosition, GimbalRequest},
     state::Telemetry,
-    Channels, Command,
+    Channels,
 };
 
 use std::{path::PathBuf, sync::Arc, time::Duration};
@@ -67,7 +66,7 @@ pub async fn run(
     cmd_recv: flume::Receiver<SchedulerCommand>,
 ) -> anyhow::Result<()> {
     let mut interrupt_recv = channels.interrupt.subscribe();
-    let telemetry_recv = channels.telemetry.clone();
+    let _telemetry_recv = channels.telemetry.clone();
     let interrupt_fut = interrupt_recv.recv();
 
     let loop_fut = async move {
@@ -106,16 +105,16 @@ pub async fn run(
     Ok(())
 }
 
-async fn run_update(state: &mut SchedulerState, telemetry: Telemetry) -> anyhow::Result<()> {
+async fn run_update(state: &mut SchedulerState, _telemetry: Telemetry) -> anyhow::Result<()> {
     // give all of the ROIs a priority
     state.active_rois.iter().map(|roi| {
         // prioritize ROIs that have not been photographed much
-        let rarity = 1. / roi.captures.len() as f32;
+        let _rarity = 1. / roi.captures.len() as f32;
     });
 
     Ok(())
 }
 
-async fn run_command(state: &mut SchedulerState, cmd: SchedulerCommand) -> anyhow::Result<()> {
+async fn run_command(_state: &mut SchedulerState, _cmd: SchedulerCommand) -> anyhow::Result<()> {
     Ok(())
 }

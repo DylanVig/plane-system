@@ -1,6 +1,5 @@
 use std::{
     path::PathBuf,
-    sync::atomic::{AtomicUsize, Ordering},
 };
 
 use serde::{Deserialize, Serialize};
