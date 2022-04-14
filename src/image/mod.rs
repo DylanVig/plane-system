@@ -2,7 +2,7 @@ use std::{path::PathBuf, sync::Arc};
 
 use anyhow::Context;
 use futures::{select, FutureExt};
-use tokio::{io::AsyncWriteExt, fs::File};
+use tokio::{fs::File, io::AsyncWriteExt};
 
 use crate::{
     camera::main::CameraClientEvent, cli::config::ImageConfig, state::Telemetry, Channels,
@@ -32,7 +32,7 @@ pub async fn run(channels: Arc<Channels>, config: ImageConfig) -> anyhow::Result
             camera_evt = camera_recv.recv().fuse() => {
                 if let Ok(camera_evt) = camera_evt {
                     match camera_evt {
-                        CameraClientEvent::Download { image_name, image_data, .. } => {
+                        CameraClientEvent::Download { image_name, image_data, cc_timestamp, .. } => {
                             debug!("image download detected, uploading file to ground server");
 
                             let telemetry_info = channels.telemetry.borrow().clone();
@@ -41,7 +41,7 @@ pub async fn run(channels: Arc<Channels>, config: ImageConfig) -> anyhow::Result
                                 warn!("no telemetry data available for image capture")
                             }
 
-                            let image_filename = match save(&config, &image_name, &image_data, &telemetry_info).await {
+                            let image_filename = match save(&config, &image_name, &image_data, &telemetry_info, cc_timestamp).await {
                                 Ok(image_filename) => image_filename,
                                 Err(err) => {
                                   warn!("failed to download image: {}", err);
@@ -73,6 +73,7 @@ async fn save(
     name: &str,
     image: &Vec<u8>,
     telem: &Option<Telemetry>,
+    cc_timestamp: Option<chrono::DateTime<chrono::Local>>,
 ) -> anyhow::Result<PathBuf> {
     let mut image_path = config.save_path.clone();
 
@@ -103,8 +104,11 @@ async fn save(
             .await
             .context("failed to create telemetry file")?;
 
-        let telem_bytes =
-            serde_json::to_vec(telem).context("failed to serialize telemetry to JSON")?;
+        let telem_bytes = serde_json::to_vec(&serde_json::json!({
+            "telemetry": telem,
+            "cc_timestamp": cc_timestamp.map(|c| c.to_rfc3339()),
+        }))
+        .context("failed to serialize telemetry to JSON")?;
 
         telem_file
             .write_all(&telem_bytes[..])

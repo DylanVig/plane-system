@@ -434,6 +434,7 @@ pub(super) async fn cmd_file(
             let _ = client_tx.send(CameraClientEvent::Download {
                 image_name: info.filename.clone(),
                 image_data: Arc::new(data),
+                capture_timestamp: None,
             });
 
             Ok(CameraCommandResponse::Download {

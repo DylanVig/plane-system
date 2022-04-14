@@ -6,10 +6,15 @@ use serde::Serialize;
 
 #[derive(Debug, Clone)]
 pub enum CameraClientEvent {
-    Capture,
+    Capture {
+        timestamp: chrono::DateTime<chrono::Local>,
+    },
     Download {
         image_name: String,
         image_data: Arc<Vec<u8>>,
+        /// The timestamp of this image, if it was received asynchronously via
+        /// continuous capture.
+        cc_timestamp: Option<chrono::DateTime<chrono::Local>>,
     },
     Error(ErrorMode),
 }
