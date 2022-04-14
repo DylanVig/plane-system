@@ -250,12 +250,11 @@ impl PixhawkClient {
         match message {
             apm::MavMessage::common(common::MavMessage::GLOBAL_POSITION_INT(data)) => {
                 let _ = self.channels.pixhawk_event.send(PixhawkEvent::Gps {
-                    coords: Point3D::new(
-                        data.lat as f32 / 1e7,
-                        data.lon as f32 / 1e7,
-                        data.alt as f32 / 1e3,
-                        data.relative_alt as f32 / 1e3,
-                    ),
+                    coords: Point3D {
+                        point: geo::Point::new(data.lon as f32 / 1e7, data.lat as f32 / 1e7),
+                        altitude_msl: data.alt as f32 / 1e3,
+                        altitude_rel: data.relative_alt as f32 / 1e3,
+                    },
                 });
             }
             apm::MavMessage::common(common::MavMessage::ATTITUDE(data)) => {
@@ -275,12 +274,11 @@ impl PixhawkClient {
                     flags: data.flags,
                     time: SystemTime::UNIX_EPOCH + Duration::from_micros(data.time_usec),
                     attitude: Attitude::new(data.roll, data.pitch, data.yaw),
-                    coords: Point3D::new(
-                        data.lat as f32 / 1e7,
-                        data.lng as f32 / 1e7,
-                        data.alt_msl,
-                        data.alt_rel,
-                    ),
+                    coords: Point3D {
+                        point: geo::Point::new(data.lng as f32 / 1e7, data.lat as f32 / 1e7),
+                        altitude_msl: data.alt_msl,
+                        altitude_rel: data.alt_rel,
+                    },
                 });
             }
             _ => {}
