@@ -78,7 +78,7 @@ impl GroundServerClient {
         &self,
         data: &[u8],
         file_name: String,
-        telemetry: Option<TelemetryInfo>,
+        telemetry: Option<Telemetry>,
     ) -> anyhow::Result<()> {
         let file_name = file_name.to_lowercase();
 

@@ -24,7 +24,7 @@ pub struct GroundServerConfig {
 
 #[derive(Debug, Deserialize)]
 pub struct SchedulerConfig {
-    pub gps: Coords2D,
+    pub gps: geo::Point<f32>,
 }
 
 #[derive(Debug, Deserialize)]

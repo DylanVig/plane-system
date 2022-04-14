@@ -16,7 +16,7 @@ use mavlink::{
 };
 
 use crate::{
-    state::{Attitude, Coords3D},
+    state::{Attitude, Point3D},
     util::run_loop,
     Channels,
 };
@@ -250,7 +250,7 @@ impl PixhawkClient {
         match message {
             apm::MavMessage::common(common::MavMessage::GLOBAL_POSITION_INT(data)) => {
                 let _ = self.channels.pixhawk_event.send(PixhawkEvent::Gps {
-                    coords: Coords3D::new(
+                    coords: Point3D::new(
                         data.lat as f32 / 1e7,
                         data.lon as f32 / 1e7,
                         data.alt as f32 / 1e3,
@@ -275,7 +275,7 @@ impl PixhawkClient {
                     flags: data.flags,
                     time: SystemTime::UNIX_EPOCH + Duration::from_micros(data.time_usec),
                     attitude: Attitude::new(data.roll, data.pitch, data.yaw),
-                    coords: Coords3D::new(
+                    coords: Point3D::new(
                         data.lat as f32 / 1e7,
                         data.lng as f32 / 1e7,
                         data.alt_msl,

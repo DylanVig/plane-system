@@ -5,14 +5,14 @@ use futures::{select, FutureExt};
 use tokio::{io::AsyncWriteExt, fs::File};
 
 use crate::{
-    camera::main::CameraClientEvent, cli::config::ImageConfig, state::TelemetryInfo, Channels,
+    camera::main::CameraClientEvent, cli::config::ImageConfig, state::Telemetry, Channels,
 };
 
 #[derive(Clone, Debug)]
 pub struct ImageClientEvent {
     pub data: Arc<Vec<u8>>,
     pub file: PathBuf,
-    pub telemetry: Option<TelemetryInfo>,
+    pub telemetry: Option<Telemetry>,
 }
 
 pub async fn run(channels: Arc<Channels>, config: ImageConfig) -> anyhow::Result<()> {
@@ -72,7 +72,7 @@ async fn save(
     config: &ImageConfig,
     name: &str,
     image: &Vec<u8>,
-    telem: &Option<TelemetryInfo>,
+    telem: &Option<Telemetry>,
 ) -> anyhow::Result<PathBuf> {
     let mut image_path = config.save_path.clone();
 
