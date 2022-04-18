@@ -136,8 +136,13 @@ impl TaskBag {
     ) {
         info!("spawning task \"{}\"", name);
         self.names.push(name.to_owned());
+
+        #[cfg(tokio_unstable)]
         self.tasks
             .push(tokio::task::Builder::new().name(name).spawn(task));
+
+        #[cfg(not(tokio_unstable))]
+        self.tasks.push(tokio::spawn(task));
     }
 
     pub async fn wait(&mut self) -> anyhow::Result<()> {
@@ -200,8 +205,12 @@ async fn main() -> anyhow::Result<()> {
     let (writer, _guard) =
         tracing_appender::non_blocking(tracing_appender::rolling::hourly("logs", "plane-system"));
 
-    tracing_subscriber::registry()
-        .with(console_subscriber::spawn())
+    let reg = tracing_subscriber::registry();
+
+    #[cfg(tokio_unstable)]
+    let reg = reg.with(console_subscriber::spawn());
+
+    reg
         // writer that outputs to console
         .with(tracing_subscriber::fmt::layer().with_filter(targets))
         // writer that outputs to files
