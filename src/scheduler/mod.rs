@@ -91,7 +91,8 @@ pub async fn run(
         loop {
             tokio::select! {
                 _ = interval.tick() => {
-                    if let Some(telemetry) = telemetry_recv.borrow().clone() {
+                    let telem = telemetry_recv.borrow().clone();
+                    if let Some(telemetry) = telem {
                         // update the angle of the gimbal according to current
                         // telemetry information
                         run_update(&mut state, telemetry).await?;
