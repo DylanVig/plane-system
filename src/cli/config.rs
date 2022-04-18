@@ -4,7 +4,7 @@ use config::ConfigError;
 use mavlink::MavlinkVersion;
 use serde::Deserialize;
 
-use crate::{gimbal::GimbalKind, state::Coords2D};
+use crate::{gimbal::GimbalKind};
 
 #[derive(Debug, Deserialize)]
 pub struct PixhawkConfig {
@@ -24,7 +24,7 @@ pub struct GroundServerConfig {
 
 #[derive(Debug, Deserialize)]
 pub struct SchedulerConfig {
-    pub gps: Coords2D,
+    pub gps: geo::Point<f32>,
 }
 
 #[derive(Debug, Deserialize)]

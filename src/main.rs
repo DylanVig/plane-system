@@ -14,7 +14,7 @@ use tracing_subscriber::{filter::Targets, layer::SubscriberExt, util::Subscriber
 
 use gs::GroundServerClient;
 use pixhawk::{client::PixhawkClient, state::PixhawkEvent};
-use state::TelemetryInfo;
+use state::Telemetry;
 use telemetry::TelemetryStream;
 
 #[macro_use]
@@ -43,7 +43,7 @@ pub struct Channels {
     interrupt: broadcast::Sender<()>,
 
     /// Channel for broadcasting telemetry information gathered from the gimbal and pixhawk
-    telemetry: watch::Receiver<Option<TelemetryInfo>>,
+    telemetry: watch::Receiver<Option<Telemetry>>,
 
     /// Channel for broadcasting updates to the state of the Pixhawk.
     pixhawk_event: broadcast::Sender<PixhawkEvent>,
@@ -331,7 +331,7 @@ async fn run_tasks(config: cli::config::PlaneSystemConfig) -> anyhow::Result<()>
             });
         }
 
-        if let Some(scheduler_config) = config.scheduler {
+        if let Some(_scheduler_config) = config.scheduler {
             tasks.add("scheduler", {
                 scheduler::run(channels.clone(), scheduler_cmd_receiver)
             });

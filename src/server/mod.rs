@@ -4,13 +4,12 @@ use std::{convert::Infallible, net::SocketAddr, sync::Arc};
 use tokio::sync::oneshot;
 use warp::{self, Filter};
 
-use crate::scheduler::SchedulerCommand;
-use crate::state::RegionOfInterest;
+use crate::scheduler::{SchedulerCommand, Roi};
 use crate::Channels;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 struct AddROIs {
-    pub rois: Vec<RegionOfInterest>,
+    pub rois: Vec<Roi>,
     pub client_type: ClientType,
 }
 
