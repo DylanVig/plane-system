@@ -4,7 +4,7 @@ use std::{convert::Infallible, net::SocketAddr, sync::Arc};
 use tokio::sync::oneshot;
 use warp::{self, Filter};
 
-use crate::scheduler::{SchedulerCommand, Roi};
+use crate::scheduler::{Roi, SchedulerCommand};
 use crate::Channels;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -56,6 +56,39 @@ pub async fn serve(channels: Arc<Channels>, address: SocketAddr) -> anyhow::Resu
             }
         });
 
+    let roi_query = warp::path!("api" / "rois").and(warp::get()).then({
+        let channels = channels.clone();
+        move || {
+            let channels = channels.clone();
+            async move {
+                let (tx, rx) = oneshot::channel();
+                channels
+                    .scheduler_cmd
+                    .send(SchedulerCommand::GetROIs { tx })
+                    .unwrap();
+
+                rx.await.unwrap();
+
+                warp::reply()
+            }
+        }
+    });
+
+    // let add_rois = warp::path!("api"/"add_roi").and(warp::get()).then({
+    //     let channels = channels.clone();
+    //     move || {
+    //         let channels = channels.clone();
+    //         async move {
+    //             let(tx, rx) = oneshot::channel();
+    //             channels.scheduler_cmd.send(SchedulerCommand::AddROIs {tx}).unwrap();
+
+    //             rx.await.unwrap();
+
+    //             warp::reply()
+    //         }
+    //     }
+    // })
+
     let route_telem = warp::path!("api" / "telemetry" / "now")
         .and(warp::get())
         .and_then({
@@ -89,7 +122,8 @@ pub async fn serve(channels: Arc<Channels>, address: SocketAddr) -> anyhow::Resu
     let api = route_online
         .or(route_roi)
         .or(route_telem)
-        .or(route_telem_stream);
+        .or(route_telem_stream)
+        .or(roi_query);
 
     info!("initialized server");
 

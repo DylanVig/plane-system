@@ -181,6 +181,17 @@ async fn run_update(state: &mut SchedulerState, telemetry: Telemetry) -> anyhow:
     Ok(())
 }
 
-async fn run_command(_state: &mut SchedulerState, _cmd: SchedulerCommand) -> anyhow::Result<()> {
+async fn run_command(state: &mut SchedulerState, cmd: SchedulerCommand) -> anyhow::Result<()> {
+    match cmd {
+        SchedulerCommand::AddROIs { rois, tx } => {
+            state.active_rois.extend(rois);
+            let _ = tx.send(());
+        }
+        SchedulerCommand::GetROIs { tx } => {
+            let _ = tx.send(state.active_rois.clone());
+        }
+        SchedulerCommand::GetCaptures { tx } => todo!(),
+    }
+
     Ok(())
 }
