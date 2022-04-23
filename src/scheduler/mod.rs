@@ -14,6 +14,7 @@ struct SchedulerState {
     target_roi: Option<TargetRoi>,
 }
 
+#[derive(Clone)]
 struct TargetRoi {
     roi: Roi,
 
@@ -68,6 +69,9 @@ pub enum SchedulerCommand {
     },
     GetCaptures {
         tx: oneshot::Sender<Vec<Capture>>,
+    },
+    GetTargetROI {
+        tx: oneshot::Sender<Roi>,
     },
 }
 
@@ -192,6 +196,12 @@ async fn run_command(state: &mut SchedulerState, cmd: SchedulerCommand) -> anyho
             let _ = tx.send(state.active_rois.clone());
         }
         SchedulerCommand::GetCaptures { tx } => todo!(),
+        SchedulerCommand::GetTargetROI { tx } => {
+            let _ = tx.send(match state.target_roi.clone() {
+                Some(a) => a.roi.clone(),
+                None => todo!(),
+            });
+        }
     }
 
     Ok(())

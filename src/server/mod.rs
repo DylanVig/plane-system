@@ -78,20 +78,45 @@ pub async fn serve(channels: Arc<Channels>, address: SocketAddr) -> anyhow::Resu
         }
     });
 
-    // let add_rois = warp::path!("api"/"add_roi").and(warp::get()).then({
-    //     let channels = channels.clone();
-    //     move || {
-    //         let channels = channels.clone();
-    //         async move {
-    //             let(tx, rx) = oneshot::channel();
-    //             channels.scheduler_cmd.send(SchedulerCommand::AddROIs {tx}).unwrap();
+    let captures_query = warp::path!("api" / "captures").and(warp::get()).then({
+        let channels = channels.clone();
+        move || {
+            let channels = channels.clone();
+            async move {
+                debug!("Recieved request for captures.");
+                let (tx, rx) = oneshot::channel();
+                channels
+                    .scheduler_cmd
+                    .send(SchedulerCommand::GetCaptures { tx })
+                    .unwrap();
 
-    //             rx.await.unwrap();
+                let captures = rx.await.unwrap();
+                debug!("recieved captures {:?}", captures);
 
-    //             warp::reply()
-    //         }
-    //     }
-    // })
+                warp::reply::json(&captures)
+            }
+        }
+    });
+
+    let cap_plan_query = warp::path!("api" / "target").and(warp::get()).then({
+        let channels = channels.clone();
+        move || {
+            let channels = channels.clone();
+            async move {
+                debug!("Recieved request for target ROI");
+                let (tx, rx) = oneshot::channel();
+                channels
+                    .scheduler_cmd
+                    .send(SchedulerCommand::GetTargetROI { tx })
+                    .unwrap();
+
+                let target = rx.await.unwrap();
+                debug!("recieved target roi {:?}", target);
+
+                warp::reply::json(&target)
+            }
+        }
+    });
 
     let route_telem = warp::path!("api" / "telemetry" / "now")
         .and(warp::get())
