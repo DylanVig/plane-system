@@ -3,8 +3,10 @@ use serde::{Deserialize, Serialize};
 use std::{convert::Infallible, net::SocketAddr, sync::Arc};
 use warp::{self, Filter};
 
+use crate::camera::main::CameraCommandGetRequest;
 use crate::state::RegionOfInterest;
-use crate::Channels;
+
+use crate::{camera::main::CameraCommandRequest, Channels, Command};
 
 #[derive(Clone)]
 struct ServerState {}
@@ -73,10 +75,29 @@ pub async fn serve(channels: Arc<Channels>, address: SocketAddr) -> anyhow::Resu
             }
         });
 
+    let route_camera = warp::path!("api" / "camera").and(warp::get()).and_then({
+        let camera_cmd = channels.camera_cmd.clone();
+        move || {
+            let camera_cmd = camera_cmd.clone();
+            async move {
+                let (cmd, chan) = Command::new(CameraCommandRequest::Get(
+                    CameraCommandGetRequest::ZoomLevel,
+                ));
+
+                camera_cmd.send(cmd);
+
+                let response = chan.await.unwrap().unwrap();
+
+                Ok::<_, Infallible>(warp::reply::json(&response))
+            }
+        }
+    });
+
     let api = route_online
         .or(route_roi)
         .or(route_telem)
-        .or(route_telem_stream);
+        .or(route_telem_stream)
+        .or(route_camera);
 
     info!("initialized server");
 
