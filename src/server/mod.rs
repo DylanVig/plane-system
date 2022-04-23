@@ -29,7 +29,7 @@ pub async fn serve(channels: Arc<Channels>, address: SocketAddr) -> anyhow::Resu
 
     let telemetry_receiver = Arc::new(channels.telemetry.clone());
 
-    let route_roi = warp::path!("api" / "roi")
+    let route_roi = warp::path!("api" / "rois")
         .and(warp::post())
         .and(warp::body::json())
         .then({
