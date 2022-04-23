@@ -75,14 +75,13 @@ pub async fn serve(channels: Arc<Channels>, address: SocketAddr) -> anyhow::Resu
             }
         });
 
+    //returns the camera data in a json
     let route_camera = warp::path!("api" / "camera").and(warp::get()).and_then({
         let camera_cmd = channels.camera_cmd.clone();
         move || {
             let camera_cmd = camera_cmd.clone();
             async move {
-                let (cmd, chan) = Command::new(CameraCommandRequest::Get(
-                    CameraCommandGetRequest::ZoomLevel,
-                ));
+                let (cmd, chan) = Command::new(CameraCommandRequest::Status);
 
                 camera_cmd.send(cmd);
 

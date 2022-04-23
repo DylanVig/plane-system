@@ -88,8 +88,16 @@ pub(super) async fn cmd_status(
     } else {
         println!("shutter speed: <unknown>");
     }
-
-    Ok(CameraCommandResponse::Unit)
+    Ok(CameraCommandResponse::Status {
+        operating_mode: operating,
+        compression_mode: compression,
+        exposure_mode: exposure,
+        focus_mode: focus,
+        save_mode: save_media,
+        aperture: aperture,
+        iso: iso,
+        shutter_speed: shutter_speed,
+    })
 }
 
 pub(super) async fn cmd_get(

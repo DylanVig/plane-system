@@ -86,7 +86,7 @@ pub async fn run(channels: Arc<Channels>) -> anyhow::Result<()> {
                     rustyline::error::ReadlineError::Interrupted => {
                         let _ = tx.send(Commands::Exit);
                         break;
-                    },
+                    }
                     err => {
                         error!("error while reading input: {:?}", err);
                         break;
@@ -394,6 +394,22 @@ fn format_camera_response(response: CameraCommandResponse) -> () {
         }
         CameraCommandResponse::CcInterval(interval) => {
             println!("continuous capture interval: {:?}", interval);
+        }
+        CameraCommandResponse::Status {
+            operating_mode,
+            compression_mode,
+            exposure_mode,
+            focus_mode,
+            save_mode,
+            aperture,
+            iso,
+            shutter_speed,
+        } => {
+            println!("operating mode: {:?}", operating_mode);
+            println!("operating mode: {:?}", compression_mode);
+            println!("operating mode: {:?}", exposure_mode);
+            println!("operating mode: {:?}", focus_mode);
+            println!("operating mode: {:?}", save_mode);
         }
     }
 }
