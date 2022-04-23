@@ -122,7 +122,7 @@ RUN rustup target add ${TARGET_RUST}
 
 # add rust config
 ARG TARGET_PKGCONFIG
-RUN mkdir -p .cargo && printf "[target.${TARGET_RUST}]\nrustflags=[\"-C\",\"link_args=-Wl,-rpath-link,/usr/lib/${TARGET_PKGCONFIG}/:/lib/${TARGET_PKGCONFIG}\"]\nlinker = \"/opt/cross/bin/${TARGET_GCC}-gcc\"\n" > .cargo/config.toml
+RUN mkdir -p .cargo && printf "[target.${TARGET_RUST}]\nrustflags=[\"-C\",\"link_args=-Wl,-rpath-link,/usr/lib/${TARGET_PKGCONFIG}/:/lib/${TARGET_PKGCONFIG}:/usr/local/lib/${TARGET_PKGCONFIG}/\"]\nlinker = \"/opt/cross/bin/${TARGET_GCC}-gcc\"\n" > .cargo/config.toml
 RUN cat .cargo/config.toml
 
 # run
