@@ -61,15 +61,19 @@ pub async fn serve(channels: Arc<Channels>, address: SocketAddr) -> anyhow::Resu
         move || {
             let channels = channels.clone();
             async move {
+                debug!("received request for list of ROIs");
+
                 let (tx, rx) = oneshot::channel();
                 channels
                     .scheduler_cmd
                     .send(SchedulerCommand::GetROIs { tx })
                     .unwrap();
 
-                rx.await.unwrap();
+                let rois = rx.await.unwrap();
 
-                warp::reply()
+                debug!("received list of ROIs {:?}", rois);
+
+                warp::reply::json(&rois)
             }
         }
     });
