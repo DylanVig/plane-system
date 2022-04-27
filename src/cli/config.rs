@@ -52,6 +52,13 @@ pub enum CameraKind {
 }
 
 #[derive(Debug, Deserialize)]
+pub struct CurrentSensingConfig {
+    pub gpio_int: u8,
+    pub gpio_ack: u8,
+    pub i2c: u8,
+}
+
+#[derive(Debug, Deserialize)]
 pub struct MainCameraConfig {
     pub kind: CameraKind,
 }
