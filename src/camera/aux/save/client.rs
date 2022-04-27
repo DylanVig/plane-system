@@ -43,7 +43,7 @@ impl SaveClient {
 
         run_loop!(
             async {
-                while let Ok(cmd) = self.cmd.recv() {
+                while let Ok(cmd) = self.cmd.recv_async().await {
                     let result = self.exec(cmd.request()).await;
                     let _ = cmd.respond(result);
                 }
