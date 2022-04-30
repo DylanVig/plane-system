@@ -63,11 +63,11 @@ pub struct Channels {
 
     ///Channel for starting stream.
     #[cfg(feature = "gstreamer")]
-    stream_cmd: flume::Sender<camera::aux::stream::StreamCommand>,
+    stream_cmd: flume::Sender<camera::auxiliary::stream::StreamCommand>,
 
     ///Channel for starting saver.
     #[cfg(feature = "gstreamer")]
-    save_cmd: flume::Sender<camera::aux::save::SaveCommand>,
+    save_cmd: flume::Sender<camera::auxiliary::save::SaveCommand>,
 
     image_event: broadcast::Sender<image::ImageClientEvent>,
 }
@@ -339,7 +339,7 @@ async fn run_tasks(config: cli::config::PlaneSystemConfig) -> anyhow::Result<()>
         if let Some(aux_config) = config.aux_camera {
             if let Some(stream_config) = aux_config.stream {
                 tasks.add("aux camera live stream", {
-                    let mut stream_client = camera::aux::stream::StreamClient::connect(
+                    let mut stream_client = camera::auxiliary::stream::StreamClient::connect(
                         channels.clone(),
                         stream_cmd_receiver,
                         stream_config.address,
@@ -351,7 +351,7 @@ async fn run_tasks(config: cli::config::PlaneSystemConfig) -> anyhow::Result<()>
 
             if let Some(save_config) = aux_config.save {
                 tasks.add("aux camera live record", {
-                    let mut save_client = camera::aux::save::SaveClient::connect(
+                    let mut save_client = camera::auxiliary::save::SaveClient::connect(
                         channels.clone(),
                         save_cmd_receiver,
                         save_config.save_path,

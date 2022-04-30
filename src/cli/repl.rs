@@ -16,7 +16,7 @@ use crate::{
 };
 
 #[cfg(feature = "gstreamer")]
-use crate::camera::aux::{save::SaveRequest, stream::StreamRequest};
+use crate::camera::auxiliary::{save::SaveRequest, stream::StreamRequest};
 
 #[derive(Parser, Debug)]
 #[clap(setting(clap::AppSettings::NoBinaryName))]

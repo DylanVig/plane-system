@@ -1,2 +1,2 @@
-pub mod aux;
+pub mod auxiliary;
 pub mod main;
