@@ -22,6 +22,7 @@ macro_rules! get_camera_property {
     };
 }
 
+//processes the status request
 pub(super) async fn cmd_status(
     interface: CameraInterfaceRequestBuffer,
 ) -> anyhow::Result<CameraCommandResponse> {

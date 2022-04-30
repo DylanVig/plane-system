@@ -406,10 +406,13 @@ fn format_camera_response(response: CameraCommandResponse) -> () {
             shutter_speed,
         } => {
             println!("operating mode: {:?}", operating_mode);
-            println!("operating mode: {:?}", compression_mode);
-            println!("operating mode: {:?}", exposure_mode);
-            println!("operating mode: {:?}", focus_mode);
-            println!("operating mode: {:?}", save_mode);
+            println!("compression mode: {:?}", compression_mode);
+            println!("exposure mode: {:?}", exposure_mode);
+            println!("focus mode: {:?}", focus_mode);
+            println!("save mode: {:?}", save_mode);
+            println!("apeture: {:?}", aperture);
+            println!("iso: {:?}", iso);
+            println!("shutter speed: {:?}", shutter_speed);
         }
     }
 }
