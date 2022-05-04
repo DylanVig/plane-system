@@ -29,7 +29,7 @@ mavlink = { features = [
   "uavionix",
   "icarous",
 ], git = "https://github.com/laptou/rust-mavlink" }
-simplebgc = { git = "https://github.com/laptou/simplebgc-rs" }
+simplebgc = { git = "https://github.com/CUAir/simplebgc-rs" }
 ptp = { git = "https://github.com/CUAir/rust-ptp" }
 num-traits = "0.2"
 num-derive = "0.3"
@@ -58,8 +58,8 @@ prettytable-rs = "0.8"
 # i/o
 rusb = "0.9"
 gst = { version = "0.17", package = "gstreamer", optional = true }
-tokio-serial = { git = "https://github.com/CUAir/tokio-serial.git", default-features = false }
-tokio-util = { version = "0.6.2", features = ["codec"] }
+tokio-serial = { version = "5.4", default-features = false }
+tokio-util = { version = "0.7", features = ["codec"] }
 
 [features]
 default = ["udev", "gstreamer"]

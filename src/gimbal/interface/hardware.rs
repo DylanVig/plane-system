@@ -2,22 +2,22 @@ use anyhow::Context;
 use futures::{SinkExt, StreamExt};
 use simplebgc::*;
 use std::path::Path;
-use tokio_serial::{Serial, SerialPortSettings};
+use tokio_serial::{SerialPort, SerialPortBuilder, SerialStream};
 use tokio_util::codec::{Decoder, Encoder, Framed};
 
 use super::SimpleBgcGimbalInterface;
 
 pub struct HardwareGimbalInterface {
-    inner: Framed<Serial, V1Codec>,
+    inner: Framed<SerialStream, V1Codec>,
 }
 
 impl HardwareGimbalInterface {
     pub fn with_path<P: AsRef<Path>>(device_path: P) -> anyhow::Result<Self> {
-        let settings = SerialPortSettings {
-            baud_rate: 115200,
-            ..Default::default()
-        };
-        let port = Serial::from_path(device_path, &settings)?;
+        let port = tokio_serial::SerialStream::open(&tokio_serial::new(
+            device_path.as_ref().to_string_lossy(),
+            115200,
+        ))
+        .context("failed to open serial port")?;
 
         return Ok(Self {
             inner: V1Codec.framed(port),
