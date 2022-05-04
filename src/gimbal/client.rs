@@ -83,6 +83,8 @@ impl GimbalClient {
     }
 
     async fn exec(&mut self, cmd: &GimbalRequest) -> anyhow::Result<GimbalResponse> {
+        debug!("received gimbal command: {:?}", cmd);
+
         match cmd {
             GimbalRequest::Control { roll, pitch } => {
                 self.iface.control_angles(*roll, *pitch).await?

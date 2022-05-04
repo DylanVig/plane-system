@@ -20,7 +20,7 @@
         }
       },
       "env": {
-        "RUST_LOG": "plane_system=debug",
+        "RUST_LOG": "plane_system=debug,tokio_serial=debug",
         "RUST_LOG_STYLE": "always",
         "RUST_BACKTRACE": "1",
       },
@@ -68,7 +68,9 @@
         "gdb-remote 127.0.0.1:14000"
       ],
       "reverseDebugging": true,
-      "sourceLanguages": ["rust"]
+      "sourceLanguages": [
+        "rust"
+      ]
     }
   ]
 }

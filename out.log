@@ -1,0 +1,28 @@
+[2m2022-05-04T18:43:18.483049Z[0m [34mDEBUG[0m [2mplane_system[0m[2m:[0m reading config from default location
+[2m2022-05-04T18:43:18.485799Z[0m [32m INFO[0m [2mplane_system[0m[2m:[0m pixhawk address not specified, disabling pixhawk connection and telemetry stream
+[2m2022-05-04T18:43:18.486172Z[0m [32m INFO[0m [2mplane_system[0m[2m:[0m spawning task "image download"
+[2m2022-05-04T18:43:18.488857Z[0m [32m INFO[0m [2mplane_system[0m[2m:[0m spawning task "gimbal"
+[2m2022-05-04T18:43:18.515580Z[0m [32m INFO[0m [2mplane_system[0m[2m:[0m spawning task "aux camera live stream"
+[2m2022-05-04T18:43:18.516324Z[0m [32m INFO[0m [2mplane_system[0m[2m:[0m spawning task "aux camera live record"
+[2m2022-05-04T18:43:18.517071Z[0m [32m INFO[0m [2mplane_system[0m[2m:[0m spawning task "command line interface"
+[2m2022-05-04T18:43:18.517359Z[0m [32m INFO[0m [2mplane_system[0m[2m:[0m spawning task "plane server"
+[2m2022-05-04T18:43:18.517616Z[0m [32m INFO[0m [2mplane_system::server[0m[2m:[0m initializing server
+[?2004h[0K
+
+plane-system> [14C[2m2022-05-04T18:43:18.517704Z[0m [32m INFO[0m [2mplane_system::server[0m[2m:[0m initialized server
+[2m2022-05-04T18:43:18.517809Z[0m [32m INFO[0m [2mplane_system::server[0m[2m:[0m listening at [::]:8080
+gimbal control 10 10[?2004l
+[?2004h[0K
+
+plane-system> [14C[2m2022-05-04T18:43:31.911849Z[0m [34mDEBUG[0m [2mplane_system::gimbal::client[0m[2m:[0m received gimbal command: Control { roll: 10.0, pitch: 10.0 }
+[2m2022-05-04T18:43:31.912134Z[0m [34mDEBUG[0m [2mplane_system::gimbal::interface::hardware[0m[2m:[0m encoded sbgc message: 3e430d50020000c7010000c7010000000092
+[?2004l
+[2m2022-05-04T18:43:46.012767Z[0m [32m INFO[0m [1mrun[0m[1m{[0m[3mchannels[0m[2m=[0mChannels[1m}[0m[2m:[0m [2mplane_system::cli::repl[0m[2m:[0m exiting
+[2m2022-05-04T18:43:46.013845Z[0m [34mDEBUG[0m [2mplane_system::server[0m[2m:[0m server recv interrupt
+[2m2022-05-04T18:43:46.014397Z[0m [32m INFO[0m [2mplane_system[0m[2m:[0m task "image download" ended, tasks "gimbal", "aux camera live stream", "aux camera live record", "command line interface", "plane server" remaining
+[2m2022-05-04T18:43:46.014913Z[0m [32m INFO[0m [2mplane_system[0m[2m:[0m task "gimbal" ended, tasks "aux camera live stream", "aux camera live record", "command line interface", "plane server" remaining
+[2m2022-05-04T18:43:46.015263Z[0m [32m INFO[0m [2mplane_system[0m[2m:[0m task "aux camera live stream" ended, tasks "aux camera live record", "command line interface", "plane server" remaining
+[2m2022-05-04T18:43:46.015594Z[0m [32m INFO[0m [2mplane_system[0m[2m:[0m task "aux camera live record" ended, tasks "command line interface", "plane server" remaining
+[2m2022-05-04T18:43:46.016124Z[0m [32m INFO[0m [2mplane_system[0m[2m:[0m task "command line interface" ended, tasks "plane server" remaining
+[2m2022-05-04T18:43:46.016536Z[0m [32m INFO[0m [2mplane_system[0m[2m:[0m task "plane server" ended, no tasks remaining
+[2m2022-05-04T18:43:46.016807Z[0m [32m INFO[0m [2mplane_system[0m[2m:[0m exit

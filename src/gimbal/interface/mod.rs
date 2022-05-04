@@ -39,20 +39,20 @@ pub trait SimpleBgcGimbalInterface: GimbalInterface {
 #[async_trait]
 impl<T: SimpleBgcGimbalInterface> GimbalInterface for T {
     async fn control_angles(&mut self, roll: f64, pitch: f64) -> anyhow::Result<()> {
-        let factor: f64 = (2 ^ 14) as f64 / 360.0;
+        let factor: f64 = 0.02197265625;
 
         let command = OutgoingCommand::Control(ControlData {
             mode: ControlFormat::Legacy(AxisControlState::from_u8(0x02).unwrap()),
             axes: RollPitchYaw {
                 roll: AxisControlParams {
                     /// unit conversion: SBGC units are 360 / 2^14 degrees
-                    angle: (roll * factor) as i16,
-                    speed: 1200,
+                    angle: (roll / factor) as i16,
+                    speed: 0,
                 },
                 pitch: AxisControlParams {
                     /// unit conversion: SBGC units are 360 / 2^14 degrees
-                    angle: (pitch * factor) as i16,
-                    speed: 2400,
+                    angle: (pitch / factor) as i16,
+                    speed: 0,
                 },
                 yaw: AxisControlParams { angle: 0, speed: 0 },
             },

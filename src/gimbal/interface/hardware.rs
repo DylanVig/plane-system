@@ -3,7 +3,7 @@ use futures::{SinkExt, StreamExt};
 use simplebgc::*;
 use std::path::Path;
 use tokio_serial::{Serial, SerialPortSettings};
-use tokio_util::codec::{Decoder, Framed};
+use tokio_util::codec::{Decoder, Encoder, Framed};
 
 use super::SimpleBgcGimbalInterface;
 
@@ -13,7 +13,10 @@ pub struct HardwareGimbalInterface {
 
 impl HardwareGimbalInterface {
     pub fn with_path<P: AsRef<Path>>(device_path: P) -> anyhow::Result<Self> {
-        let settings = SerialPortSettings::default();
+        let settings = SerialPortSettings {
+            baud_rate: 115200,
+            ..Default::default()
+        };
         let port = Serial::from_path(device_path, &settings)?;
 
         return Ok(Self {
@@ -65,7 +68,17 @@ impl HardwareGimbalInterface {
 #[async_trait]
 impl SimpleBgcGimbalInterface for HardwareGimbalInterface {
     async fn send_command(&mut self, cmd: OutgoingCommand) -> anyhow::Result<()> {
+        let mut c = simplebgc::V1Codec;
+        let mut b = bytes::BytesMut::new();
+
+        if let Err(e) = c.encode(cmd.clone(), &mut b) {
+            warn!("could not encode the msg: {:?}", e);
+        } else {
+            debug!("encoded sbgc message: {:0x}", b);
+        }
+
         self.inner.send(cmd).await?;
+        self.inner.flush().await?;
         Ok(())
     }
 

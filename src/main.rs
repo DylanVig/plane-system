@@ -18,6 +18,8 @@ use scheduler::Scheduler;
 use state::TelemetryInfo;
 use telemetry::TelemetryStream;
 
+use crate::gimbal::GimbalClient;
+
 #[macro_use]
 extern crate tracing;
 #[macro_use]
@@ -257,7 +259,7 @@ async fn run_tasks(config: cli::config::PlaneSystemConfig) -> anyhow::Result<()>
         let (pixhawk_event_sender, _) = broadcast::channel(64);
         let (camera_event_sender, _) = broadcast::channel(256);
         let (camera_cmd_sender, camera_cmd_receiver) = flume::unbounded();
-        let (gimbal_cmd_sender, _gimbal_cmd_receiver) = flume::unbounded();
+        let (gimbal_cmd_sender, gimbal_cmd_receiver) = flume::unbounded();
         #[cfg(feature = "gstreamer")]
         let (stream_cmd_sender, stream_cmd_receiver) = flume::unbounded();
         #[cfg(feature = "gstreamer")]
@@ -317,8 +319,21 @@ async fn run_tasks(config: cli::config::PlaneSystemConfig) -> anyhow::Result<()>
             });
         }
 
-        if let Some(_gimbal_config) = config.gimbal {
-            panic!("gimbal not implemented");
+        if let Some(gimbal_config) = config.gimbal {
+            match gimbal_config.kind {
+                gimbal::GimbalKind::Hardware { .. } => {
+                    tasks.add("gimbal", {
+                        let mut gimbal_client = GimbalClient::connect_with_path(
+                            channels.clone(),
+                            gimbal_cmd_receiver,
+                            gimbal_config.device_path.unwrap(),
+                        )
+                        .context("failed to connect to hardware gimbal")?;
+                        async move { gimbal_client.run().await }
+                    });
+                }
+                gimbal::GimbalKind::Software => todo!(),
+            }
         }
 
         if let Some(gs_config) = config.ground_server {
