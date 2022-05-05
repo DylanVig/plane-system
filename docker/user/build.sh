@@ -4,6 +4,9 @@
 SCRIPT_DIR="$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
 ROOT_DIR=$( dirname `dirname ${SCRIPT_DIR}` )
 
+echo $SCRIPT_DIR
+echo $ROOT_DIR
+
 case "$1" in
 "rpi3-raspbian-v1" | "rpi4-ubuntu-v1")
   echo "building plane system for target $1" 
