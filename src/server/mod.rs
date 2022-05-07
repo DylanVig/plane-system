@@ -75,7 +75,7 @@ pub async fn serve(channels: Arc<Channels>, address: SocketAddr) -> anyhow::Resu
             }
         });
 
-    //returns the camera data in a json
+    //returns the camera settings in a json
     let route_camera = warp::path!("api" / "camera").and(warp::get()).and_then({
         let camera_cmd = channels.camera_cmd.clone();
         move || {

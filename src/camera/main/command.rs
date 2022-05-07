@@ -202,9 +202,8 @@ pub enum CameraCommandResponse {
     ExposureMode(ExposureMode),
     FocusMode(FocusMode),
 
+    // contains the status of all the settings of the camera system
     Status {
-        // ZoomLevel: u8,
-        // CcInterval: f32,
         operating_mode: OperatingMode,
         compression_mode: CompressionMode,
         exposure_mode: ExposureMode,
@@ -213,5 +212,7 @@ pub enum CameraCommandResponse {
         aperture: Option<Aperture>,
         iso: Option<Iso>,
         shutter_speed: Option<ShutterSpeed>,
+        // ZoomLevel: u8,
+        // CcInterval: f32,
     },
 }

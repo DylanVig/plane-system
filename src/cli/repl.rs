@@ -187,6 +187,7 @@ fn table_format() -> prettytable::format::TableFormat {
         .build()
 }
 
+// Returns the data associated with each camera command response
 fn format_camera_response(response: CameraCommandResponse) -> () {
     match response {
         CameraCommandResponse::Unit => println!("done"),
@@ -395,6 +396,7 @@ fn format_camera_response(response: CameraCommandResponse) -> () {
         CameraCommandResponse::CcInterval(interval) => {
             println!("continuous capture interval: {:?}", interval);
         }
+        //prints out all the camera modes and their respective values
         CameraCommandResponse::Status {
             operating_mode,
             compression_mode,
