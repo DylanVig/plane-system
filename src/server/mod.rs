@@ -1,21 +1,15 @@
 use futures::StreamExt;
 use serde::{Deserialize, Serialize};
 use std::{convert::Infallible, net::SocketAddr, sync::Arc};
+use tokio::sync::oneshot;
 use warp::{self, Filter};
 
-use crate::state::RegionOfInterest;
+use crate::scheduler::{SchedulerCommand, Roi};
 use crate::Channels;
-
-#[derive(Clone)]
-struct ServerState {}
-
-enum ServerMessage {
-    AddROIs(Vec<RegionOfInterest>),
-}
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 struct AddROIs {
-    pub rois: Vec<RegionOfInterest>,
+    pub rois: Vec<Roi>,
     pub client_type: ClientType,
 }
 
@@ -38,9 +32,28 @@ pub async fn serve(channels: Arc<Channels>, address: SocketAddr) -> anyhow::Resu
     let route_roi = warp::path!("api" / "roi")
         .and(warp::post())
         .and(warp::body::json())
-        .map(move |body: AddROIs| {
-            debug!("received ROIs: {:?}", &body);
-            warp::reply()
+        .then({
+            let channels = channels.clone();
+            move |body: AddROIs| {
+                let channels = channels.clone();
+                async move {
+                    debug!("received ROIs: {:?}", &body);
+
+                    let (tx, rx) = oneshot::channel();
+
+                    channels
+                        .scheduler_cmd
+                        .send(SchedulerCommand::AddROIs {
+                            rois: body.rois,
+                            tx,
+                        })
+                        .unwrap();
+
+                    rx.await.unwrap();
+
+                    warp::reply()
+                }
+            }
         });
 
     let route_telem = warp::path!("api" / "telemetry" / "now")

@@ -78,7 +78,7 @@ impl GroundServerClient {
         &self,
         data: &[u8],
         file_name: String,
-        telemetry: Option<TelemetryInfo>,
+        telemetry: Option<Telemetry>,
     ) -> anyhow::Result<()> {
         let file_name = file_name.to_lowercase();
 
@@ -113,8 +113,8 @@ impl GroundServerClient {
                     "altitude": telemetry.position.altitude_rel,
                     "planeYaw": telemetry.plane_attitude.yaw,
                     "gps": {
-                        "latitude": telemetry.position.latitude,
-                        "longitude": telemetry.position.longitude,
+                        "longitude": telemetry.position.point.x(),
+                        "latitude": telemetry.position.point.y(),
                     },
                     "gimOrt": {
                         "pitch": telemetry.gimbal_attitude.pitch,

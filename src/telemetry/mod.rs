@@ -1,4 +1,4 @@
-use crate::{pixhawk::state::PixhawkEvent, state::TelemetryInfo, util::ReceiverExt, Channels};
+use crate::{pixhawk::state::PixhawkEvent, state::Telemetry, util::ReceiverExt, Channels};
 
 use std::sync::{Arc, Mutex};
 
@@ -8,7 +8,7 @@ use tokio::time::interval;
 use tokio::{spawn, sync::watch};
 
 // Noteworthy that this isn't a RwLock because we have at most one reader at any given moment
-type TelemetryState = Arc<Mutex<TelemetryInfo>>;
+type TelemetryState = Arc<Mutex<Telemetry>>;
 
 struct TelemetryCollector {
     state: TelemetryState,
@@ -17,7 +17,7 @@ struct TelemetryCollector {
 
 struct TelemetryPublisher {
     state: TelemetryState,
-    sender: watch::Sender<Option<TelemetryInfo>>,
+    sender: watch::Sender<Option<Telemetry>>,
     channels: Arc<Channels>,
 }
 
@@ -50,9 +50,10 @@ impl TelemetryCollector {
                     .context("pixhawk stream closed")?;
 
                 match message {
-                    PixhawkEvent::Gps { coords } => {
+                    PixhawkEvent::Gps { position, velocity } => {
                         let mut state = self.state.lock().unwrap();
-                        state.position = coords;
+                        state.position = position;
+                        state.velocity = velocity;
                         state.time = chrono::Local::now();
                     }
                     PixhawkEvent::Orientation { attitude } => {
@@ -81,7 +82,7 @@ impl TelemetryCollector {
 impl TelemetryPublisher {
     fn new(
         state: TelemetryState,
-        sender: watch::Sender<Option<TelemetryInfo>>,
+        sender: watch::Sender<Option<Telemetry>>,
         channels: Arc<Channels>,
     ) -> Self {
         Self {
@@ -115,8 +116,8 @@ impl TelemetryPublisher {
 }
 
 impl TelemetryStream {
-    pub fn new(channels: Arc<Channels>, sender: watch::Sender<Option<TelemetryInfo>>) -> Self {
-        let telemetry_state = Arc::new(Mutex::new(TelemetryInfo::default()));
+    pub fn new(channels: Arc<Channels>, sender: watch::Sender<Option<Telemetry>>) -> Self {
+        let telemetry_state = Arc::new(Mutex::new(Telemetry::default()));
 
         let collector = TelemetryCollector::new(telemetry_state.clone(), channels.clone());
         let publisher = TelemetryPublisher::new(telemetry_state.clone(), sender, channels.clone());
