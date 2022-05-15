@@ -1,71 +1,120 @@
-use anyhow::Context;
 
-use crate::{gimbal::GimbalRequest, state::Coords2D, Channels, Command};
+use serde::{Deserialize, Serialize};
+use tokio::sync::oneshot;
 
-use std::sync::Arc;
+use crate::{
+    state::Telemetry,
+    Channels,
+};
 
-mod backend;
-mod state;
+use std::{path::PathBuf, sync::Arc, time::Duration};
 
-use backend::*;
-
-/// Controls whether the plane is taking pictures of the ground (first-pass),
-/// taking pictures of ROIs (second-pass), or doing nothing. Coordinates sending
-/// requests to the camera and to the gimbal based on telemetry information
-/// received from the Pixhawk.
-pub struct Scheduler {
-    /// Channel for receiving from the pixhawk client
-    channels: Arc<Channels>,
-    backend: SchedulerBackend,
+struct SchedulerState {
+    active_rois: Vec<Roi>,
 }
 
-impl Scheduler {
-    pub fn new(channels: Arc<Channels>, gps: Coords2D) -> Self {
-        Self {
-            channels,
-            backend: SchedulerBackend::new(gps),
-        }
-    }
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Roi {
+    id: usize,
+    location: geo::Point<f32>,
+    kind: RoiKind,
 
-    pub async fn run(&mut self) -> anyhow::Result<()> {
-        // telemetry_recv can hang indefinitely if there is no pixhawk, so we
-        // need to do a select() to avoid this
+    // skip deserializing b/c we don't receive captures from outside
+    #[serde(skip_deserializing)]
+    captures: Vec<Capture>,
+}
 
-        let mut interrupt_recv = self.channels.interrupt.subscribe();
-        let interrupt_fut = interrupt_recv.recv();
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum RoiKind {
+    Normal,
+    OffAxis,
+    EmergentTarget,
+}
 
-        let mut telemetry_recv = self.channels.telemetry.clone();
-        let loop_fut = async move {
-            loop {
-                telemetry_recv
-                    .changed()
-                    .await
-                    .context("telemetry channel closed")?;
+/// Represents a capture of a certain ROI.
+#[derive(Clone, Debug, Serialize)]
+pub struct Capture {
+    id: usize,
 
-                if let Some(telemetry) = telemetry_recv.borrow().as_ref() {
-                    self.backend.update_telemetry(telemetry.clone());
-                }
+    /// IDs of ROIs which are present in this capture
+    rois: Vec<usize>,
 
-                if let Some(capture_request) = self.backend.get_capture_request() {
-                    debug!("Got a capture request: {:?}", capture_request);
-                }
+    timestamp: chrono::DateTime<chrono::Local>,
 
-                let (roll, pitch) = self.backend.get_target_gimbal_angles();
-                let request = GimbalRequest::Control { roll, pitch };
-                let (cmd, _) = Command::new(request);
-                self.channels.gimbal_cmd.clone().send(cmd)?;
-            }
+    telemetry: Telemetry,
 
-            // this is necessary so that Rust can figure out what the return
-            // type of the async block is
-            #[allow(unreachable_code)]
-            Result::<(), anyhow::Error>::Ok(())
+    file: PathBuf,
+}
+
+#[derive(Debug)]
+pub enum SchedulerCommand {
+    AddROIs {
+        rois: Vec<Roi>,
+        tx: oneshot::Sender<()>,
+    },
+    GetROIs {
+        tx: oneshot::Sender<Vec<Roi>>,
+    },
+    GetCaptures {
+        tx: oneshot::Sender<Vec<Capture>>,
+    },
+}
+
+pub async fn run(
+    channels: Arc<Channels>,
+    cmd_recv: flume::Receiver<SchedulerCommand>,
+) -> anyhow::Result<()> {
+    let mut interrupt_recv = channels.interrupt.subscribe();
+    let _telemetry_recv = channels.telemetry.clone();
+    let interrupt_fut = interrupt_recv.recv();
+
+    let loop_fut = async move {
+        let mut state = SchedulerState {
+            active_rois: vec![],
         };
 
-        futures::pin_mut!(loop_fut);
-        futures::pin_mut!(interrupt_fut);
-        futures::future::select(interrupt_fut, loop_fut).await;
+        let mut interval = tokio::time::interval(Duration::from_millis(50));
+        interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
 
-        Ok(())
-    }
+        loop {
+            tokio::select! {
+                _ = interval.tick() => {
+                    // if let Some(telemetry) = telemetry_recv.borrow().clone() {
+                    //     // update the angle of the gimbal according to current
+                    //     // telemetry information
+                    //     run_update(&mut state, telemetry).await?;
+                    // }
+                }
+                cmd = cmd_recv.recv_async() => {
+                    run_command(&mut state, cmd?).await?;
+                }
+            };
+        }
+
+        // this is necessary so that Rust can figure out what the return
+        // type of the async block is
+        #[allow(unreachable_code)]
+        Result::<(), anyhow::Error>::Ok(())
+    };
+
+    futures::pin_mut!(loop_fut);
+    futures::pin_mut!(interrupt_fut);
+    futures::future::select(interrupt_fut, loop_fut).await;
+
+    Ok(())
+}
+
+async fn run_update(state: &mut SchedulerState, _telemetry: Telemetry) -> anyhow::Result<()> {
+    // give all of the ROIs a priority
+    state.active_rois.iter().map(|roi| {
+        // prioritize ROIs that have not been photographed much
+        let _rarity = 1. / roi.captures.len() as f32;
+    });
+
+    Ok(())
+}
+
+async fn run_command(_state: &mut SchedulerState, _cmd: SchedulerCommand) -> anyhow::Result<()> {
+    Ok(())
 }
