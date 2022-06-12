@@ -46,7 +46,15 @@ pub struct Telemetry {
     pub position: Point3D,
     /// Velocity in meters per second (X, Y, Z) / (East, North, Up)
     pub velocity: (f32, f32, f32),
+    #[serde(serialize_with = "serialize_time")]
     pub time: chrono::DateTime<chrono::Local>,
+}
+
+fn serialize_time<S>(me: &chrono::DateTime<chrono::Local>, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: serde::ser::Serializer,
+{
+    serializer.collect_str(&me.to_rfc3339())
 }
 
 impl Default for Telemetry {
