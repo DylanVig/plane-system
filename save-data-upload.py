@@ -34,6 +34,11 @@ DIR_NAME = args.directory
 GS_HOST = args.gs_host
 TELEM_MODE = args.mode
 
+# Constants for default
+IMAGE_LAT = 38.315946
+IMAGE_LONG = -76.558576
+IMAGE_ALT = 100
+
 # Gather set of each image identifier stored on SD card
 
 ids = set()
@@ -56,9 +61,9 @@ for offset, img_name in enumerate(ids):
             "timestamp": int(datetime.now().timestamp()) + offset,
             "imgMode": "fixed",
             "telemetry": {
-                "altitude": 0,
+                "altitude": IMAGE_ALT,
                 "planeYaw": 0,
-                "gps": {"latitude": 0, "longitude": 0},
+                "gps": {"latitude": IMAGE_LAT, "longitude": IMAGE_LONG},
                 "gimOrt": {"pitch": 0, "roll": 0},
             },
         }
