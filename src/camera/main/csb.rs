@@ -7,9 +7,16 @@ use crate::cli::config::CurrentSensingConfig;
 
 pub async fn run_current_sensing(config: CurrentSensingConfig) -> anyhow::Result<()> {
     let gpio = Gpio::new().context("failed to access gpio")?;
-    let mut i2c = I2c::with_bus(config.i2c).context("failed to access i2c")?;
 
-    i2c.set_slave_address(0b111_000)?;
+    let mut i2c = config
+        .i2c
+        .map(|i2c_instance| {
+            let mut i2c = I2c::with_bus(i2c_instance).context("failed to access i2c")?;
+            i2c.set_slave_address(0b111_000)?;
+
+            Ok::<_, anyhow::Error>(i2c)
+        })
+        .transpose()?;
 
     let mut pin_int = gpio
         .get(config.gpio_int)
@@ -30,19 +37,24 @@ pub async fn run_current_sensing(config: CurrentSensingConfig) -> anyhow::Result
     loop {
         let _ = rx.recv_async().await?;
 
+        debug!("got csb interrupt");
+
         let timestamp = chrono::Local::now();
 
         let mut latitude = [0u8; 4];
         let mut longitude = [0u8; 4];
 
-        tokio::task::block_in_place(|| {
-            i2c.read(&mut latitude[..])?;
-            i2c.read(&mut longitude[..])?;
-            Ok::<_, anyhow::Error>(())
-        })?;
+        if let Some(i2c) = &mut i2c {
+            tokio::task::block_in_place(|| {
+                i2c.read(&mut latitude[..])?;
+                i2c.read(&mut longitude[..])?;
+                Ok::<_, anyhow::Error>(())
+            })?;
+        }
 
         let latitude = u32::from_le_bytes(latitude);
         let longitude = u32::from_le_bytes(longitude);
+
 
         let coord = geo::Point::new(latitude as f32 / 1e4, longitude as f32 / 1e4);
 

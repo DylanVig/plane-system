@@ -55,7 +55,7 @@ pub enum CameraKind {
 pub struct CurrentSensingConfig {
     pub gpio_int: u8,
     pub gpio_ack: u8,
-    pub i2c: u8,
+    pub i2c: Option<u8>,
 }
 
 #[derive(Debug, Deserialize)]
