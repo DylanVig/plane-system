@@ -1,7 +1,8 @@
 use std::{
-    sync::atomic::AtomicU8,
-    sync::atomic::Ordering,
-    sync::Arc,
+    sync::{
+        atomic::{AtomicU8, Ordering},
+        Arc,
+    },
     time::{Duration, Instant, SystemTime},
 };
 
@@ -201,12 +202,23 @@ impl PixhawkClient {
                     msg
                 }
                 Err(MessageReadError::Parse(ParserError::InvalidChecksum { .. })) => {
+                    warn!(
+                        "message parsing failure; buffer contents: {:04x?}",
+                        msg_content,
+                    );
                     trace!("got invalid checksum, dropping message");
-                    let skip = magic_position + 1;
+                    let skip = magic_position + msg_body_size;
+                    // let skip = magic_position + 1;
                     self.buf.advance(skip);
                     continue;
                 }
-                Err(err) => return Err(err).context("error while parsing message"),
+                Err(err) => {
+                    warn!(
+                        "message parsing failure; buffer contents: {:04x?}",
+                        msg_content
+                    );
+                    return Err(err).context("error while parsing message");
+                }
             };
 
             trace!("received message: {:?}", msg);
