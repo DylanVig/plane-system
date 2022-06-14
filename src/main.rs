@@ -308,10 +308,16 @@ async fn run_tasks(config: cli::config::PlaneSystemConfig) -> anyhow::Result<()>
             );
         }
 
-        if let Some(_camera_config) = config.main_camera {
+        if let Some(camera_config) = config.main_camera {
             tasks.add("camera", {
                 camera::main::run(channels.clone(), camera_cmd_receiver)
             });
+
+            if let Some(csb_config) = camera_config.current_sensing {
+                tasks.add("current sensing", {
+                    camera::main::csb::run(channels.clone(), csb_config)
+                });
+            }
         }
 
         if let Some(image_config) = config.image {
