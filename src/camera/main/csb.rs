@@ -1,18 +1,34 @@
 //! This module contains code for reading measurements from the current-sensing board.
 
+use std::{sync::Arc, time::Duration};
+
 use anyhow::Context;
 use rppal::{gpio::*, i2c::*};
 
-use crate::cli::config::CurrentSensingConfig;
+use crate::{cli::config::CurrentSensingConfig, Channels};
 
-pub async fn run_current_sensing(config: CurrentSensingConfig) -> anyhow::Result<()> {
+pub async fn run(channels: Arc<Channels>, config: CurrentSensingConfig) -> anyhow::Result<()> {
+    let mut interrupt_recv = channels.interrupt.subscribe();
+
+    info!("initializing csb routine");
+
     let gpio = Gpio::new().context("failed to access gpio")?;
 
     let mut i2c = config
         .i2c
         .map(|i2c_instance| {
+            info!("intializing csb i2c");
+
             let mut i2c = I2c::with_bus(i2c_instance).context("failed to access i2c")?;
-            i2c.set_slave_address(0b111_000)?;
+
+            debug!(
+                "opened i2c bus {} at {} hz",
+                i2c.bus(),
+                i2c.clock_speed()
+                    .context("failed to query i2c clock speed")?
+            );
+
+            i2c.set_slave_address(8)?;
 
             Ok::<_, anyhow::Error>(i2c)
         })
@@ -21,7 +37,7 @@ pub async fn run_current_sensing(config: CurrentSensingConfig) -> anyhow::Result
     let mut pin_int = gpio
         .get(config.gpio_int)
         .context("failed to access interrupt gpio pin")?
-        .into_input();
+        .into_input_pullup();
 
     let mut pin_ack = gpio
         .get(config.gpio_ack)
@@ -34,37 +50,78 @@ pub async fn run_current_sensing(config: CurrentSensingConfig) -> anyhow::Result
         .set_async_interrupt(Trigger::Both, move |level| tx.send(level).unwrap())
         .context("failed to set irq handler")?;
 
-    loop {
-        let _ = rx.recv_async().await?;
+    // let mut interval = tokio::time::interval(Duration::from_millis(25));
 
-        debug!("got csb interrupt");
+    // while interrupt_recv.is_empty() {
+    //     if let Some(i2c) = &mut i2c {
+    //         let integer = tokio::task::block_in_place(|| {
+    //             let mut integer = [0u8; 2];
+    //             i2c.read(&mut integer[..])?;
+    //             Ok::<_, anyhow::Error>(i16::from_le_bytes(integer))
+    //         })
+    //         .context("failed to read from i2c")?;
 
-        let timestamp = chrono::Local::now();
+    //         debug!("received i2c integer: {:?}", integer);
+    //     }
 
-        let mut latitude = [0u8; 4];
-        let mut longitude = [0u8; 4];
+    //     interval.tick().await;
+    // }
 
-        if let Some(i2c) = &mut i2c {
-            tokio::task::block_in_place(|| {
-                i2c.read(&mut latitude[..])?;
-                i2c.read(&mut longitude[..])?;
-                Ok::<_, anyhow::Error>(())
-            })?;
+    // Ok(())
+
+    let loop_fut = async {
+        loop {
+            debug!("waiting for csb interrupt");
+
+            let _ = rx.recv_async().await?;
+
+            debug!("got csb interrupt");
+
+            let timestamp = chrono::Local::now();
+
+            let mut latitude = [0u8; 4];
+            let mut longitude = [0u8; 4];
+
+            if let Some(i2c) = &mut i2c {
+                tokio::task::block_in_place(|| {
+                    i2c.read(&mut latitude[..])?;
+                    i2c.read(&mut longitude[..])?;
+                    Ok::<_, anyhow::Error>(())
+                })?;
+            }
+
+            let latitude = u32::from_le_bytes(latitude);
+            let longitude = u32::from_le_bytes(longitude);
+
+            let coord = geo::Point::new(latitude as f32 / 1e4, longitude as f32 / 1e4);
+
+            // TODO: do something with the coordinate
+
+            debug!("setting ack low");
+
+            pin_ack.set_low();
+
+            debug!("waiting for int high");
+
+            // wait for interrupt pin to go high
+            while let Level::Low = rx.recv_async().await? {
+                debug!("int low");
+            }
+
+            debug!("setting ack high");
+
+            pin_ack.set_high();
         }
 
-        let latitude = u32::from_le_bytes(latitude);
-        let longitude = u32::from_le_bytes(longitude);
+        Ok::<_, anyhow::Error>(())
+    };
 
+    let interrupt_fut = interrupt_recv.recv();
 
-        let coord = geo::Point::new(latitude as f32 / 1e4, longitude as f32 / 1e4);
+    futures::pin_mut!(loop_fut);
+    futures::pin_mut!(interrupt_fut);
 
-        // TODO: do something with the coordinate
+    futures::future::select(loop_fut, interrupt_fut).await;
 
-        pin_ack.set_low();
-
-        // wait for interrupt pin to go high
-        while let Level::Low = rx.recv_async().await? {}
-
-        pin_ack.set_high();
-    }
+    Ok(())
 }

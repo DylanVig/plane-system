@@ -61,6 +61,7 @@ pub struct CurrentSensingConfig {
 #[derive(Debug, Deserialize)]
 pub struct MainCameraConfig {
     pub kind: CameraKind,
+    pub current_sensing: Option<CurrentSensingConfig>,
 }
 
 #[derive(Debug, Deserialize)]
