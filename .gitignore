@@ -15,3 +15,6 @@ images/
 videos/
 plane-system.json
 save-data-upload.log
+mav.parm
+mav.tlog
+mav.tlog.raw

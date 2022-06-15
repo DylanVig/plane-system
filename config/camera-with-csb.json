@@ -11,10 +11,10 @@
 	"main_camera": {
     "kind": "R10C",
     "current_sensing": {
-      "gpio_int": 4,
-      "gpio_ack": 17,
-      "i2c": 1
+      "gpio_int": 23,
+      "gpio_ack": 24,
+      "i2c": null
     }
   },
-	"gimbal": null
+  "gimbal": null
 }
