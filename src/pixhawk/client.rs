@@ -26,6 +26,7 @@ use super::{state::PixhawkEvent, PixhawkCommand};
 
 pub struct PixhawkClient {
     sock: tokio::net::UdpSocket,
+    seq_num: Option<u8>,
     buf: BytesMut,
     sequence: AtomicU8,
     channels: Arc<Channels>,
@@ -68,6 +69,7 @@ impl PixhawkClient {
 
         Ok(PixhawkClient {
             sock,
+            seq_num: None,
             buf: BytesMut::with_capacity(1024),
             sequence: AtomicU8::default(),
             channels,
@@ -173,6 +175,26 @@ impl PixhawkClient {
 
             let payload_len = self.buf[magic_position + 1];
 
+            let seq_num = self.buf[magic_position + 4];
+
+            if let Some(prev_seq_num) = &mut self.seq_num {
+                let expected_seq_num = prev_seq_num.wrapping_add(1);
+
+                if expected_seq_num != seq_num {
+                    warn!("unexpected sequence number {seq_num} (wanted {expected_seq_num}) for pixhawk packet, assuming packet loss");
+                    let skip = magic_position + 1;
+                    trace!("skipping forward {skip} bytes");
+                    self.buf.advance(skip);
+                    continue;
+                } else {
+                    *prev_seq_num = seq_num;
+                }
+            } else {
+                self.seq_num = Some(seq_num);
+            }
+
+            trace!("seq num = {seq_num}");
+
             let msg_body_size = match self.version {
                 // in v1: 1 byte magic + 1 byte payload len + 4 byte header + 2 byte checksum
                 MavlinkVersion::V1 => payload_len as usize + 8,
@@ -203,7 +225,7 @@ impl PixhawkClient {
                 }
                 Err(MessageReadError::Parse(ParserError::InvalidChecksum { .. })) => {
                     warn!(
-                        "message parsing failure; buffer contents: {:04x?}",
+                        "message parsing failure (invalid checksum); buffer contents: {:02x?}",
                         msg_content,
                     );
                     trace!("got invalid checksum, dropping message");
@@ -214,7 +236,7 @@ impl PixhawkClient {
                 }
                 Err(err) => {
                     warn!(
-                        "message parsing failure ({:?}); buffer contents: {:04x?}",
+                        "message parsing failure ({:?}); buffer contents: {:02x?}",
                         err,
                         msg_content
                     );
