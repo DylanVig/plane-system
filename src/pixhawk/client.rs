@@ -214,7 +214,8 @@ impl PixhawkClient {
                 }
                 Err(err) => {
                     warn!(
-                        "message parsing failure; buffer contents: {:04x?}",
+                        "message parsing failure ({:?}); buffer contents: {:04x?}",
+                        err,
                         msg_content
                     );
                     return Err(err).context("error while parsing message");

@@ -92,19 +92,19 @@ for offset, img_name in enumerate(ids):
             # }
 
             request_data = {
-              "timestamp": int(datetime.fromisoformat(request_data['time']).timestamp()),
+              "timestamp": int(datetime.fromisoformat(request_data['telemetry']['time'][:26]).timestamp()),
               "imgMode": "fixed",
               "telemetry": {
-                "planeYaw": request_data['plane_attitude']['yaw'],
-                "altitude": request_data['position']['altitude_rel'],
+                "planeYaw": request_data['telemetry']['plane_attitude']['yaw'],
+                "altitude": request_data['telemetry']['position']['altitude_rel'],
                 "gps": {
-                  "latitude": request_data['position']['latitude'],
-                  "longitude": request_data['position']['longitude'],
+                  "latitude": request_data['telemetry']['position']['point']['x'],
+                  "longitude": request_data['telemetry']['position']['point']['y'],
                 },
                 "gimOrt": { 
                   # NOTE(ibiyemi): no gimbal in bartholomew, so we are using plane pitch and roll for comp 2022
-                  "pitch": request_data['plane_attitude']['pitch'], 
-                  "roll": request_data['plane_attitude']['roll'],
+                  "pitch": request_data['telemetry']['plane_attitude']['pitch'], 
+                  "roll": request_data['telemetry']['plane_attitude']['roll'],
                 },
               }
             }
@@ -113,7 +113,7 @@ for offset, img_name in enumerate(ids):
 
     files = {"json": json.dumps(request_data), "files": open(jpg_filename, "rb")}
 
-    print(f'uploading {jpg_filename} ... ', end = '')
+    print(f'uploading {jpg_filename} ... ', end = '', flush = True)
 
     response = requests.post(url=f"http://{GS_HOST}/api/v1/image", files=files)
 

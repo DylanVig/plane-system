@@ -47,7 +47,7 @@ pub async fn run(channels: Arc<Channels>, config: ImageConfig) -> anyhow::Result
                                 warn!("no telemetry data available for image capture")
                             }
 
-                            let image_filename = match save(&config, &image_name, &image_data, &telemetry_info, cc_timestamp).await {
+                            let image_filename = match save(&image_save_dir, &image_name, &image_data, &telemetry_info, cc_timestamp).await {
                                 Ok(image_filename) => image_filename,
                                 Err(err) => {
                                   warn!("failed to download image: {}", err);
@@ -75,13 +75,13 @@ pub async fn run(channels: Arc<Channels>, config: ImageConfig) -> anyhow::Result
 }
 
 async fn save(
-    config: &ImageConfig,
+    image_save_dir: impl AsRef<Path>,
     name: &str,
     image: &Vec<u8>,
     telem: &Option<Telemetry>,
     cc_timestamp: Option<chrono::DateTime<chrono::Local>>,
 ) -> anyhow::Result<PathBuf> {
-    let mut image_path = config.save_path.to_owned();
+    let mut image_path = image_save_dir.as_ref().to_owned();
     image_path.push(&name);
     debug!("writing image to file '{}'", image_path.to_string_lossy());
 
