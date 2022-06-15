@@ -86,7 +86,7 @@ pub async fn run(channels: Arc<Channels>) -> anyhow::Result<()> {
                     rustyline::error::ReadlineError::Interrupted => {
                         let _ = tx.send(Commands::Exit);
                         break;
-                    },
+                    }
                     err => {
                         error!("error while reading input: {:?}", err);
                         break;

@@ -4,7 +4,7 @@ use std::{convert::Infallible, net::SocketAddr, sync::Arc};
 use tokio::sync::oneshot;
 use warp::{self, Filter};
 
-use crate::scheduler::{SchedulerCommand, Roi};
+use crate::scheduler::{Roi, SchedulerCommand};
 use crate::Channels;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]

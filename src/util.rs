@@ -8,7 +8,10 @@ use tokio::sync::broadcast::{self, error::RecvError};
 // for postprocessing
 pub const ISO_8601_FORMAT: &str = "%Y-%m-%dT%H:%M:%S%.6f%:z";
 
-pub fn serialize_time<S>(me: &chrono::DateTime<chrono::Local>, serializer: S) -> Result<S::Ok, S::Error>
+pub fn serialize_time<S>(
+    me: &chrono::DateTime<chrono::Local>,
+    serializer: S,
+) -> Result<S::Ok, S::Error>
 where
     S: serde::ser::Serializer,
 {

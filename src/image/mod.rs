@@ -5,7 +5,7 @@ use std::{
 
 use anyhow::Context;
 use futures::{select, FutureExt};
-use tokio::{fs::File, io::AsyncWriteExt, sync::broadcast};
+use tokio::{fs::File, io::AsyncWriteExt};
 
 use crate::{
     camera::main::{csb, CameraClientEvent},

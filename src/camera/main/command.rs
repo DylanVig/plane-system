@@ -60,31 +60,14 @@ pub enum CameraCommandGetRequest {
 
 #[derive(Subcommand, Debug, Clone)]
 pub enum CameraCommandSetRequest {
-    ExposureMode {
-        mode: ExposureMode,
-    },
-    OperatingMode {
-        mode: OperatingMode,
-    },
-    SaveMode {
-        mode: SaveMedia,
-    },
-    FocusMode {
-        mode: FocusMode,
-    },
-    ZoomLevel {
-        level: u16,
-    },
-    CcInterval {
-        interval: f32,
-    },
-    ShutterSpeed {
-        speed: ShutterSpeed,
-    },
-    Aperture {
-        aperture: Aperture,
-    },
-
+    ExposureMode { mode: ExposureMode },
+    OperatingMode { mode: OperatingMode },
+    SaveMode { mode: SaveMedia },
+    FocusMode { mode: FocusMode },
+    ZoomLevel { level: u16 },
+    CcInterval { interval: f32 },
+    ShutterSpeed { speed: ShutterSpeed },
+    Aperture { aperture: Aperture },
     // #[clap(external_subcommand)]
     // Other(Vec<String>),
 }

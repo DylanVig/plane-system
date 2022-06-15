@@ -1,11 +1,7 @@
-
 use serde::{Deserialize, Serialize};
 use tokio::sync::oneshot;
 
-use crate::{
-    state::Telemetry,
-    Channels,
-};
+use crate::{state::Telemetry, Channels};
 
 use std::{path::PathBuf, sync::Arc, time::Duration};
 
