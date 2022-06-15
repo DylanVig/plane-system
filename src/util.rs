@@ -3,6 +3,18 @@ use std::{num::ParseIntError, time::Duration};
 use futures::Future;
 use tokio::sync::broadcast::{self, error::RecvError};
 
+// by default, chrono will format with 10 or so fractional digits but python's
+// builtin iso datetime parser only supports 6 digits, so this makes it a pain
+// for postprocessing
+pub const ISO_8601_FORMAT: &str = "%Y-%m-%dT%H:%M:%S%.6f%:z";
+
+pub fn serialize_time<S>(me: &chrono::DateTime<chrono::Local>, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: serde::ser::Serializer,
+{
+    serializer.collect_str(&me.format(ISO_8601_FORMAT).to_string())
+}
+
 pub fn parse_hex_u32(src: &str) -> Result<u32, ParseIntError> {
     u32::from_str_radix(src, 16)
 }

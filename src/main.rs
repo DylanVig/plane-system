@@ -54,6 +54,9 @@ pub struct Channels {
     /// Channel for broadcasting updates to the state of the camera.
     camera_event: broadcast::Sender<camera::main::CameraClientEvent>,
 
+    /// Channel for broadcasting updates from the current-sensing board.
+    csb_event: broadcast::Sender<camera::main::csb::CurrentSensingEvent>,
+
     /// Channel for sending instructions to the camera.
     camera_cmd: flume::Sender<camera::main::CameraCommand>,
 
@@ -257,6 +260,7 @@ async fn run_tasks(config: cli::config::PlaneSystemConfig) -> anyhow::Result<()>
         let (telemetry_sender, telemetry_receiver) = watch::channel(None);
         let (pixhawk_event_sender, _) = broadcast::channel(64);
         let (camera_event_sender, _) = broadcast::channel(256);
+        let (csb_event_sender, _) = broadcast::channel(256);
         let (camera_cmd_sender, camera_cmd_receiver) = flume::unbounded();
         let (gimbal_cmd_sender, _gimbal_cmd_receiver) = flume::unbounded();
         let (scheduler_cmd_sender, scheduler_cmd_receiver) = flume::unbounded();
@@ -273,6 +277,7 @@ async fn run_tasks(config: cli::config::PlaneSystemConfig) -> anyhow::Result<()>
             pixhawk_event: pixhawk_event_sender,
             pixhawk_cmd: pixhawk_cmd_sender,
             camera_event: camera_event_sender,
+            csb_event: csb_event_sender,
             camera_cmd: camera_cmd_sender,
             gimbal_cmd: gimbal_cmd_sender,
             #[cfg(feature = "gstreamer")]

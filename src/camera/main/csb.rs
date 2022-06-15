@@ -1,11 +1,20 @@
 //! This module contains code for reading measurements from the current-sensing board.
 
-use std::{sync::Arc, time::Duration};
+use std::sync::Arc;
 
 use anyhow::Context;
+use chrono::prelude::*;
 use rppal::{gpio::*, i2c::*};
+use serde::Serialize;
 
-use crate::{cli::config::CurrentSensingConfig, Channels};
+use crate::{cli::config::CurrentSensingConfig, state::Point3D, Channels};
+
+#[derive(Debug, Clone, Serialize)]
+pub struct CurrentSensingEvent {
+    #[serde(serialize_with = "crate::util::serialize_time")]
+    pub timestamp: DateTime<Local>,
+    pub position: Point3D,
+}
 
 pub async fn run(channels: Arc<Channels>, config: CurrentSensingConfig) -> anyhow::Result<()> {
     let mut interrupt_recv = channels.interrupt.subscribe();
@@ -50,30 +59,13 @@ pub async fn run(channels: Arc<Channels>, config: CurrentSensingConfig) -> anyho
         .set_async_interrupt(Trigger::Both, move |level| tx.send(level).unwrap())
         .context("failed to set irq handler")?;
 
-    // let mut interval = tokio::time::interval(Duration::from_millis(25));
-
-    // while interrupt_recv.is_empty() {
-    //     if let Some(i2c) = &mut i2c {
-    //         let integer = tokio::task::block_in_place(|| {
-    //             let mut integer = [0u8; 2];
-    //             i2c.read(&mut integer[..])?;
-    //             Ok::<_, anyhow::Error>(i16::from_le_bytes(integer))
-    //         })
-    //         .context("failed to read from i2c")?;
-
-    //         debug!("received i2c integer: {:?}", integer);
-    //     }
-
-    //     interval.tick().await;
-    // }
-
-    // Ok(())
-
     let loop_fut = async {
         loop {
             debug!("waiting for csb interrupt");
 
-            let _ = rx.recv_async().await?;
+            while let Level::High = rx.recv_async().await? {
+                debug!("int high");
+            }
 
             debug!("got csb interrupt");
 
@@ -111,8 +103,20 @@ pub async fn run(channels: Arc<Channels>, config: CurrentSensingConfig) -> anyho
             debug!("setting ack high");
 
             pin_ack.set_high();
+
+            if let Err(err) = channels.csb_event.send(CurrentSensingEvent {
+                timestamp,
+                position: Point3D {
+                    point: coord,
+                    altitude_msl: 0.,
+                    altitude_rel: 0.,
+                },
+            }) {
+                error!("failed to send csb event to broadcast channel: {:?}", err);
+            }
         }
 
+        #[allow(unreachable_code)]
         Ok::<_, anyhow::Error>(())
     };
 

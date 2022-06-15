@@ -2,6 +2,8 @@ use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
+use crate::util::ISO_8601_FORMAT;
+
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub enum Mode {
     Idle,
@@ -46,15 +48,8 @@ pub struct Telemetry {
     pub position: Point3D,
     /// Velocity in meters per second (X, Y, Z) / (East, North, Up)
     pub velocity: (f32, f32, f32),
-    #[serde(serialize_with = "serialize_time")]
+    #[serde(serialize_with = "crate::util::serialize_time")]
     pub time: chrono::DateTime<chrono::Local>,
-}
-
-fn serialize_time<S>(me: &chrono::DateTime<chrono::Local>, serializer: S) -> Result<S::Ok, S::Error>
-where
-    S: serde::ser::Serializer,
-{
-    serializer.collect_str(&me.to_rfc3339())
 }
 
 impl Default for Telemetry {

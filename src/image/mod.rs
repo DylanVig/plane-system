@@ -5,10 +5,14 @@ use std::{
 
 use anyhow::Context;
 use futures::{select, FutureExt};
-use tokio::{fs::File, io::AsyncWriteExt};
+use tokio::{fs::File, io::AsyncWriteExt, sync::broadcast};
 
 use crate::{
-    camera::main::CameraClientEvent, cli::config::ImageConfig, state::Telemetry, Channels,
+    camera::main::{csb, CameraClientEvent},
+    cli::config::ImageConfig,
+    state::Telemetry,
+    util::ISO_8601_FORMAT,
+    Channels,
 };
 
 #[derive(Clone, Debug)]
@@ -21,6 +25,7 @@ pub struct ImageClientEvent {
 pub async fn run(channels: Arc<Channels>, config: ImageConfig) -> anyhow::Result<()> {
     let mut interrupt_recv = channels.interrupt.subscribe();
     let mut camera_recv = channels.camera_event.subscribe();
+    let mut csb_recv = channels.csb_event.subscribe();
 
     let interrupt_fut = interrupt_recv.recv().fuse();
 
@@ -41,13 +46,23 @@ pub async fn run(channels: Arc<Channels>, config: ImageConfig) -> anyhow::Result
                         CameraClientEvent::Download { image_name, image_data, cc_timestamp, .. } => {
                             debug!("image download detected, uploading file to ground server");
 
-                            let telemetry_info = channels.telemetry.borrow().clone();
+                            let pixhawk_telemetry = channels.telemetry.borrow().clone();
 
-                            if telemetry_info.is_none() {
-                                warn!("no telemetry data available for image capture")
+                            if pixhawk_telemetry.is_none() {
+                                warn!("no pixhawk telemetry data available for image capture")
                             }
 
-                            let image_filename = match save(&image_save_dir, &image_name, &image_data, &telemetry_info, cc_timestamp).await {
+                            let csb_telemetry = csb_recv.try_recv();
+
+                            let csb_telemetry = match csb_telemetry {
+                                Ok(csb_telemetry) => Some(csb_telemetry),
+                                Err(err) => {
+                                    warn!("no csb telemetry data available for image capture: {err:?}");
+                                    None
+                                }
+                            };
+
+                            let image_filename = match save(&image_save_dir, &image_name, &image_data, &pixhawk_telemetry, &csb_telemetry, cc_timestamp).await {
                                 Ok(image_filename) => image_filename,
                                 Err(err) => {
                                   warn!("failed to download image: {}", err);
@@ -58,7 +73,7 @@ pub async fn run(channels: Arc<Channels>, config: ImageConfig) -> anyhow::Result
                             let _ = channels.image_event.send(ImageClientEvent {
                               data: image_data,
                               file: image_filename,
-                              telemetry: telemetry_info
+                              telemetry: pixhawk_telemetry
                             });
                         }
                         _ => {}
@@ -78,7 +93,8 @@ async fn save(
     image_save_dir: impl AsRef<Path>,
     name: &str,
     image: &Vec<u8>,
-    telem: &Option<Telemetry>,
+    pixhawk_telemetry: &Option<Telemetry>,
+    csb_telemetry: &Option<csb::CurrentSensingEvent>,
     cc_timestamp: Option<chrono::DateTime<chrono::Local>>,
 ) -> anyhow::Result<PathBuf> {
     let mut image_path = image_save_dir.as_ref().to_owned();
@@ -103,11 +119,13 @@ async fn save(
         telem_path.to_string_lossy()
     );
 
-    let timestamp = cc_timestamp.map(|c| c.to_rfc3339());
+    let cc_timestamp =
+        cc_timestamp.map(|cc_timestamp| cc_timestamp.format(ISO_8601_FORMAT).to_string());
 
     let telem_bytes = serde_json::to_vec(&serde_json::json!({
-        "telemetry": telem,
-        "cc_timestamp": timestamp,
+        "pixhawk_telemetry": pixhawk_telemetry,
+        "csb_telemetry": csb_telemetry,
+        "cc_timestamp": cc_timestamp,
     }))
     .context("failed to serialize telemetry to JSON")?;
 
