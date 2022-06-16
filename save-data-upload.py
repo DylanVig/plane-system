@@ -92,19 +92,19 @@ for offset, img_name in enumerate(ids):
             # }
 
             request_data = {
-              "timestamp": int(datetime.fromisoformat(request_data['telemetry']['time'][:26]).timestamp()),
+              "timestamp": int(datetime.fromisoformat(request_data['pixhawk_telemetry']['time'][:26]).timestamp()),
               "imgMode": "fixed",
               "telemetry": {
-                "planeYaw": request_data['telemetry']['plane_attitude']['yaw'],
-                "altitude": request_data['telemetry']['position']['altitude_rel'],
+                "planeYaw": request_data['pixhawk_telemetry']['plane_attitude']['yaw'],
+                "altitude": request_data['pixhawk_telemetry']['position']['altitude_rel'],
                 "gps": {
-                  "latitude": request_data['telemetry']['position']['point']['x'],
-                  "longitude": request_data['telemetry']['position']['point']['y'],
+                  "latitude": request_data['pixhawk_telemetry']['position']['point']['x'],
+                  "longitude": request_data['pixhawk_telemetry']['position']['point']['y'],
                 },
                 "gimOrt": { 
                   # NOTE(ibiyemi): no gimbal in bartholomew, so we are using plane pitch and roll for comp 2022
-                  "pitch": request_data['telemetry']['plane_attitude']['pitch'], 
-                  "roll": request_data['telemetry']['plane_attitude']['roll'],
+                  "pitch": request_data['pixhawk_telemetry']['plane_attitude']['pitch'], 
+                  "roll": request_data['pixhawk_telemetry']['plane_attitude']['roll'],
                 },
               }
             }
