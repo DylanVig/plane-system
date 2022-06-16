@@ -47,7 +47,7 @@ pub struct Telemetry {
     /// Velocity in meters per second (X, Y, Z) / (East, North, Up)
     pub velocity: (f32, f32, f32),
     #[serde(serialize_with = "crate::util::serialize_time")]
-    pub time: chrono::DateTime<chrono::Local>,
+    pub timestamp: chrono::DateTime<chrono::Local>,
 }
 
 impl Default for Telemetry {
@@ -57,7 +57,7 @@ impl Default for Telemetry {
             plane_attitude: Default::default(),
             position: Default::default(),
             velocity: Default::default(),
-            time: chrono::Local::now(),
+            timestamp: chrono::Local::now(),
         }
     }
 }

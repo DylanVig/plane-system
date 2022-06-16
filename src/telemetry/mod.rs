@@ -54,12 +54,12 @@ impl TelemetryCollector {
                         let mut state = self.state.lock().unwrap();
                         state.position = position;
                         state.velocity = velocity;
-                        state.time = chrono::Local::now();
+                        state.timestamp = chrono::Local::now();
                     }
                     PixhawkEvent::Orientation { attitude } => {
                         let mut state = self.state.lock().unwrap();
                         state.plane_attitude = attitude;
-                        state.time = chrono::Local::now();
+                        state.timestamp = chrono::Local::now();
                     }
                     _ => {}
                 }

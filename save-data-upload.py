@@ -92,7 +92,7 @@ for offset, img_name in enumerate(ids):
             # }
 
             request_data = {
-              "timestamp": int(datetime.fromisoformat(request_data['pixhawk_telemetry']['time'][:26]).timestamp()),
+              "timestamp": int(datetime.fromisoformat(request_data['pixhawk_telemetry']['timestamp']).timestamp()),
               "imgMode": "fixed",
               "telemetry": {
                 "planeYaw": request_data['pixhawk_telemetry']['plane_attitude']['yaw'],
