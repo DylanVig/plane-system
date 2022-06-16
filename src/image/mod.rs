@@ -25,7 +25,6 @@ pub struct ImageClientEvent {
 pub async fn run(channels: Arc<Channels>, config: ImageConfig) -> anyhow::Result<()> {
     let mut interrupt_recv = channels.interrupt.subscribe();
     let mut camera_recv = channels.camera_event.subscribe();
-    let mut csb_recv = channels.csb_event.subscribe();
 
     let interrupt_fut = interrupt_recv.recv().fuse();
 
@@ -46,21 +45,22 @@ pub async fn run(channels: Arc<Channels>, config: ImageConfig) -> anyhow::Result
                         CameraClientEvent::Download { image_name, image_data, cc_timestamp, .. } => {
                             debug!("image download detected, uploading file to ground server");
 
-                            let pixhawk_telemetry = channels.telemetry.borrow().clone();
+                            let pixhawk_telemetry = channels.pixhawk_telemetry.borrow().clone();
 
                             if pixhawk_telemetry.is_none() {
                                 warn!("no pixhawk telemetry data available for image capture")
                             }
 
-                            let csb_telemetry = csb_recv.try_recv();
+                            let mut csb_telemetry = channels.csb_telemetry.borrow().clone();
 
-                            let csb_telemetry = match csb_telemetry {
-                                Ok(csb_telemetry) => Some(csb_telemetry),
-                                Err(err) => {
-                                    warn!("no csb telemetry data available for image capture: {err:?}");
-                                    None
-                                }
-                            };
+                            if csb_telemetry.is_none() {
+                                warn!("no csb telemetry data available for image capture")
+                            }
+
+                            if csb_telemetry.timestamp > cc_timestamp {
+                                warn!("csb timestamp too old, ignoring");
+                                csb_telemetry = None;
+                            }
 
                             let image_filename = match save(&image_save_dir, &image_name, &image_data, &pixhawk_telemetry, &csb_telemetry, cc_timestamp).await {
                                 Ok(image_filename) => image_filename,
@@ -94,7 +94,7 @@ async fn save(
     name: &str,
     image: &Vec<u8>,
     pixhawk_telemetry: &Option<Telemetry>,
-    csb_telemetry: &Option<csb::CurrentSensingEvent>,
+    csb_telemetry: &Option<csb::CurrentSensingTelemetry>,
     cc_timestamp: Option<chrono::DateTime<chrono::Local>>,
 ) -> anyhow::Result<PathBuf> {
     let mut image_path = image_save_dir.as_ref().to_owned();

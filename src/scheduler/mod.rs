@@ -62,7 +62,7 @@ pub async fn run(
     cmd_recv: flume::Receiver<SchedulerCommand>,
 ) -> anyhow::Result<()> {
     let mut interrupt_recv = channels.interrupt.subscribe();
-    let _telemetry_recv = channels.telemetry.clone();
+    let _telemetry_recv = channels.pixhawk_telemetry.clone();
     let interrupt_fut = interrupt_recv.recv();
 
     let loop_fut = async move {

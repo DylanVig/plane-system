@@ -6,17 +6,21 @@ use anyhow::Context;
 use chrono::prelude::*;
 use rppal::{gpio::*, i2c::*};
 use serde::Serialize;
+use tokio::sync::watch;
 
-use crate::{cli::config::CurrentSensingConfig, state::Point3D, Channels};
+use crate::{cli::config::CurrentSensingConfig, Channels};
 
 #[derive(Debug, Clone, Serialize)]
-pub struct CurrentSensingEvent {
+pub struct CurrentSensingTelemetry {
     #[serde(serialize_with = "crate::util::serialize_time")]
     pub timestamp: DateTime<Local>,
-    pub position: Point3D,
 }
 
-pub async fn run(channels: Arc<Channels>, config: CurrentSensingConfig) -> anyhow::Result<()> {
+pub async fn run(
+    channels: Arc<Channels>,
+    csb_telemetry_tx: watch::Sender<Option<CurrentSensingTelemetry>>,
+    config: CurrentSensingConfig,
+) -> anyhow::Result<()> {
     let mut interrupt_recv = channels.interrupt.subscribe();
 
     info!("initializing csb routine");
@@ -71,21 +75,21 @@ pub async fn run(channels: Arc<Channels>, config: CurrentSensingConfig) -> anyho
 
             let timestamp = chrono::Local::now();
 
-            let mut latitude = [0u8; 4];
-            let mut longitude = [0u8; 4];
+            // let mut latitude = [0u8; 4];
+            // let mut longitude = [0u8; 4];
 
-            if let Some(i2c) = &mut i2c {
-                tokio::task::block_in_place(|| {
-                    i2c.read(&mut latitude[..])?;
-                    i2c.read(&mut longitude[..])?;
-                    Ok::<_, anyhow::Error>(())
-                })?;
-            }
+            // if let Some(i2c) = &mut i2c {
+            //     tokio::task::block_in_place(|| {
+            //         i2c.read(&mut latitude[..])?;
+            //         i2c.read(&mut longitude[..])?;
+            //         Ok::<_, anyhow::Error>(())
+            //     })?;
+            // }
 
-            let latitude = u32::from_le_bytes(latitude);
-            let longitude = u32::from_le_bytes(longitude);
+            // let latitude = u32::from_le_bytes(latitude);
+            // let longitude = u32::from_le_bytes(longitude);
 
-            let coord = geo::Point::new(latitude as f32 / 1e4, longitude as f32 / 1e4);
+            // let coord = geo::Point::new(latitude as f32 / 1e4, longitude as f32 / 1e4);
 
             // TODO: do something with the coordinate
 
@@ -104,14 +108,7 @@ pub async fn run(channels: Arc<Channels>, config: CurrentSensingConfig) -> anyho
 
             pin_ack.set_high();
 
-            if let Err(err) = channels.csb_event.send(CurrentSensingEvent {
-                timestamp,
-                position: Point3D {
-                    point: coord,
-                    altitude_msl: 0.,
-                    altitude_rel: 0.,
-                },
-            }) {
+            if let Err(err) = csb_telemetry_tx.send(Some(CurrentSensingTelemetry { timestamp })) {
                 error!("failed to send csb event to broadcast channel: {:?}", err);
             }
         }
