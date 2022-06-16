@@ -181,7 +181,7 @@ impl PixhawkClient {
                 let expected_seq_num = prev_seq_num.wrapping_add(1);
 
                 if expected_seq_num != seq_num {
-                    warn!("unexpected sequence number {seq_num} (wanted {expected_seq_num}) for pixhawk packet, assuming packet loss");
+                    debug!("unexpected sequence number {seq_num} (wanted {expected_seq_num}) for pixhawk packet, assuming packet loss");
                     let skip = magic_position + 1;
                     trace!("skipping forward {skip} bytes");
                     self.buf.advance(skip);
@@ -224,7 +224,7 @@ impl PixhawkClient {
                     msg
                 }
                 Err(MessageReadError::Parse(ParserError::InvalidChecksum { .. })) => {
-                    warn!(
+                    debug!(
                         "message parsing failure (invalid checksum); buffer contents: {:02x?}",
                         msg_content,
                     );
