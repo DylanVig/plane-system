@@ -1,6 +1,7 @@
 use std::{num::ParseIntError, time::Duration};
 
 use futures::Future;
+use serde::ser::SerializeStruct;
 use tokio::sync::broadcast::{self, error::RecvError};
 
 // by default, chrono will format with 10 or so fractional digits but python's
@@ -9,13 +10,26 @@ use tokio::sync::broadcast::{self, error::RecvError};
 pub const ISO_8601_FORMAT: &str = "%Y-%m-%dT%H:%M:%S%.6f%:z";
 
 pub fn serialize_time<S>(
-    me: &chrono::DateTime<chrono::Local>,
+    this: &chrono::DateTime<chrono::Local>,
     serializer: S,
 ) -> Result<S::Ok, S::Error>
 where
     S: serde::ser::Serializer,
 {
-    serializer.collect_str(&me.format(ISO_8601_FORMAT).to_string())
+    serializer.collect_str(&this.format(ISO_8601_FORMAT).to_string())
+}
+
+pub fn serialize_point<S>(
+    this: &geo::Point<f32>,
+    serializer: S,
+) -> Result<S::Ok, S::Error>
+where
+    S: serde::ser::Serializer,
+{
+    let mut serializer = serializer.serialize_struct("Point", 2)?;
+    serializer.serialize_field("lat", &this.y())?;
+    serializer.serialize_field("lon", &this.x())?;
+    serializer.end()
 }
 
 pub fn parse_hex_u32(src: &str) -> Result<u32, ParseIntError> {

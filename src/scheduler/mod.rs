@@ -12,6 +12,7 @@ struct SchedulerState {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Roi {
     id: usize,
+    #[serde(serialize_with = "crate::util::serialize_point")]
     location: geo::Point<f32>,
     kind: RoiKind,
 

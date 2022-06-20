@@ -12,6 +12,7 @@ pub enum Mode {
 
 #[derive(Default, Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct Point3D {
+    #[serde(serialize_with = "crate::util::serialize_point")]
     pub point: geo::Point<f32>,
 
     /// Altitude in meters above mean sea level
