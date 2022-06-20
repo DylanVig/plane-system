@@ -98,8 +98,8 @@ for offset, img_name in enumerate(ids):
                 "planeYaw": request_data['pixhawk_telemetry']['plane_attitude']['yaw'],
                 "altitude": request_data['pixhawk_telemetry']['position']['altitude_rel'],
                 "gps": {
-                  "latitude": request_data['pixhawk_telemetry']['position']['point']['x'],
-                  "longitude": request_data['pixhawk_telemetry']['position']['point']['y'],
+                  "latitude": request_data['pixhawk_telemetry']['position']['point']['y'],
+                  "longitude": request_data['pixhawk_telemetry']['position']['point']['x'],
                 },
                 "gimOrt": { 
                   # NOTE(ibiyemi): no gimbal in bartholomew, so we are using plane pitch and roll for comp 2022
