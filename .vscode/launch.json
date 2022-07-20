@@ -30,6 +30,29 @@
     {
       "type": "lldb",
       "request": "launch",
+      "name": "run plane-system (pixhawk debug)",
+      "cargo": {
+        "args": [
+          "build",
+          "--bin=plane-system",
+          "--package=plane-system"
+        ],
+        "filter": {
+          "name": "plane-system",
+          "kind": "bin"
+        }
+      },
+      "env": {
+        "RUST_LOG": "plane_system=debug,plane_system::pixhawk=trace",
+        "RUST_LOG_STYLE": "always",
+        "RUST_BACKTRACE": "1",
+      },
+      "args": ["--config", "config/pixhawk.json"],
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "type": "lldb",
+      "request": "launch",
       "name": "unit test plane-system",
       "cargo": {
         "args": [

@@ -25,7 +25,7 @@ macro_rules! get_camera_property {
 pub(super) async fn cmd_status(
     interface: CameraInterfaceRequestBuffer,
 ) -> anyhow::Result<CameraCommandResponse> {
-    let (operating, exposure, focus, save_media, shutter_speed, iso, aperture, compression) =
+    let (operating, exposure, focus, save_media, shutter_speed, iso, aperture, compression, error) =
         interface
             .enter(|i| async move {
                 i.update().await?;
@@ -45,12 +45,14 @@ pub(super) async fn cmd_status(
                 let save_media = get_camera_property!(i, SaveMedia, UINT16)?
                     .and_then(SaveMedia::from_u16)
                     .context("invalid save media")?;
+                let error = get_camera_property!(i, Caution, UINT16)?.and_then(ErrorMode::from_u16);
 
                 let shutter_speed =
                     get_camera_property!(i, ShutterSpeed, UINT32)?.and_then(ShutterSpeed::from_u32);
                 let iso = get_camera_property!(i, ISO, UINT32)?.and_then(Iso::from_u32);
                 let aperture =
                     get_camera_property!(i, FNumber, UINT16)?.and_then(Aperture::from_u16);
+
                 Ok::<_, anyhow::Error>((
                     operating,
                     exposure,
@@ -60,6 +62,7 @@ pub(super) async fn cmd_status(
                     iso,
                     aperture,
                     compression,
+                    error,
                 ))
             })
             .await
@@ -70,6 +73,7 @@ pub(super) async fn cmd_status(
     println!("exposure mode: {exposure:?}");
     println!("focus mode: {focus}");
     println!("save media: {save_media:?}");
+    println!("error: {error:?}");
 
     if let Some(aperture) = aperture {
         println!("aperture width: {aperture}");

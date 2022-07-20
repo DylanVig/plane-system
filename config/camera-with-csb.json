@@ -1,0 +1,20 @@
+{
+	"pixhawk": null,
+	"plane_server": {
+		"address": "[::]:8080"
+	},
+	"ground_server": null,
+	"image": {
+		"save_path": "./images/"
+	},
+	"scheduler": null,
+	"main_camera": {
+    "kind": "R10C",
+    "current_sensing": {
+      "gpio_int": 23,
+      "gpio_ack": 24,
+      "i2c": null
+    }
+  },
+  "gimbal": null
+}

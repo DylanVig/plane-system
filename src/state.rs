@@ -12,6 +12,7 @@ pub enum Mode {
 
 #[derive(Default, Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct Point3D {
+    #[serde(serialize_with = "crate::util::serialize_point")]
     pub point: geo::Point<f32>,
 
     /// Altitude in meters above mean sea level
@@ -46,7 +47,8 @@ pub struct Telemetry {
     pub position: Point3D,
     /// Velocity in meters per second (X, Y, Z) / (East, North, Up)
     pub velocity: (f32, f32, f32),
-    pub time: chrono::DateTime<chrono::Local>,
+    #[serde(serialize_with = "crate::util::serialize_time")]
+    pub timestamp: chrono::DateTime<chrono::Local>,
 }
 
 impl Default for Telemetry {
@@ -56,7 +58,7 @@ impl Default for Telemetry {
             plane_attitude: Default::default(),
             position: Default::default(),
             velocity: Default::default(),
-            time: chrono::Local::now(),
+            timestamp: chrono::Local::now(),
         }
     }
 }

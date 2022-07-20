@@ -4,7 +4,7 @@ use std::{convert::Infallible, net::SocketAddr, sync::Arc};
 use tokio::sync::oneshot;
 use warp::{self, Filter};
 
-use crate::scheduler::{SchedulerCommand, Roi};
+use crate::scheduler::{Roi, SchedulerCommand};
 use crate::Channels;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -27,7 +27,7 @@ pub async fn serve(channels: Arc<Channels>, address: SocketAddr) -> anyhow::Resu
         .and(warp::get())
         .map(move || warp::reply::json(&"ok"));
 
-    let telemetry_receiver = Arc::new(channels.telemetry.clone());
+    let telemetry_receiver = Arc::new(channels.pixhawk_telemetry.clone());
 
     let route_roi = warp::path!("api" / "roi")
         .and(warp::post())
@@ -66,7 +66,7 @@ pub async fn serve(channels: Arc<Channels>, address: SocketAddr) -> anyhow::Resu
     let route_telem_stream = warp::path!("api" / "telemetry" / "stream")
         .and(warp::get())
         .map({
-            let telemetry_receiver = channels.telemetry.clone();
+            let telemetry_receiver = channels.pixhawk_telemetry.clone();
 
             move || {
                 let telemetry_stream = futures::stream::unfold(

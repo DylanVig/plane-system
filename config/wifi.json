@@ -1,0 +1,16 @@
+{
+  "pixhawk": null,
+  "plane_server": {
+    "address": "[::]:8080"
+  },
+  "ground_server": {
+  	"address": "http://192.168.1.2:9000"
+  },
+  "image": {
+    "save_path": "./images-wifi/"
+  },
+  "scheduler": null,
+  "gimbal": null,
+  "main_camera": { "kind": "R10C" },
+  "aux_camera": null
+}
