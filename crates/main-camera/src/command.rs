@@ -1,5 +1,6 @@
 use std::{collections::HashMap, str::FromStr};
 
+use anyhow::bail;
 use clap::Subcommand;
 use serde::Serialize;
 
@@ -84,14 +85,14 @@ pub enum CameraCommandFileRequest {
     List {
         /// the hexadecimal file handle of a folder; if provided, the contents
         /// of the folder will be listed
-        #[clap(parse(try_from_str = crate::util::parse_hex_u32))]
+        #[clap(parse(try_from_str = ps_serde_util::parse_hex_u32))]
         parent: Option<u32>,
     },
 
     /// download a file from the camera
     Get {
         /// the hexadecimal file handle of a file
-        #[clap(parse(try_from_str = crate::util::parse_hex_u32))]
+        #[clap(parse(try_from_str = ps_serde_util::parse_hex_u32))]
         handle: u32,
     },
 }

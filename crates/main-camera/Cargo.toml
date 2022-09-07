@@ -1,25 +1,15 @@
 [package]
-name = "plane-system"
+name = "ps-main-camera"
 version = "1.0.0"
 authors = ["Ibiyemi Abiodun <ibiyemi@intulon.com>"]
 edition = "2021"
 
-[profile.release]
-strip = true
-incremental = true
-
 [dependencies]
-# subcrates
-ps-aux-camera = { path = "crates/aux-camera" }
-ps-main-camera = { path = "crates/main-camera" }
+ps-serde-util = { path = "../serde-util" }
 
 # logging + error handling
-tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter", "registry"] }
-tracing-appender = "0.2"
-color-backtrace = "0.5.1"
-console-subscriber = "0.1.2"
 anyhow = "1.0"
+log = "0.4"
 
 # async 
 tokio = { version = "1.16", features = ["full"] }
@@ -32,30 +22,13 @@ async-trait = "0.1"
 serde = "1.0"
 serde_millis = "0.1.1"
 serde_json = "1.0"
-mavlink = { features = [
-  "ardupilotmega",
-  "uavionix",
-  "icarous",
-], git = "https://github.com/laptou/rust-mavlink" }
-simplebgc = { git = "https://github.com/laptou/simplebgc-rs" }
 ptp = { git = "https://github.com/CUAir/rust-ptp" }
 num-traits = "0.2"
 num-derive = "0.3"
-serialport = "4.0.1"
-
-# http
-warp = "0.3"
-reqwest = { version = "0.11", features = [
-  "json",
-  "multipart",
-], default-features = false }
 
 # utility
 bytes = "1.1"
-ctrlc = "3.2"
 clap = { version = "3", features = ["derive"] }
-config = "0.11.0"
-rustyline = "9.0"
 
 chrono = { version = "0.4", features = ["serde"] }
 geo = { version = "0.19.0", features = ["use-serde"] }
@@ -68,11 +41,3 @@ rusb = "0.9"
 tokio-serial = { git = "https://github.com/CUAir/tokio-serial.git", default-features = false }
 rppal = "0.13.1"
 tokio-util = { version = "0.7", features = ["codec"] }
-
-[features]
-default = ["udev", "gstreamer"]
-udev = ["tokio-serial/libudev", "serialport/libudev"]
-gstreamer = ["ps-aux-camera/gst"]
-
-[workspace]
-members = ["crates/*"]

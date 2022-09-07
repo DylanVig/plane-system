@@ -1,3 +1,6 @@
+#[macro_use]
+extern crate num_derive;
+
 pub mod client;
 pub mod command;
 pub mod csb;

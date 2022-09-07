@@ -12,7 +12,7 @@ use crate::{cli::config::CurrentSensingConfig, Channels};
 
 #[derive(Debug, Clone, Serialize)]
 pub struct CurrentSensingTelemetry {
-    #[serde(serialize_with = "crate::util::serialize_time")]
+    #[serde(serialize_with = "ps_serde_util::serialize_time")]
     pub timestamp: DateTime<Local>,
 }
 
