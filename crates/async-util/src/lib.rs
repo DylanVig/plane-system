@@ -7,8 +7,8 @@ pub async fn retry_async<F: FnMut() -> Fut, Fut: Future<Output = Result<T, E>>, 
     spacing: Option<Duration>,
     mut op: F,
 ) -> Result<T, E> {
-    if times < 1 {
-        panic!("retry_async called with times < 1");
+    if times < 2 {
+        panic!("retry_async called with times < 2");
     }
 
     let mut result = op().await;

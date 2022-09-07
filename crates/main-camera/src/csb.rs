@@ -4,6 +4,7 @@ use std::sync::Arc;
 
 use anyhow::Context;
 use chrono::prelude::*;
+use log::*;
 use rppal::{gpio::*, i2c::*};
 use serde::Serialize;
 use tokio::sync::watch;

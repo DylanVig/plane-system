@@ -1,3 +1,5 @@
+use std::num::ParseIntError;
+
 use serde::ser::SerializeStruct;
 
 // by default, chrono will format with 10 or so fractional digits but python's
