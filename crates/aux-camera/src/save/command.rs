@@ -1,9 +1,4 @@
 use clap::{AppSettings, Subcommand};
-use serde::Serialize;
-
-use crate::Command;
-
-pub type SaveCommand = Command<SaveRequest, SaveResponse>;
 
 #[derive(Subcommand, Debug, Clone)]
 #[clap(setting(AppSettings::NoBinaryName))]
@@ -13,7 +8,4 @@ pub enum SaveRequest {
     End {},
 }
 
-#[derive(Debug, Clone, Serialize)]
-pub enum SaveResponse {
-    Unit,
-}
+pub type SaveResponse = ();

@@ -5,10 +5,14 @@ authors = ["Ibiyemi Abiodun <ibiyemi@intulon.com>"]
 edition = "2021"
 
 [dependencies]
+ps-async-util = { path = "../async-util" }
+ps-client = { path = "../client" }
+
 gst = { version = "0.18", package = "gstreamer", optional = true }
 
 # logging + error handling
 anyhow = "1.0"
+log = "0.4"
 
 # async 
 tokio = { version = "1.16", features = ["full"] }
@@ -27,6 +31,7 @@ num-derive = "0.3"
 
 # utility
 bytes = "1.1"
+clap = { version = "3", features = ["derive"] }
 
 chrono = { version = "0.4", features = ["serde"] }
 geo = { version = "0.19.0", features = ["use-serde"] }
@@ -35,9 +40,6 @@ humansize = "1.1"
 prettytable-rs = "0.8"
 
 # i/o
-rusb = "0.9"
-tokio-serial = { git = "https://github.com/CUAir/tokio-serial.git", default-features = false }
-rppal = "0.13.1"
 tokio-util = { version = "0.7", features = ["codec"] }
 
 [features]

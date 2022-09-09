@@ -1,4 +1,5 @@
 use anyhow::Context;
+use serde::Deserialize;
 use std::net::SocketAddr;
 use std::sync::Arc;
 
@@ -7,6 +8,10 @@ use crate::Channels;
 
 use super::interface::*;
 use super::*;
+#[derive(Debug, Deserialize)]
+pub struct StreamConfig {
+    pub address: SocketAddr,
+}
 
 pub struct StreamClient {
     iface: StreamInterface,

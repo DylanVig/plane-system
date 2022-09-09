@@ -1,6 +1,7 @@
-use std::path::PathBuf;
+use std::path::{PathBuf, Path};
 
 use gst::prelude::*;
+use log::*;
 
 pub struct SaveInterface {
     pipeline: Option<gst::Element>,
@@ -9,14 +10,14 @@ pub struct SaveInterface {
 }
 
 impl SaveInterface {
-    pub fn new(path: PathBuf, cameras: Vec<String>) -> anyhow::Result<Self> {
+    pub fn new(path: impl AsRef<Path>, cameras: Vec<String>) -> anyhow::Result<Self> {
         // Initialize GStreamer
         gst::init().unwrap();
 
         let pipeline = None;
         Ok(Self {
             pipeline,
-            path,
+            path: path.as_ref().to_owned(),
             cameras,
         })
     }
