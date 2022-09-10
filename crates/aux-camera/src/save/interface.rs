@@ -21,6 +21,7 @@ impl SaveInterface {
             cameras,
         })
     }
+    
     pub fn start_save(&mut self) -> anyhow::Result<()> {
         info!("Starting saver");
 

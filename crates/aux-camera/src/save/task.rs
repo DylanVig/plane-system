@@ -1,7 +1,8 @@
 use crate::Config;
 use anyhow::Context;
+use async_trait::async_trait;
 use log::*;
-use ps_client::{CommandReceiver, CommandSender};
+use ps_client::{ChannelCommandSource, ChannelCommandSink, Task};
 use tokio::select;
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
@@ -12,14 +13,14 @@ use super::*;
 pub struct SaveTask {
     general_config: Config,
     save_config: SaveConfig,
-    cmd_rx: CommandReceiver<SaveRequest, SaveResponse>,
+    cmd_rx: ChannelCommandSource<SaveRequest, SaveResponse>,
 }
 
 impl SaveTask {
     pub fn create(
         general_config: Config,
         save_config: SaveConfig,
-    ) -> (Self, CommandSender<SaveRequest, SaveResponse>) {
+    ) -> (Self, ChannelCommandSink<SaveRequest, SaveResponse>) {
         let (cmd_tx, cmd_rx) = mpsc::channel(256);
 
         (
@@ -31,8 +32,11 @@ impl SaveTask {
             cmd_tx,
         )
     }
+}
 
-    pub async fn run(self, cancel: CancellationToken) -> anyhow::Result<()> {
+#[async_trait]
+impl Task for SaveTask {
+    async fn run(self, cancel: CancellationToken) -> anyhow::Result<()> {
         let Self {
             general_config,
             save_config,

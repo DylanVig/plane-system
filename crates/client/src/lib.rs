@@ -1,14 +1,9 @@
 use async_trait::async_trait;
 
 use tokio_stream::Stream;
+use tokio_util::sync::CancellationToken;
 
-#[async_trait]
-pub trait Context {
-    fn subscribe<C>() -> C::Stream where C: EventClient;
-    async fn command<C>(request: C::Request) -> C::Response where C: CommandClient;
-}
-
-pub trait EventClient {
+pub trait EventSource {
     type Event;
     type Stream: Stream<Item = Self::Event>;
 
@@ -16,19 +11,24 @@ pub trait EventClient {
 }
 
 #[async_trait]
-pub trait CommandClient {
+pub trait CommandSink {
     type Request;
     type Response;
 
     async fn command(&self, request: Self::Request) -> Self::Response;
 }
 
+#[async_trait]
+pub trait Task {
+    async fn run(self, cancel: CancellationToken) -> anyhow::Result<()>;
+}
+
 pub type Command<Req, Res> = (Req, tokio::sync::oneshot::Sender<anyhow::Result<Res>>);
-pub type CommandSender<Req, Res> = tokio::sync::mpsc::Sender<Command<Req, Res>>;
-pub type CommandReceiver<Req, Res> = tokio::sync::mpsc::Receiver<Command<Req, Res>>;
+pub type ChannelCommandSink<Req, Res> = tokio::sync::mpsc::Sender<Command<Req, Res>>;
+pub type ChannelCommandSource<Req, Res> = tokio::sync::mpsc::Receiver<Command<Req, Res>>;
 
 #[async_trait]
-impl<Req: Send, Res: Send> CommandClient for CommandSender<Req, Res> {
+impl<Req: Send, Res: Send> CommandSink for ChannelCommandSink<Req, Res> {
     type Request = Req;
     type Response = anyhow::Result<Res>;
 
