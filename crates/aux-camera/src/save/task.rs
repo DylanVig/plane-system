@@ -36,6 +36,10 @@ impl SaveTask {
 
 #[async_trait]
 impl Task for SaveTask {
+    fn name() -> &'static str {
+        "aux-camera::save"
+    }
+
     async fn run(self, cancel: CancellationToken) -> anyhow::Result<()> {
         let Self {
             general_config,

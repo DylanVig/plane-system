@@ -2,7 +2,7 @@ use crate::Config;
 use anyhow::Context;
 use async_trait::async_trait;
 use log::*;
-use ps_client::{ChannelCommandSource, ChannelCommandSink, Task};
+use ps_client::{ChannelCommandSink, ChannelCommandSource, Task};
 use tokio::select;
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
@@ -36,6 +36,10 @@ impl StreamTask {
 
 #[async_trait]
 impl Task for StreamTask {
+    fn name() -> &'static str {
+        "aux-camera::stream"
+    }
+
     async fn run(self, cancel: CancellationToken) -> anyhow::Result<()> {
         let Self {
             general_config,

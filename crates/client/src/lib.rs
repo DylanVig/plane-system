@@ -20,6 +20,8 @@ pub trait CommandSink {
 
 #[async_trait]
 pub trait Task {
+    fn name() -> &'static str;
+
     async fn run(self, cancel: CancellationToken) -> anyhow::Result<()>;
 }
 
