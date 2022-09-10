@@ -10,23 +10,23 @@ use tokio_util::sync::CancellationToken;
 use super::interface::*;
 use super::*;
 
-pub struct SaveTask {
+pub struct StreamTask {
     general_config: Config,
-    save_config: SaveConfig,
-    cmd_rx: ChannelCommandSource<SaveRequest, SaveResponse>,
+    stream_config: StreamConfig,
+    cmd_rx: ChannelCommandSource<StreamRequest, StreamResponse>,
 }
 
-impl SaveTask {
+impl StreamTask {
     pub fn create(
         general_config: Config,
-        save_config: SaveConfig,
-    ) -> (Self, ChannelCommandSink<SaveRequest, SaveResponse>) {
+        stream_config: StreamConfig,
+    ) -> (Self, ChannelCommandSink<StreamRequest, StreamResponse>) {
         let (cmd_tx, cmd_rx) = mpsc::channel(256);
 
         (
             Self {
                 general_config,
-                save_config,
+                stream_config,
                 cmd_rx,
             },
             cmd_tx,
@@ -35,30 +35,24 @@ impl SaveTask {
 }
 
 #[async_trait]
-impl Task for SaveTask {
+impl Task for StreamTask {
     async fn run(self, cancel: CancellationToken) -> anyhow::Result<()> {
         let Self {
             general_config,
-            save_config,
+            stream_config,
             mut cmd_rx,
         } = self;
 
         let cmd_loop = async {
-            let mut iface = SaveInterface::new(&save_config.save_path, general_config.cameras)
-                .context("failed to create save interface")?;
+            let mut iface = StreamInterface::new(stream_config.address, general_config.cameras)
+                .context("failed to create stream interface")?;
 
-            if !save_config.save_path.exists() {
-                tokio::fs::create_dir(save_config.save_path)
-                    .await
-                    .context("failed to create save directory")?;
-            }
-
-            trace!("initializing saver");
+            trace!("initializing streamer");
 
             while let Some((cmd, ret_tx)) = cmd_rx.recv().await {
                 let result = tokio::task::block_in_place(|| match cmd {
-                    SaveRequest::Start {} => iface.start_save(),
-                    SaveRequest::End {} => iface.end_save(),
+                    StreamRequest::Start {} => iface.start_stream(),
+                    StreamRequest::End {} => iface.end_stream(),
                 });
 
                 let _ = ret_tx.send(result);

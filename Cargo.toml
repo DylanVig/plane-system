@@ -10,7 +10,7 @@ incremental = true
 
 [dependencies]
 # subcrates
-ps-aux-camera = { path = "crates/aux-camera" }
+ps-aux-camera = { path = "crates/aux-camera", optional = true }
 ps-main-camera = { path = "crates/main-camera" }
 
 # logging + error handling
@@ -70,9 +70,9 @@ rppal = "0.13.1"
 tokio-util = { version = "0.7", features = ["codec"] }
 
 [features]
-default = ["udev", "gstreamer"]
+default = ["udev", "aux-camera"]
 udev = ["tokio-serial/libudev", "serialport/libudev"]
-gstreamer = ["ps-aux-camera/gst"]
+aux-camera = ["ps-aux-camera"]
 
 [workspace]
 members = ["crates/*"]

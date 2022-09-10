@@ -1,9 +1,4 @@
 use clap::{AppSettings, Subcommand};
-use serde::Serialize;
-
-use crate::Command;
-
-pub type StreamCommand = Command<StreamRequest, StreamResponse>;
 
 #[derive(Subcommand, Debug, Clone)]
 #[clap(setting(AppSettings::NoBinaryName))]
@@ -13,7 +8,4 @@ pub enum StreamRequest {
     End {},
 }
 
-#[derive(Debug, Clone, Serialize)]
-pub enum StreamResponse {
-    Unit,
-}
+pub type StreamResponse = ();

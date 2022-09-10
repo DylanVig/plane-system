@@ -1,6 +1,8 @@
 use std::net::SocketAddr;
 
+use anyhow::Context;
 use gst::prelude::*;
+use log::*;
 
 pub struct StreamInterface {
     pipeline: Option<gst::Element>,
@@ -11,7 +13,7 @@ pub struct StreamInterface {
 impl StreamInterface {
     pub fn new(address: SocketAddr, cameras: Vec<String>) -> anyhow::Result<Self> {
         // Initialize GStreamer
-        gst::init().unwrap();
+        gst::init().context("failed to init gstreamer")?;
 
         Ok(Self {
             pipeline: None,
@@ -19,6 +21,7 @@ impl StreamInterface {
             cameras,
         })
     }
+
     pub fn start_stream(&mut self) -> anyhow::Result<()> {
         info!("starting stream");
         let mut command = String::from("");
@@ -35,7 +38,7 @@ impl StreamInterface {
             .as_ref()
             .unwrap()
             .set_state(gst::State::Playing)
-            .expect("Unable to set the pipeline to the `Playing` state");
+            .context("failed to set the pipeline to the `Playing` state")?;
 
         Ok(())
     }
@@ -46,7 +49,8 @@ impl StreamInterface {
             .as_ref()
             .unwrap()
             .set_state(gst::State::Null)
-            .expect("Unable to set the pipeline to the `Null` state");
+            .context("failed to set the pipeline to the `Null` state")?;
+
         Ok(())
     }
 }

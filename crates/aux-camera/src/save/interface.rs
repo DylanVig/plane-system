@@ -1,5 +1,6 @@
-use std::path::{PathBuf, Path};
+use std::path::{Path, PathBuf};
 
+use anyhow::Context;
 use gst::prelude::*;
 use log::*;
 
@@ -12,7 +13,7 @@ pub struct SaveInterface {
 impl SaveInterface {
     pub fn new(path: impl AsRef<Path>, cameras: Vec<String>) -> anyhow::Result<Self> {
         // Initialize GStreamer
-        gst::init().unwrap();
+        gst::init().context("failed to init gstreamer")?;
 
         let pipeline = None;
         Ok(Self {
@@ -21,7 +22,7 @@ impl SaveInterface {
             cameras,
         })
     }
-    
+
     pub fn start_save(&mut self) -> anyhow::Result<()> {
         info!("Starting saver");
 
@@ -46,7 +47,7 @@ impl SaveInterface {
             .as_ref()
             .unwrap()
             .set_state(gst::State::Playing)
-            .expect("Unable to set the pipeline to the `Playing` state");
+            .context("failed to set the pipeline to the `Playing` state")?;
 
         Ok(())
     }
@@ -57,7 +58,8 @@ impl SaveInterface {
             .as_ref()
             .unwrap()
             .set_state(gst::State::Null)
-            .expect("Unable to set the pipeline to the `Null` state");
+            .context("failed to set the pipeline to the `Null` state")?;
+
         Ok(())
     }
 }
