@@ -116,13 +116,13 @@ WORKDIR "/home/ccuser"
 
 # install rust toolchain
 ARG TARGET_RUST
-RUN curl https://sh.rustup.rs -sSf | bash -s -- -y --default-toolchain 1.58
+RUN curl https://sh.rustup.rs -sSf | bash -s -- -y --default-toolchain 1.60
 ENV PATH="/home/ccuser/.cargo/bin:${PATH}"
 RUN rustup target add ${TARGET_RUST}
 
 # add rust config
 ARG TARGET_PKGCONFIG
-RUN mkdir -p .cargo && printf "[target.${TARGET_RUST}]\nrustflags=[\"-C\",\"link_args=-Wl,-rpath-link,/usr/lib/${TARGET_PKGCONFIG}/:/lib/${TARGET_PKGCONFIG}\",\"--cfg tokio_unstable\"]\nlinker = \"/opt/cross/bin/${TARGET_GCC}-gcc\"\n" > .cargo/config.toml
+RUN mkdir -p .cargo && printf "[target.${TARGET_RUST}]\nrustflags=[\"-C\",\"link_args=-Wl,-rpath-link,/usr/lib/${TARGET_PKGCONFIG}/:/lib/${TARGET_PKGCONFIG}\",\"--cfg\",\"tokio_unstable\"]\nlinker = \"/opt/cross/bin/${TARGET_GCC}-gcc\"\n" > .cargo/config.toml
 RUN cat .cargo/config.toml
 
 # run

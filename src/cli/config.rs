@@ -4,7 +4,7 @@ use config::ConfigError;
 use mavlink::MavlinkVersion;
 use serde::Deserialize;
 
-use crate::{gimbal::GimbalKind, state::Coords2D};
+use crate::gimbal::GimbalKind;
 
 #[derive(Debug, Deserialize)]
 pub struct PixhawkConfig {
@@ -24,7 +24,7 @@ pub struct GroundServerConfig {
 
 #[derive(Debug, Deserialize)]
 pub struct SchedulerConfig {
-    pub gps: Coords2D,
+    pub gps: geo::Point<f32>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -52,8 +52,16 @@ pub enum CameraKind {
 }
 
 #[derive(Debug, Deserialize)]
+pub struct CurrentSensingConfig {
+    pub gpio_int: u8,
+    pub gpio_ack: u8,
+    pub i2c: Option<u8>,
+}
+
+#[derive(Debug, Deserialize)]
 pub struct MainCameraConfig {
     pub kind: CameraKind,
+    pub current_sensing: Option<CurrentSensingConfig>,
 }
 
 #[derive(Debug, Deserialize)]

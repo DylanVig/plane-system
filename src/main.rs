@@ -14,8 +14,7 @@ use tracing_subscriber::{filter::Targets, layer::SubscriberExt, util::Subscriber
 
 use gs::GroundServerClient;
 use pixhawk::{client::PixhawkClient, state::PixhawkEvent};
-use scheduler::Scheduler;
-use state::TelemetryInfo;
+use state::Telemetry;
 use telemetry::TelemetryStream;
 
 #[macro_use]
@@ -44,7 +43,7 @@ pub struct Channels {
     interrupt: broadcast::Sender<()>,
 
     /// Channel for broadcasting telemetry information gathered from the gimbal and pixhawk
-    telemetry: watch::Receiver<Option<TelemetryInfo>>,
+    pixhawk_telemetry: watch::Receiver<Option<Telemetry>>,
 
     /// Channel for broadcasting updates to the state of the Pixhawk.
     pixhawk_event: broadcast::Sender<PixhawkEvent>,
@@ -55,6 +54,10 @@ pub struct Channels {
     /// Channel for broadcasting updates to the state of the camera.
     camera_event: broadcast::Sender<camera::main::CameraClientEvent>,
 
+    /// Channel for broadcasting updates from the current-sensing board.
+    #[cfg(feature = "csb")]
+    csb_telemetry: watch::Receiver<Option<camera::main::csb::CurrentSensingTelemetry>>,
+
     /// Channel for sending instructions to the camera.
     camera_cmd: flume::Sender<camera::main::CameraCommand>,
 
@@ -63,13 +66,15 @@ pub struct Channels {
 
     ///Channel for starting stream.
     #[cfg(feature = "gstreamer")]
-    stream_cmd: flume::Sender<camera::aux::stream::StreamCommand>,
+    stream_cmd: flume::Sender<camera::auxiliary::stream::StreamCommand>,
 
     ///Channel for starting saver.
     #[cfg(feature = "gstreamer")]
-    save_cmd: flume::Sender<camera::aux::save::SaveCommand>,
+    save_cmd: flume::Sender<camera::auxiliary::save::SaveCommand>,
 
     image_event: broadcast::Sender<image::ImageClientEvent>,
+
+    scheduler_cmd: flume::Sender<scheduler::SchedulerCommand>,
 }
 
 impl std::fmt::Debug for Channels {
@@ -138,7 +143,7 @@ impl TaskBag {
 
         #[cfg(tokio_unstable)]
         self.tasks
-            .push(tokio::task::Builder::new().name(name).spawn(task));
+            .push(tokio::task::Builder::new().name(name).spawn(task).unwrap());
 
         #[cfg(not(tokio_unstable))]
         self.tasks.push(tokio::spawn(task));
@@ -253,11 +258,14 @@ async fn run_tasks(config: cli::config::PlaneSystemConfig) -> anyhow::Result<()>
     let mut tasks = TaskBag::new();
 
     {
-        let (telemetry_sender, telemetry_receiver) = watch::channel(None);
+        let (pixhawk_telemetry_sender, pixhawk_telemetry_receiver) = watch::channel(None);
         let (pixhawk_event_sender, _) = broadcast::channel(64);
         let (camera_event_sender, _) = broadcast::channel(256);
+        #[cfg(feature = "csb")]
+        let (csb_telemetry_sender, csb_telemetry_receiver) = watch::channel(None);
         let (camera_cmd_sender, camera_cmd_receiver) = flume::unbounded();
         let (gimbal_cmd_sender, _gimbal_cmd_receiver) = flume::unbounded();
+        let (scheduler_cmd_sender, scheduler_cmd_receiver) = flume::unbounded();
         #[cfg(feature = "gstreamer")]
         let (stream_cmd_sender, stream_cmd_receiver) = flume::unbounded();
         #[cfg(feature = "gstreamer")]
@@ -267,10 +275,12 @@ async fn run_tasks(config: cli::config::PlaneSystemConfig) -> anyhow::Result<()>
 
         let channels = Arc::new(Channels {
             interrupt: interrupt_sender.clone(),
-            telemetry: telemetry_receiver,
+            pixhawk_telemetry: pixhawk_telemetry_receiver,
             pixhawk_event: pixhawk_event_sender,
             pixhawk_cmd: pixhawk_cmd_sender,
             camera_event: camera_event_sender,
+            #[cfg(feature = "csb")]
+            csb_telemetry: csb_telemetry_receiver,
             camera_cmd: camera_cmd_sender,
             gimbal_cmd: gimbal_cmd_sender,
             #[cfg(feature = "gstreamer")]
@@ -278,6 +288,7 @@ async fn run_tasks(config: cli::config::PlaneSystemConfig) -> anyhow::Result<()>
             #[cfg(feature = "gstreamer")]
             save_cmd: save_cmd_sender,
             image_event: image_event_sender,
+            scheduler_cmd: scheduler_cmd_sender,
         });
 
         if let Some(pixhawk_config) = config.pixhawk {
@@ -296,7 +307,7 @@ async fn run_tasks(config: cli::config::PlaneSystemConfig) -> anyhow::Result<()>
             });
 
             tasks.add("telemetry", {
-                let telemetry = TelemetryStream::new(channels.clone(), telemetry_sender);
+                let telemetry = TelemetryStream::new(channels.clone(), pixhawk_telemetry_sender);
                 async move { telemetry.run().await }
             });
         } else {
@@ -305,10 +316,17 @@ async fn run_tasks(config: cli::config::PlaneSystemConfig) -> anyhow::Result<()>
             );
         }
 
-        if let Some(_camera_config) = config.main_camera {
+        if let Some(camera_config) = config.main_camera {
             tasks.add("camera", {
                 camera::main::run(channels.clone(), camera_cmd_receiver)
             });
+
+            #[cfg(feature = "csb")]
+            if let Some(csb_config) = camera_config.current_sensing {
+                tasks.add("current sensing", {
+                    camera::main::csb::run(channels.clone(), csb_telemetry_sender, csb_config)
+                });
+            }
         }
 
         if let Some(image_config) = config.image {
@@ -328,10 +346,9 @@ async fn run_tasks(config: cli::config::PlaneSystemConfig) -> anyhow::Result<()>
             });
         }
 
-        if let Some(scheduler_config) = config.scheduler {
+        if let Some(_scheduler_config) = config.scheduler {
             tasks.add("scheduler", {
-                let mut scheduler = Scheduler::new(channels.clone(), scheduler_config.gps);
-                async move { scheduler.run().await }
+                scheduler::run(channels.clone(), scheduler_cmd_receiver)
             });
         }
 
@@ -339,7 +356,7 @@ async fn run_tasks(config: cli::config::PlaneSystemConfig) -> anyhow::Result<()>
         if let Some(aux_config) = config.aux_camera {
             if let Some(stream_config) = aux_config.stream {
                 tasks.add("aux camera live stream", {
-                    let mut stream_client = camera::aux::stream::StreamClient::connect(
+                    let mut stream_client = camera::auxiliary::stream::StreamClient::connect(
                         channels.clone(),
                         stream_cmd_receiver,
                         stream_config.address,
@@ -351,7 +368,7 @@ async fn run_tasks(config: cli::config::PlaneSystemConfig) -> anyhow::Result<()>
 
             if let Some(save_config) = aux_config.save {
                 tasks.add("aux camera live record", {
-                    let mut save_client = camera::aux::save::SaveClient::connect(
+                    let mut save_client = camera::auxiliary::save::SaveClient::connect(
                         channels.clone(),
                         save_cmd_receiver,
                         save_config.save_path,

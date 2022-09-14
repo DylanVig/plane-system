@@ -1,7 +1,8 @@
 use std::{
-    sync::atomic::AtomicU8,
-    sync::atomic::Ordering,
-    sync::Arc,
+    sync::{
+        atomic::{AtomicU8, Ordering},
+        Arc,
+    },
     time::{Duration, Instant, SystemTime},
 };
 
@@ -16,7 +17,7 @@ use mavlink::{
 };
 
 use crate::{
-    state::{Attitude, Coords3D},
+    state::{Attitude, Point3D},
     util::run_loop,
     Channels,
 };
@@ -25,6 +26,7 @@ use super::{state::PixhawkEvent, PixhawkCommand};
 
 pub struct PixhawkClient {
     sock: tokio::net::UdpSocket,
+    seq_num: Option<u8>,
     buf: BytesMut,
     sequence: AtomicU8,
     channels: Arc<Channels>,
@@ -67,6 +69,7 @@ impl PixhawkClient {
 
         Ok(PixhawkClient {
             sock,
+            seq_num: None,
             buf: BytesMut::with_capacity(1024),
             sequence: AtomicU8::default(),
             channels,
@@ -172,6 +175,26 @@ impl PixhawkClient {
 
             let payload_len = self.buf[magic_position + 1];
 
+            let seq_num = self.buf[magic_position + 4];
+
+            if let Some(prev_seq_num) = &mut self.seq_num {
+                let expected_seq_num = prev_seq_num.wrapping_add(1);
+
+                if expected_seq_num != seq_num {
+                    debug!("unexpected sequence number {seq_num} (wanted {expected_seq_num}) for pixhawk packet, assuming packet loss");
+                    let skip = magic_position + 1;
+                    trace!("skipping forward {skip} bytes");
+                    self.buf.advance(skip);
+                    continue;
+                } else {
+                    *prev_seq_num = seq_num;
+                }
+            } else {
+                self.seq_num = Some(seq_num);
+            }
+
+            trace!("seq num = {seq_num}");
+
             let msg_body_size = match self.version {
                 // in v1: 1 byte magic + 1 byte payload len + 4 byte header + 2 byte checksum
                 MavlinkVersion::V1 => payload_len as usize + 8,
@@ -201,12 +224,23 @@ impl PixhawkClient {
                     msg
                 }
                 Err(MessageReadError::Parse(ParserError::InvalidChecksum { .. })) => {
+                    debug!(
+                        "message parsing failure (invalid checksum); buffer contents: {:02x?}",
+                        msg_content,
+                    );
                     trace!("got invalid checksum, dropping message");
-                    let skip = magic_position + 1;
+                    let skip = magic_position + msg_body_size;
+                    // let skip = magic_position + 1;
                     self.buf.advance(skip);
                     continue;
                 }
-                Err(err) => return Err(err).context("error while parsing message"),
+                Err(err) => {
+                    warn!(
+                        "message parsing failure ({:?}); buffer contents: {:02x?}",
+                        err, msg_content
+                    );
+                    return Err(err).context("error while parsing message");
+                }
             };
 
             trace!("received message: {:?}", msg);
@@ -250,11 +284,17 @@ impl PixhawkClient {
         match message {
             apm::MavMessage::common(common::MavMessage::GLOBAL_POSITION_INT(data)) => {
                 let _ = self.channels.pixhawk_event.send(PixhawkEvent::Gps {
-                    coords: Coords3D::new(
-                        data.lat as f32 / 1e7,
-                        data.lon as f32 / 1e7,
-                        data.alt as f32 / 1e3,
-                        data.relative_alt as f32 / 1e3,
+                    position: Point3D {
+                        point: geo::Point::new(data.lon as f32 / 1e7, data.lat as f32 / 1e7),
+                        altitude_msl: data.alt as f32 / 1e3,
+                        altitude_rel: data.relative_alt as f32 / 1e3,
+                    },
+                    // velocity is provided as (North, East, Down)
+                    // so we transform it to more common (East, North, Up)
+                    velocity: (
+                        data.vy as f32 / 100.,
+                        data.vx as f32 / 100.,
+                        -data.vz as f32 / 100.,
                     ),
                 });
             }
@@ -275,12 +315,11 @@ impl PixhawkClient {
                     flags: data.flags,
                     time: SystemTime::UNIX_EPOCH + Duration::from_micros(data.time_usec),
                     attitude: Attitude::new(data.roll, data.pitch, data.yaw),
-                    coords: Coords3D::new(
-                        data.lat as f32 / 1e7,
-                        data.lng as f32 / 1e7,
-                        data.alt_msl,
-                        data.alt_rel,
-                    ),
+                    coords: Point3D {
+                        point: geo::Point::new(data.lng as f32 / 1e7, data.lat as f32 / 1e7),
+                        altitude_msl: data.alt_msl,
+                        altitude_rel: data.alt_rel,
+                    },
                 });
             }
             _ => {}

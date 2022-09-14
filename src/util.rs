@@ -1,7 +1,33 @@
 use std::{num::ParseIntError, time::Duration};
 
 use futures::Future;
+use serde::ser::SerializeStruct;
 use tokio::sync::broadcast::{self, error::RecvError};
+
+// by default, chrono will format with 10 or so fractional digits but python's
+// builtin iso datetime parser only supports 6 digits, so this makes it a pain
+// for postprocessing
+pub const ISO_8601_FORMAT: &str = "%Y-%m-%dT%H:%M:%S%.6f%:z";
+
+pub fn serialize_time<S>(
+    this: &chrono::DateTime<chrono::Local>,
+    serializer: S,
+) -> Result<S::Ok, S::Error>
+where
+    S: serde::ser::Serializer,
+{
+    serializer.collect_str(&this.format(ISO_8601_FORMAT).to_string())
+}
+
+pub fn serialize_point<S>(this: &geo::Point<f32>, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: serde::ser::Serializer,
+{
+    let mut serializer = serializer.serialize_struct("Point", 2)?;
+    serializer.serialize_field("lat", &this.y())?;
+    serializer.serialize_field("lon", &this.x())?;
+    serializer.end()
+}
 
 pub fn parse_hex_u32(src: &str) -> Result<u32, ParseIntError> {
     u32::from_str_radix(src, 16)
@@ -38,7 +64,7 @@ pub fn spawn_with_name<T: Send + 'static>(
     task: impl Future<Output = T> + Send + 'static,
 ) -> tokio::task::JoinHandle<T> {
     #[cfg(tokio_unstable)]
-    return tokio::task::Builder::new().name(name).spawn(task);
+    return tokio::task::Builder::new().name(name).spawn(task).unwrap();
 
     #[cfg(not(tokio_unstable))]
     return tokio::task::spawn(task);
@@ -49,7 +75,10 @@ pub fn spawn_blocking_with_name<T: Send + 'static>(
     task: impl FnOnce() -> T + Send + 'static,
 ) -> tokio::task::JoinHandle<T> {
     #[cfg(tokio_unstable)]
-    return tokio::task::Builder::new().name(name).spawn_blocking(task);
+    return tokio::task::Builder::new()
+        .name(name)
+        .spawn_blocking(task)
+        .unwrap();
 
     #[cfg(not(tokio_unstable))]
     return tokio::task::spawn_blocking(task);

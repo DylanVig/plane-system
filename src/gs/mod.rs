@@ -55,7 +55,7 @@ impl GroundServerClient {
                             .map(OsStr::to_string_lossy)
                             .expect("image has no filename");
 
-                        let telemetry_info = self.channels.telemetry.borrow().clone();
+                        let telemetry_info = self.channels.pixhawk_telemetry.borrow().clone();
 
                         if telemetry_info.is_none() {
                             warn!("no telemetry data available for image capture")
@@ -78,7 +78,7 @@ impl GroundServerClient {
         &self,
         data: &[u8],
         file_name: String,
-        telemetry: Option<TelemetryInfo>,
+        telemetry: Option<Telemetry>,
     ) -> anyhow::Result<()> {
         let file_name = file_name.to_lowercase();
 
@@ -113,8 +113,8 @@ impl GroundServerClient {
                     "altitude": telemetry.position.altitude_rel,
                     "planeYaw": telemetry.plane_attitude.yaw,
                     "gps": {
-                        "latitude": telemetry.position.latitude,
-                        "longitude": telemetry.position.longitude,
+                        "longitude": telemetry.position.point.x(),
+                        "latitude": telemetry.position.point.y(),
                     },
                     "gimOrt": {
                         "pitch": telemetry.gimbal_attitude.pitch,
