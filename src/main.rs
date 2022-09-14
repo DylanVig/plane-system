@@ -142,7 +142,7 @@ impl TaskBag {
 
         #[cfg(tokio_unstable)]
         self.tasks
-            .push(tokio::task::Builder::new().name(name).spawn(task));
+            .push(tokio::task::Builder::new().name(name).spawn(task).unwrap());
 
         #[cfg(not(tokio_unstable))]
         self.tasks.push(tokio::spawn(task));
