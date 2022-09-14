@@ -1,5 +1,6 @@
 pub mod client;
 pub mod command;
+#[cfg(feature = "csb")]
 pub mod csb;
 mod interface;
 pub mod state;

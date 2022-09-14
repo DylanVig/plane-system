@@ -55,6 +55,7 @@ pub struct Channels {
     camera_event: broadcast::Sender<camera::main::CameraClientEvent>,
 
     /// Channel for broadcasting updates from the current-sensing board.
+    #[cfg(feature = "csb")]
     csb_telemetry: watch::Receiver<Option<camera::main::csb::CurrentSensingTelemetry>>,
 
     /// Channel for sending instructions to the camera.
@@ -260,6 +261,7 @@ async fn run_tasks(config: cli::config::PlaneSystemConfig) -> anyhow::Result<()>
         let (pixhawk_telemetry_sender, pixhawk_telemetry_receiver) = watch::channel(None);
         let (pixhawk_event_sender, _) = broadcast::channel(64);
         let (camera_event_sender, _) = broadcast::channel(256);
+        #[cfg(feature = "csb")]
         let (csb_telemetry_sender, csb_telemetry_receiver) = watch::channel(None);
         let (camera_cmd_sender, camera_cmd_receiver) = flume::unbounded();
         let (gimbal_cmd_sender, _gimbal_cmd_receiver) = flume::unbounded();
@@ -277,6 +279,7 @@ async fn run_tasks(config: cli::config::PlaneSystemConfig) -> anyhow::Result<()>
             pixhawk_event: pixhawk_event_sender,
             pixhawk_cmd: pixhawk_cmd_sender,
             camera_event: camera_event_sender,
+            #[cfg(feature = "csb")]
             csb_telemetry: csb_telemetry_receiver,
             camera_cmd: camera_cmd_sender,
             gimbal_cmd: gimbal_cmd_sender,
@@ -318,6 +321,7 @@ async fn run_tasks(config: cli::config::PlaneSystemConfig) -> anyhow::Result<()>
                 camera::main::run(channels.clone(), camera_cmd_receiver)
             });
 
+            #[cfg(feature = "csb")]
             if let Some(csb_config) = camera_config.current_sensing {
                 tasks.add("current sensing", {
                     camera::main::csb::run(channels.clone(), csb_telemetry_sender, csb_config)
