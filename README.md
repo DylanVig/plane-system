@@ -36,9 +36,9 @@ Use a `.json` file in the `config` folder or
     control the camera. You can either run as root (not ideal) or create a
     `udev` rule to give your user access to the camera.
     - To create a udev rule to give proper permissions:
-      -First in WSL, cd to /etc/udev/rules.d
+      - First in WSL, cd to /etc/udev/rules.d
 
-      -Then, create a new udev rule file named 90-plane-system.rules and put in it:
+      - Then, create a new udev rule file named 90-plane-system.rules and put in it:
 
       ```
       SUBSYSTEMS=="usb", ATTRS{idVendor}=="054c", ATTRS{idProduct}=="0a79", MODE="0666", GROUP="plugdev"
