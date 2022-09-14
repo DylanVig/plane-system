@@ -10,25 +10,24 @@ use super::interface::*;
 use super::*;
 
 pub struct SaveTask {
-    general_config: Config,
-    save_config: SaveConfig,
     cmd_rx: ChannelCommandSource<SaveRequest, SaveResponse>,
+    interface: SaveInterface,
 }
 
 pub fn create_task(
     general_config: Config,
     save_config: SaveConfig,
-) -> (SaveTask, ChannelCommandSink<SaveRequest, SaveResponse>) {
+) -> anyhow::Result<(SaveTask, ChannelCommandSink<SaveRequest, SaveResponse>)> {
     let (cmd_tx, cmd_rx) = flume::bounded(256);
 
-    (
-        SaveTask {
-            general_config,
-            save_config,
-            cmd_rx,
-        },
-        cmd_tx,
-    )
+    if !save_config.save_path.exists() {
+        std::fs::create_dir(&save_config.save_path).context("failed to create save directory")?;
+    }
+
+    let interface = SaveInterface::new(save_config.save_path, general_config.cameras)
+        .context("failed to create save interface")?;
+
+    Ok((SaveTask { interface, cmd_rx }, cmd_tx))
 }
 
 #[async_trait]
@@ -39,27 +38,17 @@ impl Task for SaveTask {
 
     async fn run(self, cancel: CancellationToken) -> anyhow::Result<()> {
         let Self {
-            general_config,
-            save_config,
+            mut interface,
             cmd_rx,
         } = self;
 
         let cmd_loop = async {
-            let mut iface = SaveInterface::new(&save_config.save_path, general_config.cameras)
-                .context("failed to create save interface")?;
-
-            if !save_config.save_path.exists() {
-                tokio::fs::create_dir(save_config.save_path)
-                    .await
-                    .context("failed to create save directory")?;
-            }
-
             trace!("initializing saver");
 
             while let Ok((cmd, ret_tx)) = cmd_rx.recv_async().await {
                 let result = tokio::task::block_in_place(|| match cmd {
-                    SaveRequest::Start {} => iface.start_save(),
-                    SaveRequest::End {} => iface.end_save(),
+                    SaveRequest::Start {} => interface.start_save(),
+                    SaveRequest::End {} => interface.end_save(),
                 });
 
                 let _ = ret_tx.send(result);
