@@ -5,7 +5,7 @@ use super::*;
 
 pub(super) async fn ensure(
     interface: &CameraInterfaceRequestBuffer,
-    property: CameraPropertyCode,
+    property: PropertyCode,
     value: ptp::PtpData,
 ) -> anyhow::Result<()> {
     loop {
@@ -14,7 +14,7 @@ pub(super) async fn ensure(
             .enter(|i| async move {
                 (
                     i.get_value(property).await,
-                    i.get_value(CameraPropertyCode::Caution).await,
+                    i.get_value(PropertyCode::Caution).await,
                 )
             })
             .await;
@@ -53,7 +53,7 @@ pub(super) async fn ensure_mode(
 ) -> anyhow::Result<()> {
     ensure(
         interface,
-        CameraPropertyCode::OperatingMode,
+        PropertyCode::OperatingMode,
         ptp::PtpData::UINT8(mode as u8),
     )
     .await
@@ -61,7 +61,7 @@ pub(super) async fn ensure_mode(
 
 pub(super) async fn watch(
     interface: &CameraInterfaceRequestBuffer,
-    property: CameraPropertyCode,
+    property: PropertyCode,
 ) -> anyhow::Result<(ptp::PtpData, Option<ptp::PtpData>)> {
     let initial = interface
         .enter(|i| async move { i.get_value(property).await })

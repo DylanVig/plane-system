@@ -6,6 +6,7 @@ edition = "2021"
 
 [dependencies]
 ps-serde-util = { path = "../serde-util" }
+ps-client = { path = "../client"  }
 
 # logging + error handling
 anyhow = "1.0"

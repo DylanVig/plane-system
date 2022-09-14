@@ -1,4 +1,5 @@
 use anyhow::Context;
+use log::*;
 use num_traits::{FromPrimitive, ToPrimitive};
 use ptp::{ObjectFormatCode, ObjectHandle, PtpRead, StandardCommandCode, StorageId};
 use serde::{Deserialize, Serialize};
@@ -16,7 +17,7 @@ const SONY_PTP_VID: u16 = 0x0011;
 
 #[repr(u16)]
 #[derive(ToPrimitive, FromPrimitive, Copy, Clone, Eq, PartialEq, Debug)]
-pub enum SonyCommandCode {
+pub enum CommandCode {
     SdioConnect = 0x96FE,
     SdioGetExtDeviceInfo = 0x96FD,
     SdioSetExtDevicePropValue = 0x96FA,
@@ -27,7 +28,7 @@ pub enum SonyCommandCode {
     SdioExtDeviceDeleteObject = 0x96F1,
 }
 
-impl Into<ptp::CommandCode> for SonyCommandCode {
+impl Into<ptp::CommandCode> for CommandCode {
     fn into(self) -> ptp::CommandCode {
         ptp::CommandCode::Other(self.to_u16().unwrap())
     }
@@ -35,7 +36,7 @@ impl Into<ptp::CommandCode> for SonyCommandCode {
 
 #[repr(u16)]
 #[derive(ToPrimitive, FromPrimitive, Debug, Copy, Clone, Eq, PartialEq, Hash)]
-pub enum CameraPropertyCode {
+pub enum PropertyCode {
     AELock = 0xD6E8,
     AspectRatio = 0xD6B3,
     BatteryLevel = 0xD6F1,
@@ -87,7 +88,7 @@ pub enum CameraPropertyCode {
 
 #[repr(u16)]
 #[derive(ToPrimitive, FromPrimitive, Debug, Copy, Clone, Eq, PartialEq, Hash)]
-pub enum CameraControlCode {
+pub enum ControlCode {
     AELock = 0xD61E,
     AFLock = 0xD63B,
     CameraSettingReset = 0xD6D9,
@@ -127,15 +128,14 @@ pub enum OperatingMode {
     ContentsTransfer,
 }
 
-pub struct CameraInterface {
-    camera: ptp::PtpCamera<rusb::GlobalContext>,
-    state: Option<CameraState>,
-}
-
 struct CameraState {
     version: u16,
-    supported_properties: HashSet<CameraPropertyCode>,
-    supported_controls: HashSet<CameraControlCode>,
+    supported_properties: HashSet<PropertyCode>,
+    supported_controls: HashSet<ControlCode>,
+}
+
+pub struct CameraInterface {
+    camera: ptp::PtpCamera<rusb::GlobalContext>,
 }
 
 impl CameraInterface {
@@ -150,7 +150,6 @@ impl CameraInterface {
 
         Ok(CameraInterface {
             camera: ptp::PtpCamera::new(handle).context("could not initialize Sony R10C")?,
-            state: None,
         })
     }
 
@@ -165,7 +164,7 @@ impl CameraInterface {
         trace!("sending SDIO_Connect phase 1");
 
         self.camera.command(
-            SonyCommandCode::SdioConnect.into(),
+            CommandCode::SdioConnect.into(),
             &[1, key_code, key_code],
             None,
             self.timeout(),
@@ -174,7 +173,7 @@ impl CameraInterface {
         trace!("sending SDIO_Connect phase 2");
 
         self.camera.command(
-            SonyCommandCode::SdioConnect.into(),
+            CommandCode::SdioConnect.into(),
             &[2, key_code, key_code],
             None,
             self.timeout(),
@@ -188,7 +187,7 @@ impl CameraInterface {
             // call getextdeviceinfo with initiatorversion = 0x00C8
 
             let initiation_result = self.camera.command(
-                SonyCommandCode::SdioGetExtDeviceInfo.into(),
+                CommandCode::SdioGetExtDeviceInfo.into(),
                 &[0x00C8],
                 None,
                 self.timeout(),
@@ -203,13 +202,13 @@ impl CameraInterface {
                     let sdi_device_props = PtpRead::read_ptp_u16_vec(&mut ext_device_info)?;
                     let sdi_device_props = sdi_device_props
                         .into_iter()
-                        .filter_map(<CameraPropertyCode as FromPrimitive>::from_u16)
+                        .filter_map(<PropertyCode as FromPrimitive>::from_u16)
                         .collect::<HashSet<_>>();
 
                     let sdi_device_controls = PtpRead::read_ptp_u16_vec(&mut ext_device_info)?;
                     let sdi_device_controls = sdi_device_controls
                         .into_iter()
-                        .filter_map(<CameraControlCode as FromPrimitive>::from_u16)
+                        .filter_map(<ControlCode as FromPrimitive>::from_u16)
                         .collect::<HashSet<_>>();
 
                     trace!("got device props: {:?}", sdi_device_props);
@@ -237,7 +236,7 @@ impl CameraInterface {
         trace!("sending SDIO_Connect phase 3");
 
         self.camera.command(
-            SonyCommandCode::SdioConnect.into(),
+            CommandCode::SdioConnect.into(),
             &[3, key_code, key_code],
             None,
             self.timeout(),
@@ -245,15 +244,11 @@ impl CameraInterface {
 
         trace!("connection complete");
 
-        self.state = Some(state);
-
         Ok(())
     }
 
     pub fn disconnect(&mut self) -> anyhow::Result<()> {
         self.camera.close_session(self.timeout())?;
-
-        self.state = None;
 
         Ok(())
     }
@@ -272,7 +267,7 @@ impl CameraInterface {
         trace!("sending SDIO_GetAllExtDevicePropInfo");
 
         let result = self.camera.command(
-            SonyCommandCode::SdioGetAllExtDevicePropInfo.into(),
+            CommandCode::SdioGetAllExtDevicePropInfo.into(),
             &[],
             None,
             timeout,
@@ -297,13 +292,13 @@ impl CameraInterface {
     /// Sets the value of a camera property. This should be followed by a call
     /// to update() and a check to make sure that the intended result was
     /// achieved.
-    pub fn set(&self, code: CameraPropertyCode, new_value: ptp::PtpData) -> anyhow::Result<()> {
+    pub fn set(&self, code: PropertyCode, new_value: ptp::PtpData) -> anyhow::Result<()> {
         let buf = new_value.encode();
 
         trace!("sending SDIO_SetExtDevicePropValue");
 
         self.camera.command(
-            SonyCommandCode::SdioSetExtDevicePropValue.into(),
+            CommandCode::SdioSetExtDevicePropValue.into(),
             &[code.to_u32().unwrap()],
             Some(buf.as_ref()),
             self.timeout(),
@@ -314,17 +309,13 @@ impl CameraInterface {
 
     /// Executes a command on the camera. This should be followed by a call to
     /// update() and a check to make sure that the intended result was achieved.
-    pub fn execute(&self, code: CameraControlCode, payload: ptp::PtpData) -> anyhow::Result<()> {
-        if let None = self.state {
-            warn!("execute() called when camera is not connected");
-        };
-
+    pub fn execute(&self, code: ControlCode, payload: ptp::PtpData) -> anyhow::Result<()> {
         let buf = payload.encode();
 
         trace!("sending SDIO_ControlDevice");
 
         self.camera.command(
-            SonyCommandCode::SdioControlDevice.into(),
+            CommandCode::SdioControlDevice.into(),
             &[code.to_u32().unwrap()],
             Some(buf.as_ref()),
             self.timeout(),

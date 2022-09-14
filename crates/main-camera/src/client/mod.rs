@@ -26,15 +26,15 @@ const TIMEOUT: Duration = Duration::from_secs(5);
 #[derive(Debug)]
 enum CameraInterfaceRequest {
     GetPropertyInfo {
-        property: CameraPropertyCode,
+        property: PropertyCode,
         ret: oneshot::Sender<Option<ptp::PtpPropInfo>>,
     },
     GetPropertyValue {
-        property: CameraPropertyCode,
+        property: PropertyCode,
         ret: oneshot::Sender<Option<ptp::PtpData>>,
     },
     SetPropertyValue {
-        property: CameraPropertyCode,
+        property: PropertyCode,
         value: ptp::PtpData,
         ret: oneshot::Sender<anyhow::Result<()>>,
     },
@@ -42,7 +42,7 @@ enum CameraInterfaceRequest {
         ret: oneshot::Sender<anyhow::Result<()>>,
     },
     Control {
-        control: CameraControlCode,
+        control: ControlCode,
         data: ptp::PtpData,
         ret: oneshot::Sender<anyhow::Result<()>>,
     },
@@ -70,7 +70,7 @@ enum CameraInterfaceRequest {
 
 fn run_interface(
     interface: Arc<CameraInterface>,
-    mut state: HashMap<CameraPropertyCode, ptp::PtpPropInfo>,
+    mut state: HashMap<PropertyCode, ptp::PtpPropInfo>,
     req_rx: flume::Receiver<CameraInterfaceRequest>,
     mut interrupt_rx: broadcast::Receiver<()>,
 ) -> anyhow::Result<()> {
@@ -101,7 +101,7 @@ fn run_interface(
                 Ok(properties) => {
                     for property in properties {
                         if let Some(property_code) =
-                            <CameraPropertyCode as FromPrimitive>::from_u16(property.property_code)
+                            <PropertyCode as FromPrimitive>::from_u16(property.property_code)
                         {
                             state.insert(property_code, property);
                         }
@@ -234,7 +234,7 @@ struct CameraInterfaceRequestBufferGuard(
 );
 
 impl CameraInterfaceRequestBufferGuard {
-    pub async fn get_info(&self, property: CameraPropertyCode) -> Option<ptp::PtpPropInfo> {
+    pub async fn get_info(&self, property: PropertyCode) -> Option<ptp::PtpPropInfo> {
         let (tx, rx) = oneshot::channel();
         self.0
             .send_async(CameraInterfaceRequest::GetPropertyInfo { property, ret: tx })
@@ -243,7 +243,7 @@ impl CameraInterfaceRequestBufferGuard {
         rx.await.unwrap()
     }
 
-    pub async fn get_value(&self, property: CameraPropertyCode) -> Option<ptp::PtpData> {
+    pub async fn get_value(&self, property: PropertyCode) -> Option<ptp::PtpData> {
         let (tx, rx) = oneshot::channel();
         self.0
             .send_async(CameraInterfaceRequest::GetPropertyValue { property, ret: tx })
@@ -254,7 +254,7 @@ impl CameraInterfaceRequestBufferGuard {
 
     pub async fn set_value(
         &self,
-        property: CameraPropertyCode,
+        property: PropertyCode,
         value: ptp::PtpData,
     ) -> anyhow::Result<()> {
         let (tx, rx) = oneshot::channel();
@@ -280,7 +280,7 @@ impl CameraInterfaceRequestBufferGuard {
 
     pub async fn control(
         &self,
-        control: CameraControlCode,
+        control: ControlCode,
         data: ptp::PtpData,
     ) -> anyhow::Result<()> {
         let (tx, rx) = oneshot::channel();
@@ -369,25 +369,25 @@ async fn run_commands(
     interface: CameraInterfaceRequestBuffer,
     mut ptp_rx: broadcast::Receiver<ptp::PtpEvent>,
     command_rx: flume::Receiver<CameraCommand>,
-    client_tx: broadcast::Sender<CameraClientEvent>,
+    client_tx: broadcast::Sender<CameraEvent>,
 ) -> anyhow::Result<()> {
     loop {
         let command = command_rx.recv_async().await?;
 
         let result = match command.request {
-            CameraCommandRequest::Capture => cmd_capture(interface.clone(), &mut ptp_rx).await,
-            CameraCommandRequest::ContinuousCapture(req) => {
+            CameraRequest::Capture => cmd_capture(interface.clone(), &mut ptp_rx).await,
+            CameraRequest::ContinuousCapture(req) => {
                 cmd_continuous_capture(interface.clone(), req).await
             }
-            CameraCommandRequest::Storage(req) => cmd_storage(interface.clone(), req).await,
-            CameraCommandRequest::File(req) => {
+            CameraRequest::Storage(req) => cmd_storage(interface.clone(), req).await,
+            CameraRequest::File(req) => {
                 cmd_file(interface.clone(), req, client_tx.clone()).await
             }
-            CameraCommandRequest::Reconnect => todo!(),
-            CameraCommandRequest::Status => cmd_status(interface.clone()).await,
-            CameraCommandRequest::Get(req) => cmd_get(interface.clone(), req).await,
-            CameraCommandRequest::Set(req) => cmd_set(interface.clone(), req).await,
-            CameraCommandRequest::Record(_) => todo!(),
+            CameraRequest::Reconnect => todo!(),
+            CameraRequest::Status => cmd_status(interface.clone()).await,
+            CameraRequest::Get(req) => cmd_get(interface.clone(), req).await,
+            CameraRequest::Set(req) => cmd_set(interface.clone(), req).await,
+            CameraRequest::Record(_) => todo!(),
         };
 
         let _ = command.chan.send(result);
@@ -398,14 +398,14 @@ async fn run_commands(
 async fn run_download(
     interface: CameraInterfaceRequestBuffer,
     mut ptp_rx: broadcast::Receiver<ptp::PtpEvent>,
-    client_tx: broadcast::Sender<CameraClientEvent>,
+    client_tx: broadcast::Sender<CameraEvent>,
 ) -> anyhow::Result<()> {
     loop {
         wait(&mut ptp_rx, ptp::EventCode::Vendor(0xC204)).await?;
 
         let event_timestamp = chrono::Local::now();
 
-        let _ = client_tx.send(CameraClientEvent::Capture {
+        let _ = client_tx.send(CameraEvent::Capture {
             timestamp: event_timestamp.clone(),
         });
 
@@ -416,7 +416,7 @@ async fn run_download(
         let shooting_file_info = interface
             .enter(|i| async move {
                 i.update().await?;
-                Ok::<_, anyhow::Error>(i.get_value(CameraPropertyCode::ShootingFileInfo).await)
+                Ok::<_, anyhow::Error>(i.get_value(PropertyCode::ShootingFileInfo).await)
             })
             .await?;
 
@@ -459,13 +459,13 @@ async fn run_download(
                 }
             };
 
-            let _ = client_tx.send(CameraClientEvent::Download {
+            let _ = client_tx.send(CameraEvent::Download {
                 image_name: info.filename,
                 image_data: Arc::new(data),
                 cc_timestamp: Some(event_timestamp),
             });
 
-            let (new, _) = watch(&interface, CameraPropertyCode::ShootingFileInfo).await?;
+            let (new, _) = watch(&interface, PropertyCode::ShootingFileInfo).await?;
 
             shooting_file_info = match new {
                 ptp::PtpData::UINT16(new) => new,

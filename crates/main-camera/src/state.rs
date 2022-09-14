@@ -1,11 +1,11 @@
 use std::{fmt::Display, str::FromStr, sync::Arc};
 
-use anyhow::Context;
+use anyhow::{Context, bail};
 use num_traits::{FromPrimitive, ToPrimitive};
 use serde::Serialize;
 
 #[derive(Debug, Clone)]
-pub enum CameraClientEvent {
+pub enum CameraEvent {
     Capture {
         timestamp: chrono::DateTime<chrono::Local>,
     },
@@ -144,7 +144,7 @@ impl FromStr for ShutterSpeed {
     type Err = anyhow::Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        if s.to_ascii_uppercase() == "bulb" {
+        if s.to_ascii_uppercase() == "BULB" {
             return Ok(Self::Bulb);
         }
 
@@ -168,7 +168,7 @@ impl FromStr for ShutterSpeed {
             }
         }
 
-        bail!("shutter speed must be 'bulb', a decimal, or a fraction")
+        bail!("shutter speed must be 'BULB', a decimal, or a fraction")
     }
 }
 

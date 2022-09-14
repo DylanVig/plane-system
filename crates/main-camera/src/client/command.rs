@@ -25,7 +25,7 @@ macro_rules! get_camera_property {
 
 pub(super) async fn cmd_status(
     interface: CameraInterfaceRequestBuffer,
-) -> anyhow::Result<CameraCommandResponse> {
+) -> anyhow::Result<CameraResponse> {
     let (operating, exposure, focus, save_media, shutter_speed, iso, aperture, compression, error) =
         interface
             .enter(|i| async move {
@@ -94,20 +94,20 @@ pub(super) async fn cmd_status(
         println!("shutter speed: <unknown>");
     }
 
-    Ok(CameraCommandResponse::Unit)
+    Ok(CameraResponse::Unit)
 }
 
 pub(super) async fn cmd_get(
     interface: CameraInterfaceRequestBuffer,
     req: CameraCommandGetRequest,
-) -> anyhow::Result<CameraCommandResponse> {
+) -> anyhow::Result<CameraResponse> {
     let prop = match req {
-        CameraCommandGetRequest::ExposureMode => CameraPropertyCode::ExposureMode,
-        CameraCommandGetRequest::OperatingMode => CameraPropertyCode::OperatingMode,
-        CameraCommandGetRequest::SaveMode => CameraPropertyCode::SaveMedia,
-        CameraCommandGetRequest::FocusMode => CameraPropertyCode::FocusMode,
-        CameraCommandGetRequest::ZoomLevel => CameraPropertyCode::ZoomAbsolutePosition,
-        CameraCommandGetRequest::CcInterval => CameraPropertyCode::IntervalTime,
+        CameraCommandGetRequest::ExposureMode => PropertyCode::ExposureMode,
+        CameraCommandGetRequest::OperatingMode => PropertyCode::OperatingMode,
+        CameraCommandGetRequest::SaveMode => PropertyCode::SaveMedia,
+        CameraCommandGetRequest::FocusMode => PropertyCode::FocusMode,
+        CameraCommandGetRequest::ZoomLevel => PropertyCode::ZoomAbsolutePosition,
+        CameraCommandGetRequest::CcInterval => PropertyCode::IntervalTime,
         CameraCommandGetRequest::Other(_) => todo!(),
     };
 
@@ -118,38 +118,38 @@ pub(super) async fn cmd_get(
 
     Ok(match req {
         CameraCommandGetRequest::ExposureMode => match prop_info.current {
-            ptp::PtpData::UINT16(mode) => CameraCommandResponse::ExposureMode(
+            ptp::PtpData::UINT16(mode) => CameraResponse::ExposureMode(
                 FromPrimitive::from_u16(mode)
                     .context("invalid camera exposure mode (wrong value)")?,
             ),
             _ => bail!("invalid camera exposure mode (wrong data type)"),
         },
         CameraCommandGetRequest::OperatingMode => match prop_info.current {
-            ptp::PtpData::UINT8(mode) => CameraCommandResponse::OperatingMode(
+            ptp::PtpData::UINT8(mode) => CameraResponse::OperatingMode(
                 FromPrimitive::from_u8(mode)
                     .context("invalid camera operating mode (wrong value)")?,
             ),
             _ => bail!("invalid camera operating mode (wrong data type)"),
         },
         CameraCommandGetRequest::SaveMode => match prop_info.current {
-            ptp::PtpData::UINT16(mode) => CameraCommandResponse::SaveMode(
+            ptp::PtpData::UINT16(mode) => CameraResponse::SaveMode(
                 FromPrimitive::from_u16(mode).context("invalid camera save mode (wrong value)")?,
             ),
             _ => bail!("invalid camera save mode (wrong data type)"),
         },
         CameraCommandGetRequest::FocusMode => match prop_info.current {
-            ptp::PtpData::UINT16(mode) => CameraCommandResponse::FocusMode(
+            ptp::PtpData::UINT16(mode) => CameraResponse::FocusMode(
                 FromPrimitive::from_u16(mode).context("invalid camera focus mode (wrong value)")?,
             ),
             _ => bail!("invalid camera focus mode (wrong data type)"),
         },
         CameraCommandGetRequest::ZoomLevel => match prop_info.current {
-            ptp::PtpData::UINT16(level) => CameraCommandResponse::ZoomLevel(level as u8),
+            ptp::PtpData::UINT16(level) => CameraResponse::ZoomLevel(level as u8),
             _ => bail!("invalid camera zoom level (wrong data type)"),
         },
         CameraCommandGetRequest::CcInterval => match prop_info.current {
             ptp::PtpData::UINT16(interval) => {
-                CameraCommandResponse::CcInterval(interval as f32 / 10.0)
+                CameraResponse::CcInterval(interval as f32 / 10.0)
             }
             _ => bail!("invalid camera zoom level (wrong data type)"),
         },
@@ -160,26 +160,26 @@ pub(super) async fn cmd_get(
 pub(super) async fn cmd_set(
     interface: CameraInterfaceRequestBuffer,
     req: CameraCommandSetRequest,
-) -> anyhow::Result<CameraCommandResponse> {
+) -> anyhow::Result<CameraResponse> {
     let (prop, data) = match req {
         CameraCommandSetRequest::ExposureMode { mode } => (
-            CameraPropertyCode::ExposureMode,
+            PropertyCode::ExposureMode,
             ptp::PtpData::UINT16(mode as u16),
         ),
         CameraCommandSetRequest::OperatingMode { mode } => (
-            CameraPropertyCode::OperatingMode,
+            PropertyCode::OperatingMode,
             ptp::PtpData::UINT8(mode as u8),
         ),
         CameraCommandSetRequest::SaveMode { mode } => (
-            CameraPropertyCode::SaveMedia,
+            PropertyCode::SaveMedia,
             ptp::PtpData::UINT16(mode as u16),
         ),
         CameraCommandSetRequest::FocusMode { mode } => (
-            CameraPropertyCode::FocusMode,
+            PropertyCode::FocusMode,
             ptp::PtpData::UINT16(mode as u16),
         ),
         CameraCommandSetRequest::ZoomLevel { level } => (
-            CameraPropertyCode::ZoomAbsolutePosition,
+            PropertyCode::ZoomAbsolutePosition,
             ptp::PtpData::UINT16(level as u16),
         ),
         CameraCommandSetRequest::CcInterval { interval } => {
@@ -199,16 +199,16 @@ pub(super) async fn cmd_set(
             }
 
             (
-                CameraPropertyCode::IntervalTime,
+                PropertyCode::IntervalTime,
                 ptp::PtpData::UINT16(interval),
             )
         }
         CameraCommandSetRequest::ShutterSpeed { speed } => (
-            CameraPropertyCode::ShutterSpeed,
+            PropertyCode::ShutterSpeed,
             ptp::PtpData::UINT32(ToPrimitive::to_u32(&speed).unwrap()),
         ),
         CameraCommandSetRequest::Aperture { aperture } => (
-            CameraPropertyCode::FNumber,
+            PropertyCode::FNumber,
             ptp::PtpData::UINT16(ToPrimitive::to_u16(&aperture).unwrap()),
         ),
         // CameraCommandSetRequest::Other(s) => warn!("cannot set {"),
@@ -218,13 +218,13 @@ pub(super) async fn cmd_set(
 
     ensure(&interface, prop, data).await?;
 
-    Ok(CameraCommandResponse::Unit)
+    Ok(CameraResponse::Unit)
 }
 
 pub(super) async fn cmd_capture(
     interface: CameraInterfaceRequestBuffer,
     ptp_rx: &mut broadcast::Receiver<ptp::PtpEvent>,
-) -> anyhow::Result<CameraCommandResponse> {
+) -> anyhow::Result<CameraResponse> {
     ensure_mode(&interface, OperatingMode::StillRec).await?;
 
     interface
@@ -234,25 +234,25 @@ pub(super) async fn cmd_capture(
             debug!("sending half shutter press");
 
             // press shutter button halfway to fix the focus
-            i.control(CameraControlCode::S1Button, ptp::PtpData::UINT16(0x0002))
+            i.control(ControlCode::S1Button, ptp::PtpData::UINT16(0x0002))
                 .await?;
 
             debug!("sending full shutter press");
 
             // shoot!
-            i.control(CameraControlCode::S2Button, ptp::PtpData::UINT16(0x0002))
+            i.control(ControlCode::S2Button, ptp::PtpData::UINT16(0x0002))
                 .await?;
 
             debug!("sending full shutter release");
 
             // release
-            i.control(CameraControlCode::S2Button, ptp::PtpData::UINT16(0x0001))
+            i.control(ControlCode::S2Button, ptp::PtpData::UINT16(0x0001))
                 .await?;
 
             debug!("sending half shutter release");
 
             // hell yeah
-            i.control(CameraControlCode::S1Button, ptp::PtpData::UINT16(0x0001))
+            i.control(ControlCode::S1Button, ptp::PtpData::UINT16(0x0001))
                 .await?;
 
             Ok::<_, anyhow::Error>(())
@@ -262,7 +262,7 @@ pub(super) async fn cmd_capture(
     info!("waiting for image confirmation");
 
     {
-        let watch_fut = watch(&interface, CameraPropertyCode::ShootingFileInfo);
+        let watch_fut = watch(&interface, PropertyCode::ShootingFileInfo);
         let wait_fut = wait(ptp_rx, ptp::EventCode::Vendor(0xC204));
 
         futures::pin_mut!(watch_fut);
@@ -284,19 +284,19 @@ pub(super) async fn cmd_capture(
         }
     }
 
-    Ok(CameraCommandResponse::Unit)
+    Ok(CameraResponse::Unit)
 }
 
 pub(super) async fn cmd_continuous_capture(
     interface: CameraInterfaceRequestBuffer,
     req: CameraCommandContinuousCaptureRequest,
-) -> anyhow::Result<CameraCommandResponse> {
+) -> anyhow::Result<CameraResponse> {
     match req {
         CameraCommandContinuousCaptureRequest::Start => {
             interface
                 .enter(|i| async move {
                     i.control(
-                        CameraControlCode::IntervalStillRecording,
+                        ControlCode::IntervalStillRecording,
                         ptp::PtpData::UINT16(0x0002),
                     )
                     .await
@@ -308,7 +308,7 @@ pub(super) async fn cmd_continuous_capture(
             interface
                 .enter(|i| async move {
                     i.control(
-                        CameraControlCode::IntervalStillRecording,
+                        ControlCode::IntervalStillRecording,
                         ptp::PtpData::UINT16(0x0001),
                     )
                     .await
@@ -318,13 +318,13 @@ pub(super) async fn cmd_continuous_capture(
         }
     }
 
-    Ok(CameraCommandResponse::Unit)
+    Ok(CameraResponse::Unit)
 }
 
 pub(super) async fn cmd_storage(
     interface: CameraInterfaceRequestBuffer,
     req: CameraCommandStorageRequest,
-) -> anyhow::Result<CameraCommandResponse> {
+) -> anyhow::Result<CameraResponse> {
     match req {
         CameraCommandStorageRequest::List => {
             ensure_mode(&interface, OperatingMode::ContentsTransfer).await?;
@@ -355,7 +355,7 @@ pub(super) async fn cmd_storage(
                     infos
                         .into_iter()
                         .collect::<Result<HashMap<_, _>, _>>()
-                        .map(|storages| CameraCommandResponse::StorageInfo { storages })
+                        .map(|storages| CameraResponse::StorageInfo { storages })
                 })
                 .await
         }
@@ -365,8 +365,8 @@ pub(super) async fn cmd_storage(
 pub(super) async fn cmd_file(
     interface: CameraInterfaceRequestBuffer,
     req: CameraCommandFileRequest,
-    client_tx: broadcast::Sender<CameraClientEvent>,
-) -> anyhow::Result<CameraCommandResponse> {
+    client_tx: broadcast::Sender<CameraEvent>,
+) -> anyhow::Result<CameraResponse> {
     match req {
         CameraCommandFileRequest::List { parent } => {
             ensure_mode(&interface, OperatingMode::ContentsTransfer).await?;
@@ -411,7 +411,7 @@ pub(super) async fn cmd_file(
                     .await
                     .into_iter()
                     .collect::<Result<HashMap<_, _>, _>>()
-                    .map(|objects| CameraCommandResponse::ObjectInfo { objects })
+                    .map(|objects| CameraResponse::ObjectInfo { objects })
                 })
                 .await
         }
@@ -436,13 +436,13 @@ pub(super) async fn cmd_file(
                 .await
                 .context("downloading image data failed")?;
 
-            let _ = client_tx.send(CameraClientEvent::Download {
+            let _ = client_tx.send(CameraEvent::Download {
                 image_name: info.filename.clone(),
                 image_data: Arc::new(data),
                 cc_timestamp: None,
             });
 
-            Ok(CameraCommandResponse::Download {
+            Ok(CameraResponse::Download {
                 name: info.filename,
             })
         }

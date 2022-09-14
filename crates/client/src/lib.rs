@@ -1,5 +1,6 @@
 use async_trait::async_trait;
 
+use tokio::sync::oneshot;
 use tokio_stream::Stream;
 use tokio_util::sync::CancellationToken;
 
@@ -25,9 +26,9 @@ pub trait Task {
     async fn run(self, cancel: CancellationToken) -> anyhow::Result<()>;
 }
 
-pub type Command<Req, Res> = (Req, tokio::sync::oneshot::Sender<anyhow::Result<Res>>);
-pub type ChannelCommandSink<Req, Res> = tokio::sync::mpsc::Sender<Command<Req, Res>>;
-pub type ChannelCommandSource<Req, Res> = tokio::sync::mpsc::Receiver<Command<Req, Res>>;
+pub type Command<Req, Res> = (Req, oneshot::Sender<anyhow::Result<Res>>);
+pub type ChannelCommandSink<Req, Res> = flume::Sender<Command<Req, Res>>;
+pub type ChannelCommandSource<Req, Res> = flume::Receiver<Command<Req, Res>>;
 
 #[async_trait]
 impl<Req: Send, Res: Send> CommandSink for ChannelCommandSink<Req, Res> {
@@ -35,8 +36,8 @@ impl<Req: Send, Res: Send> CommandSink for ChannelCommandSink<Req, Res> {
     type Response = anyhow::Result<Res>;
 
     async fn command(&self, request: Self::Request) -> Self::Response {
-        let (tx, rx) = tokio::sync::oneshot::channel();
-        if let Err(_) = self.send((request, tx)).await {
+        let (tx, rx) = oneshot::channel();
+        if let Err(_) = self.send_async((request, tx)).await {
             anyhow::bail!("could not send command");
         }
         rx.await?

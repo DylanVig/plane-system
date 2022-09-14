@@ -16,8 +16,8 @@ log = "0.4"
 
 # async 
 tokio = { version = "1.16", features = ["net", "fs"] }
-tokio-stream = { version = "0.1", features = ["sync"] }
 async-trait = "0.1"
+flume = "0.10"
 
 # serialization
 serde = { version = "1.0", features = ["derive"] }
@@ -26,4 +26,4 @@ serde = { version = "1.0", features = ["derive"] }
 clap = { version = "3", features = ["derive"] }
 
 # i/o
-tokio-util = { version = "0.7", features = ["codec"] }
+tokio-util = { version = "0.7" }

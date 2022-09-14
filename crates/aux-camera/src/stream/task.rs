@@ -4,7 +4,6 @@ use async_trait::async_trait;
 use log::*;
 use ps_client::{ChannelCommandSink, ChannelCommandSource, Task};
 use tokio::select;
-use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 
 use super::interface::*;
@@ -16,35 +15,33 @@ pub struct StreamTask {
     cmd_rx: ChannelCommandSource<StreamRequest, StreamResponse>,
 }
 
-impl StreamTask {
-    pub fn create(
-        general_config: Config,
-        stream_config: StreamConfig,
-    ) -> (Self, ChannelCommandSink<StreamRequest, StreamResponse>) {
-        let (cmd_tx, cmd_rx) = mpsc::channel(256);
+pub fn create_task(
+    general_config: Config,
+    stream_config: StreamConfig,
+) -> (StreamTask, ChannelCommandSink<StreamRequest, StreamResponse>) {
+    let (cmd_tx, cmd_rx) = flume::bounded(256);
 
-        (
-            Self {
-                general_config,
-                stream_config,
-                cmd_rx,
-            },
-            cmd_tx,
-        )
-    }
+    (
+        StreamTask {
+            general_config,
+            stream_config,
+            cmd_rx,
+        },
+        cmd_tx,
+    )
 }
 
 #[async_trait]
 impl Task for StreamTask {
     fn name() -> &'static str {
-        "aux-camera::stream"
+        "aux-camera/stream"
     }
 
     async fn run(self, cancel: CancellationToken) -> anyhow::Result<()> {
         let Self {
             general_config,
             stream_config,
-            mut cmd_rx,
+            cmd_rx,
         } = self;
 
         let cmd_loop = async {
@@ -53,7 +50,7 @@ impl Task for StreamTask {
 
             trace!("initializing streamer");
 
-            while let Some((cmd, ret_tx)) = cmd_rx.recv().await {
+            while let Ok((cmd, ret_tx)) = cmd_rx.recv_async().await {
                 let result = tokio::task::block_in_place(|| match cmd {
                     StreamRequest::Start {} => iface.start_stream(),
                     StreamRequest::End {} => iface.end_stream(),
@@ -62,16 +59,12 @@ impl Task for StreamTask {
                 let _ = ret_tx.send(result);
             }
 
-            Ok(())
+            Ok::<_, anyhow::Error>(())
         };
 
         select! {
             _ = cancel.cancelled() => {}
-            res = cmd_loop => {
-                if res.is_err() {
-                    return res;
-                }
-             }
+            res = cmd_loop => { res? }
         };
 
         Ok(())

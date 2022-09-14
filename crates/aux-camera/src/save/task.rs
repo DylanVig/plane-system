@@ -2,9 +2,8 @@ use crate::Config;
 use anyhow::Context;
 use async_trait::async_trait;
 use log::*;
-use ps_client::{ChannelCommandSource, ChannelCommandSink, Task};
+use ps_client::{ChannelCommandSink, ChannelCommandSource, Task};
 use tokio::select;
-use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 
 use super::interface::*;
@@ -16,35 +15,33 @@ pub struct SaveTask {
     cmd_rx: ChannelCommandSource<SaveRequest, SaveResponse>,
 }
 
-impl SaveTask {
-    pub fn create(
-        general_config: Config,
-        save_config: SaveConfig,
-    ) -> (Self, ChannelCommandSink<SaveRequest, SaveResponse>) {
-        let (cmd_tx, cmd_rx) = mpsc::channel(256);
+pub fn create_task(
+    general_config: Config,
+    save_config: SaveConfig,
+) -> (SaveTask, ChannelCommandSink<SaveRequest, SaveResponse>) {
+    let (cmd_tx, cmd_rx) = flume::bounded(256);
 
-        (
-            Self {
-                general_config,
-                save_config,
-                cmd_rx,
-            },
-            cmd_tx,
-        )
-    }
+    (
+        SaveTask {
+            general_config,
+            save_config,
+            cmd_rx,
+        },
+        cmd_tx,
+    )
 }
 
 #[async_trait]
 impl Task for SaveTask {
     fn name() -> &'static str {
-        "aux-camera::save"
+        "aux-camera/save"
     }
 
     async fn run(self, cancel: CancellationToken) -> anyhow::Result<()> {
         let Self {
             general_config,
             save_config,
-            mut cmd_rx,
+            cmd_rx,
         } = self;
 
         let cmd_loop = async {
@@ -59,7 +56,7 @@ impl Task for SaveTask {
 
             trace!("initializing saver");
 
-            while let Some((cmd, ret_tx)) = cmd_rx.recv().await {
+            while let Ok((cmd, ret_tx)) = cmd_rx.recv_async().await {
                 let result = tokio::task::block_in_place(|| match cmd {
                     SaveRequest::Start {} => iface.start_save(),
                     SaveRequest::End {} => iface.end_save(),
@@ -68,16 +65,12 @@ impl Task for SaveTask {
                 let _ = ret_tx.send(result);
             }
 
-            Ok(())
+            Ok::<_, anyhow::Error>(())
         };
 
         select! {
             _ = cancel.cancelled() => {}
-            res = cmd_loop => {
-                if res.is_err() {
-                    return res;
-                }
-             }
+            res = cmd_loop => { res? }
         };
 
         Ok(())
