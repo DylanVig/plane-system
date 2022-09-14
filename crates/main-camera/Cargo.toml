@@ -6,7 +6,8 @@ edition = "2021"
 
 [dependencies]
 ps-serde-util = { path = "../serde-util" }
-ps-client = { path = "../client"  }
+ps-client = { path = "../client" }
+ps-main-camera-csb = { path = "../main-camera-csb", optional = true }
 
 # logging + error handling
 anyhow = "1.0"
@@ -21,8 +22,6 @@ async-trait = "0.1"
 
 # protocols + serialization
 serde = "1.0"
-serde_millis = "0.1.1"
-serde_json = "1.0"
 ptp = { git = "https://github.com/CUAir/rust-ptp" }
 num-traits = "0.2"
 num-derive = "0.3"
@@ -32,13 +31,12 @@ bytes = "1.1"
 clap = { version = "3", features = ["derive"] }
 
 chrono = { version = "0.4", features = ["serde"] }
-geo = { version = "0.19.0", features = ["use-serde"] }
-colored = "2"
-humansize = "1.1"
-prettytable-rs = "0.8"
+geo = { version = "0.23", features = ["use-serde"] }
 
 # i/o
 rusb = "0.9"
 tokio-serial = { git = "https://github.com/CUAir/tokio-serial.git", default-features = false }
-rppal = "0.13.1"
 tokio-util = { version = "0.7", features = ["codec"] }
+
+[features]
+csb = ["ps-main-camera-csb"]

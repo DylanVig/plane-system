@@ -12,8 +12,6 @@ const SONY_USB_VID: u16 = 0x054C;
 const SONY_USB_R10C_PID: u16 = 0x0A79;
 /// Sony R10C camera's product ID when it's powered off and charging
 const SONY_USB_R10C_PID_CHARGING: u16 = 0x0994;
-/// Sony's PTP extension vendor ID
-const SONY_PTP_VID: u16 = 0x0011;
 
 #[repr(u16)]
 #[derive(ToPrimitive, FromPrimitive, Copy, Clone, Eq, PartialEq, Debug)]
@@ -130,8 +128,6 @@ pub enum OperatingMode {
 
 struct CameraState {
     version: u16,
-    supported_properties: HashSet<PropertyCode>,
-    supported_controls: HashSet<ControlCode>,
 }
 
 pub struct CameraInterface {
@@ -216,8 +212,6 @@ impl CameraInterface {
 
                     break Ok(CameraState {
                         version: sdi_ext_version,
-                        supported_properties: sdi_device_props,
-                        supported_controls: sdi_device_controls,
                     });
                 }
                 Err(err) => {

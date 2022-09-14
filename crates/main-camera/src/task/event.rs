@@ -7,7 +7,7 @@ use ps_client::Task;
 use ptp::PtpEvent;
 use tokio::{
     select,
-    sync::{mpsc, RwLock},
+    sync::RwLock,
 };
 use tokio_util::sync::CancellationToken;
 
@@ -15,8 +15,8 @@ use crate::interface::CameraInterface;
 
 
 pub struct EventTask {
-  interface: Arc<RwLock<CameraInterface>>,
-  evt_tx: mpsc::Sender<PtpEvent>,
+  pub(super) interface: Arc<RwLock<CameraInterface>>,
+  pub(super) evt_tx: flume::Sender<PtpEvent>,
 }
 
 #[async_trait]
@@ -39,7 +39,7 @@ impl Task for EventTask {
               if let Some(event) = event {
                   debug!("recv event {:?}", event);
 
-                  if let Err(_) = self.evt_tx.send(event).await {
+                  if let Err(_) = self.evt_tx.send_async(event).await {
                       warn!("failed to publish event, exiting");
                       break;
                   }
