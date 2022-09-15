@@ -75,18 +75,18 @@ pub fn create_task(config: CsbConfig) -> anyhow::Result<(EventTask, flume::Recei
 
 #[async_trait]
 impl Task for EventTask {
-    fn name() -> &'static str {
-        "main-camera-csb/event"
+    fn name(&self) -> &'static str {
+        "main-camera/csb/event"
     }
 
-    async fn run(self, cancel: CancellationToken) -> anyhow::Result<()> {
+    async fn run(self: Box<Self>, cancel: CancellationToken) -> anyhow::Result<()> {
         let Self {
             mut pin_ack,
             mut pin_int,
             evt_tx,
             irq_rx,
             ..
-        } = self;
+        } = *self;
 
         let loop_fut = async move {
             defer(|| {

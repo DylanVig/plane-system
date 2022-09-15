@@ -33,16 +33,16 @@ pub struct DownloadTask {
 
 #[async_trait]
 impl Task for DownloadTask {
-    fn name() -> &'static str {
+    fn name(&self) -> &'static str {
         "main-camera/download"
     }
 
-    async fn run(self, cancel: CancellationToken) -> anyhow::Result<()> {
+    async fn run(self: Box<Self>, cancel: CancellationToken) -> anyhow::Result<()> {
         let Self {
             interface,
             evt_rx,
             download_tx,
-        } = self;
+        } = *self;
 
         let loop_fut = async move {
             loop {

@@ -19,11 +19,11 @@ pub struct ControlTask {
 
 #[async_trait]
 impl Task for ControlTask {
-    fn name() -> &'static str {
+    fn name(&self) -> &'static str {
         "main-camera/control"
     }
 
-    async fn run(self, cancel: CancellationToken) -> anyhow::Result<()> {
+    async fn run(self: Box<Self>, cancel: CancellationToken) -> anyhow::Result<()> {
         let loop_fut = async move {
             loop {
                 match self.cmd_rx.recv_async().await {

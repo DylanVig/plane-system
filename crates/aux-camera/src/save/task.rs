@@ -32,15 +32,15 @@ pub fn create_task(
 
 #[async_trait]
 impl Task for SaveTask {
-    fn name() -> &'static str {
+    fn name(&self) -> &'static str {
         "aux-camera/save"
     }
 
-    async fn run(self, cancel: CancellationToken) -> anyhow::Result<()> {
+    async fn run(self: Box<Self>, cancel: CancellationToken) -> anyhow::Result<()> {
         let Self {
             mut interface,
             cmd_rx,
-        } = self;
+        } = *self;
 
         let cmd_loop = async {
             trace!("initializing saver");
