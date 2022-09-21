@@ -8,7 +8,11 @@ pub use task::*;
 pub use command::*;
 use serde::Deserialize;
 
-#[derive(Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize)]
 pub struct SaveConfig {
-    pub save_path: PathBuf,
+    /// Path where videos from auxiliary cameras should be saved.
+    pub path: PathBuf,
+
+    /// A list of gstreamer camera specifications
+    pub cameras: Vec<String>,
 }

@@ -15,15 +15,14 @@ pub struct StreamTask {
 }
 
 pub fn create_task(
-    general_config: Config,
-    stream_config: StreamConfig,
+    config: StreamConfig,
 ) -> anyhow::Result<(
     StreamTask,
     ChannelCommandSink<StreamRequest, StreamResponse>,
 )> {
     let (cmd_tx, cmd_rx) = flume::bounded(256);
 
-    let interface = StreamInterface::new(stream_config.address, general_config.cameras)
+    let interface = StreamInterface::new(config.address, config.cameras)
         .context("failed to create stream interface")?;
 
     Ok((StreamTask { interface, cmd_rx }, cmd_tx))

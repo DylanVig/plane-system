@@ -15,16 +15,15 @@ pub struct SaveTask {
 }
 
 pub fn create_task(
-    general_config: Config,
-    save_config: SaveConfig,
+    config: SaveConfig,
 ) -> anyhow::Result<(SaveTask, ChannelCommandSink<SaveRequest, SaveResponse>)> {
     let (cmd_tx, cmd_rx) = flume::bounded(256);
 
-    if !save_config.save_path.exists() {
-        std::fs::create_dir(&save_config.save_path).context("failed to create save directory")?;
+    if !config.path.exists() {
+        std::fs::create_dir(&config.path).context("failed to create save directory")?;
     }
 
-    let interface = SaveInterface::new(save_config.save_path, general_config.cameras)
+    let interface = SaveInterface::new(config.path, config.cameras)
         .context("failed to create save interface")?;
 
     Ok((SaveTask { interface, cmd_rx }, cmd_tx))
