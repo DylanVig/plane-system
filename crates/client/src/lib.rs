@@ -1,4 +1,4 @@
-use anyhow::{anyhow, bail};
+use anyhow::anyhow;
 use async_trait::async_trait;
 
 use tokio::{sync::oneshot, task::JoinSet};
@@ -42,10 +42,14 @@ impl Task for MultiTask {
     async fn run(self: Box<Self>, cancel: CancellationToken) -> anyhow::Result<()> {
         let mut js = JoinSet::new();
         for task in self.subtasks {
+            #[cfg(tokio_unstable)]
             let _ = js
                 .build_task()
                 .name(task.name())
                 .spawn(Box::new(task.run(cancel.child_token())));
+
+            #[cfg(not(tokio_unstable))]
+            let _ = js.spawn(Box::new(task.run(cancel.child_token())));
         }
 
         let mut errors = Vec::new();
