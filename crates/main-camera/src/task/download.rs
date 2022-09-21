@@ -6,10 +6,7 @@ use log::*;
 use num_traits::{FromPrimitive, ToPrimitive};
 use ps_client::Task;
 use ptp::PtpEvent;
-use tokio::{
-    select,
-    sync::RwLock,
-};
+use tokio::{select, sync::RwLock};
 use tokio_util::sync::CancellationToken;
 
 use crate::{
@@ -25,10 +22,28 @@ const IMAGE_BUFFER_OBJECT_HANDLE: u32 = 0xFFFFC001;
 pub type Download = Arc<(ptp::PtpObjectInfo, Vec<u8>)>;
 
 pub struct DownloadTask {
-    pub(super) interface: Arc<RwLock<CameraInterface>>,
+    interface: Arc<RwLock<CameraInterface>>,
 
-    pub(super) evt_rx: flume::Receiver<PtpEvent>,
-    pub(super) download_tx: flume::Sender<Download>,
+    evt_rx: flume::Receiver<PtpEvent>,
+    download_tx: flume::Sender<Download>,
+    download_rx: flume::Receiver<Download>,
+}
+
+impl DownloadTask {
+    pub fn new(interface: Arc<RwLock<CameraInterface>>, evt_rx: flume::Receiver<PtpEvent>) -> Self {
+        let (download_tx, download_rx) = flume::bounded(256);
+
+        Self {
+            interface,
+            evt_rx,
+            download_rx,
+            download_tx,
+        }
+    }
+
+    pub fn download(&self) -> flume::Receiver<Download> {
+        self.download_rx.clone()
+    }
 }
 
 #[async_trait]
@@ -42,6 +57,7 @@ impl Task for DownloadTask {
             interface,
             evt_rx,
             download_tx,
+            ..
         } = *self;
 
         let loop_fut = async move {

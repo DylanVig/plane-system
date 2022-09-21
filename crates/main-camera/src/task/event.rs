@@ -5,55 +5,68 @@ use async_trait::async_trait;
 use log::*;
 use ps_client::Task;
 use ptp::PtpEvent;
-use tokio::{
-    select,
-    sync::RwLock,
-};
+use tokio::{select, sync::RwLock};
 use tokio_util::sync::CancellationToken;
 
 use crate::interface::CameraInterface;
 
-
 pub struct EventTask {
-  pub(super) interface: Arc<RwLock<CameraInterface>>,
-  pub(super) evt_tx: flume::Sender<PtpEvent>,
+    interface: Arc<RwLock<CameraInterface>>,
+    evt_tx: flume::Sender<PtpEvent>,
+    evt_rx: flume::Receiver<PtpEvent>,
+}
+
+impl EventTask {
+    pub fn new(interface: Arc<RwLock<CameraInterface>>) -> Self {
+        let (evt_tx, evt_rx) = flume::bounded(256);
+
+        Self {
+            interface,
+            evt_rx,
+            evt_tx,
+        }
+    }
+
+    pub fn events(&self) -> flume::Receiver<PtpEvent> {
+        self.evt_rx.clone()
+    }
 }
 
 #[async_trait]
 impl Task for EventTask {
-  fn name(&self) -> &'static str {
-      "main-camera/event"
-  }
+    fn name(&self) -> &'static str {
+        "main-camera/event"
+    }
 
-  async fn run(self: Box<Self>, cancel: CancellationToken) -> anyhow::Result<()> {
-      let loop_fut = async move {
-          loop {
-              let event = {
-                  self.interface
-                      .read()
-                      .await
-                      .recv(Some(Duration::from_millis(100)))
-                      .context("error while receiving camera event")?
-              };
+    async fn run(self: Box<Self>, cancel: CancellationToken) -> anyhow::Result<()> {
+        let loop_fut = async move {
+            loop {
+                let event = {
+                    self.interface
+                        .read()
+                        .await
+                        .recv(Some(Duration::from_millis(100)))
+                        .context("error while receiving camera event")?
+                };
 
-              if let Some(event) = event {
-                  debug!("recv event {:?}", event);
+                if let Some(event) = event {
+                    debug!("recv event {:?}", event);
 
-                  if let Err(_) = self.evt_tx.send_async(event).await {
-                      warn!("failed to publish event, exiting");
-                      break;
-                  }
-              }
-          }
+                    if let Err(_) = self.evt_tx.send_async(event).await {
+                        warn!("failed to publish event, exiting");
+                        break;
+                    }
+                }
+            }
 
-          Ok::<_, anyhow::Error>(())
-      };
+            Ok::<_, anyhow::Error>(())
+        };
 
-      select! {
-        _ = cancel.cancelled() => {}
-        res = loop_fut => { res? }
-      }
+        select! {
+          _ = cancel.cancelled() => {}
+          res = loop_fut => { res? }
+        }
 
-      Ok(())
-  }
+        Ok(())
+    }
 }

@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use ps_client::{ChannelCommandSource, Task};
+use ps_client::{ChannelCommandSink, ChannelCommandSource, Task};
 use tokio::{select, sync::RwLock};
 use tokio_util::sync::CancellationToken;
 
@@ -13,8 +13,25 @@ use crate::{
 };
 
 pub struct ControlTask {
-    pub(super) interface: Arc<RwLock<CameraInterface>>,
-    pub(super) cmd_rx: ChannelCommandSource<CameraRequest, CameraResponse>,
+    interface: Arc<RwLock<CameraInterface>>,
+    cmd_rx: ChannelCommandSource<CameraRequest, CameraResponse>,
+    cmd_tx: ChannelCommandSink<CameraRequest, CameraResponse>,
+}
+
+impl ControlTask {
+    pub fn new(interface: Arc<RwLock<CameraInterface>>) -> Self {
+        let (cmd_tx, cmd_rx) = flume::bounded(256);
+
+        Self {
+            interface,
+            cmd_rx,
+            cmd_tx,
+        }
+    }
+
+    pub fn cmd(&self) -> ChannelCommandSink<CameraRequest, CameraResponse> {
+        self.cmd_tx.clone()
+    }
 }
 
 #[async_trait]
