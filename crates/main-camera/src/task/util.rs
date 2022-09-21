@@ -1,4 +1,3 @@
-use crate::interface::CameraInterface;
 use crate::interface::PropertyCode;
 use anyhow::{bail, Context};
 use log::{debug, trace};
@@ -6,6 +5,8 @@ use num_traits::FromPrimitive;
 use std::collections::HashMap;
 use std::time::Duration;
 use tokio::sync::RwLock;
+
+use super::InterfaceGuard;
 
 /// Converts a raw PTP data object into something that implements
 /// `FromPrimitive` (such as an enum).
@@ -24,8 +25,8 @@ pub(crate) fn from_ptp_primitive<T: FromPrimitive>(ptp: &ptp::PtpData) -> Option
 }
 
 /// Gets an up-to-date map from camera properties to their current values.
-pub(crate) async fn get_camera_values(
-    interface: &RwLock<CameraInterface>,
+pub(super) async fn get_camera_values(
+    interface: &RwLock<InterfaceGuard>,
 ) -> anyhow::Result<HashMap<PropertyCode, ptp::PtpData>> {
     trace!("reading camera property values");
 
@@ -48,7 +49,7 @@ pub(crate) async fn get_camera_values(
 /// Gets the value of a camera property from a map returned by
 /// [`get_camera_values`] and converts it to something that implements
 /// `FromPrimitive` (such as an enum).
-pub(crate) fn convert_camera_value<T: FromPrimitive>(
+pub(super) fn convert_camera_value<T: FromPrimitive>(
     values: &HashMap<PropertyCode, ptp::PtpData>,
     prop: PropertyCode,
 ) -> anyhow::Result<T> {
@@ -68,8 +69,8 @@ pub(crate) fn convert_camera_value<T: FromPrimitive>(
 /// sure that this value took effect. Will return immediately if the property's
 /// current value is the same as `value`. Will fail after attempting to set the
 /// value 10 times.
-pub(crate) async fn ensure_camera_value(
-    interface: &RwLock<CameraInterface>,
+pub(super) async fn ensure_camera_value(
+    interface: &RwLock<InterfaceGuard>,
     prop: PropertyCode,
     value: ptp::PtpData,
 ) -> anyhow::Result<()> {

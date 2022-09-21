@@ -5,21 +5,21 @@ use ps_client::{ChannelCommandSink, ChannelCommandSource, Task};
 use tokio::{select, sync::RwLock};
 use tokio_util::sync::CancellationToken;
 
-use super::util::*;
+use super::{util::*, InterfaceGuard};
 use crate::{
-    interface::{CameraInterface, OperatingMode, PropertyCode},
+    interface::{OperatingMode, PropertyCode},
     Aperture, CameraRequest, CameraResponse, CompressionMode, ErrorMode, ExposureMode, FocusMode,
     Iso, SaveMedia, ShutterSpeed,
 };
 
 pub struct ControlTask {
-    interface: Arc<RwLock<CameraInterface>>,
+    interface: Arc<RwLock<InterfaceGuard>>,
     cmd_rx: ChannelCommandSource<CameraRequest, CameraResponse>,
     cmd_tx: ChannelCommandSink<CameraRequest, CameraResponse>,
 }
 
 impl ControlTask {
-    pub fn new(interface: Arc<RwLock<CameraInterface>>) -> Self {
+    pub(super) fn new(interface: Arc<RwLock<InterfaceGuard>>) -> Self {
         let (cmd_tx, cmd_rx) = flume::bounded(256);
 
         Self {
@@ -77,7 +77,7 @@ impl Task for ControlTask {
     }
 }
 
-async fn run_status(interface: &RwLock<CameraInterface>) -> anyhow::Result<CameraResponse> {
+async fn run_status(interface: &RwLock<InterfaceGuard>) -> anyhow::Result<CameraResponse> {
     let props = get_camera_values(interface).await?;
 
     let op_mode: OperatingMode = convert_camera_value(&props, PropertyCode::OperatingMode)?;

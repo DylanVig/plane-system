@@ -8,16 +8,16 @@ use ptp::PtpEvent;
 use tokio::{select, sync::RwLock};
 use tokio_util::sync::CancellationToken;
 
-use crate::interface::CameraInterface;
+use super::InterfaceGuard;
 
 pub struct EventTask {
-    interface: Arc<RwLock<CameraInterface>>,
+    interface: Arc<RwLock<InterfaceGuard>>,
     evt_tx: flume::Sender<PtpEvent>,
     evt_rx: flume::Receiver<PtpEvent>,
 }
 
 impl EventTask {
-    pub fn new(interface: Arc<RwLock<CameraInterface>>) -> Self {
+    pub(super) fn new(interface: Arc<RwLock<InterfaceGuard>>) -> Self {
         let (evt_tx, evt_rx) = flume::bounded(256);
 
         Self {

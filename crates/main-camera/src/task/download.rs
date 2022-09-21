@@ -14,6 +14,8 @@ use crate::{
     task::util::{convert_camera_value, get_camera_values},
 };
 
+use super::InterfaceGuard;
+
 /// This is the object handle for images stored in the image buffer. The image
 /// buffer is used when the camera does not contain an SD card, and is used to
 /// retrieve images that are stored temporarily on the camera after capture.
@@ -22,7 +24,7 @@ const IMAGE_BUFFER_OBJECT_HANDLE: u32 = 0xFFFFC001;
 pub type Download = Arc<(ptp::PtpObjectInfo, Vec<u8>)>;
 
 pub struct DownloadTask {
-    interface: Arc<RwLock<CameraInterface>>,
+    interface: Arc<RwLock<InterfaceGuard>>,
 
     evt_rx: flume::Receiver<PtpEvent>,
     download_tx: flume::Sender<Download>,
@@ -30,7 +32,7 @@ pub struct DownloadTask {
 }
 
 impl DownloadTask {
-    pub fn new(interface: Arc<RwLock<CameraInterface>>, evt_rx: flume::Receiver<PtpEvent>) -> Self {
+    pub(super) fn new(interface: Arc<RwLock<InterfaceGuard>>, evt_rx: flume::Receiver<PtpEvent>) -> Self {
         let (download_tx, download_rx) = flume::bounded(256);
 
         Self {
@@ -128,7 +130,7 @@ impl Task for DownloadTask {
                         })?
                     };
 
-                    download_tx.send_async(Arc::new((info, data))).await;
+                    let _ = download_tx.send_async(Arc::new((info, data))).await;
                 }
             }
 
