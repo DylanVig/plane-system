@@ -2,17 +2,9 @@ use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Serialize, Deserialize)]
-pub enum Mode {
-    Idle,
-    Fixed,
-    Tracking,
-    OffAxis, // TODO figure out logic for off-axis targets
-}
-
 #[derive(Default, Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct Point3D {
-    #[serde(serialize_with = "crate::util::serialize_point")]
+    #[serde(serialize_with = "ps_serde_util::serialize_point")]
     pub point: geo::Point<f32>,
 
     /// Altitude in meters above mean sea level
@@ -47,7 +39,7 @@ pub struct Telemetry {
     pub position: Point3D,
     /// Velocity in meters per second (X, Y, Z) / (East, North, Up)
     pub velocity: (f32, f32, f32),
-    #[serde(serialize_with = "crate::util::serialize_time")]
+    #[serde(serialize_with = "ps_serde_util::serialize_time")]
     pub timestamp: chrono::DateTime<chrono::Local>,
 }
 
@@ -66,6 +58,5 @@ impl Default for Telemetry {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Image {
     path: PathBuf,
-    mode: Mode,
     geotag: geo::Point<f32>,
 }
