@@ -5,7 +5,6 @@ use tokio::sync::oneshot;
 use warp::{self, Filter};
 
 use crate::scheduler::{Roi, SchedulerCommand};
-use crate::state::RegionOfInterest;
 use crate::{camera::main::CameraCommandRequest, Channels, Command};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
