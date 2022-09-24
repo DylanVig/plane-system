@@ -31,32 +31,3 @@ impl Attitude {
         Attitude { roll, pitch, yaw }
     }
 }
-
-#[derive(Debug, Clone, Copy, Serialize)]
-pub struct Telemetry {
-    pub plane_attitude: Attitude,
-    pub gimbal_attitude: Attitude,
-    pub position: Point3D,
-    /// Velocity in meters per second (X, Y, Z) / (East, North, Up)
-    pub velocity: (f32, f32, f32),
-    #[serde(serialize_with = "ps_serde_util::serialize_time")]
-    pub timestamp: chrono::DateTime<chrono::Local>,
-}
-
-impl Default for Telemetry {
-    fn default() -> Self {
-        Telemetry {
-            gimbal_attitude: Default::default(),
-            plane_attitude: Default::default(),
-            position: Default::default(),
-            velocity: Default::default(),
-            timestamp: chrono::Local::now(),
-        }
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Image {
-    path: PathBuf,
-    geotag: geo::Point<f32>,
-}
