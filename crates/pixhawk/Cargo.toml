@@ -6,14 +6,15 @@ edition = "2021"
 [dependencies]
 ps-serde-util = { path = "../serde-util" }
 ps-client = { path = "../client" }
+ps-types = { path = "../types" }
 
 # logging + error handling
-anyhow = "1.0"
-log = "0.4"
+anyhow = { workspace = true }
+log = { workspace = true }
 
 # async 
-tokio = { version = "1.16", features = ["rt"] }
+tokio = { workspace = true }
 tokio-stream = { version = "0.1", features = ["sync"] }
-futures = "0.3"
-async-trait = "0.1"
-flume = "0.10"
+futures = { workspace = true }
+async-trait = { workspace = true }
+flume = { workspace = true }
