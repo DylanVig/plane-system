@@ -9,6 +9,7 @@ ps-client = { path = "../client" }
 ps-types = { path = "../types" }
 
 serde = { workspace = true }
+bytes = { workspace = true }
 
 # logging + error handling
 anyhow = { workspace = true }
@@ -21,6 +22,9 @@ tokio-stream = { version = "0.1", features = ["sync"] }
 futures = { workspace = true }
 async-trait = { workspace = true }
 flume = { workspace = true }
+
+num-traits = { workspace = true }
+num-derive = { workspace = true }
 
 mavlink = { features = [
   "ardupilotmega",
