@@ -1,3 +1,5 @@
+use std::net::SocketAddr;
+
 use anyhow::Context;
 use log::*;
 
@@ -7,20 +9,32 @@ use ps_types::{Attitude, Point3D};
 use tokio::select;
 use tokio_util::sync::CancellationToken;
 
-use mavlink::{
-  ardupilotmega as apm, common,
-};
+use mavlink::{ardupilotmega as apm, common, MavlinkVersion};
 
 use crate::{interface::PixhawkInterface, PixhawkConfig, PixhawkEvent};
 
 pub struct EventTask {
-    interface: PixhawkInterface,
+    address: SocketAddr,
+    version: MavlinkVersion,
     evt_tx: flume::Sender<PixhawkEvent>,
     evt_rx: flume::Receiver<PixhawkEvent>,
 }
 
 pub fn create_task(config: PixhawkConfig) -> anyhow::Result<EventTask> {
-    todo!()
+    let (evt_tx, evt_rx) = flume::bounded(256);
+
+    Ok(EventTask {
+        address: config.address,
+        version: config.mavlink,
+        evt_tx,
+        evt_rx,
+    })
+}
+
+impl EventTask {
+  pub fn events(&self) -> flume::Receiver<PixhawkEvent> {
+      self.evt_rx.clone()
+  }
 }
 
 #[async_trait]
@@ -30,9 +44,11 @@ impl Task for EventTask {
     }
 
     async fn run(self: Box<Self>, cancel: CancellationToken) -> anyhow::Result<()> {
-        let Self { mut interface, evt_tx, .. } = *self;
+        let Self { evt_tx, address, version, .. } = *self;
 
         let loop_fut = async move {
+            let mut interface = PixhawkInterface::connect(address, version).await?;
+
             loop {
                 let message = interface.recv().await?;
 
