@@ -9,6 +9,7 @@ ps-client = { path = "../client" }
 ps-types = { path = "../types" }
 
 serde = { workspace = true }
+geo = { workspace = true }
 bytes = { workspace = true }
 
 # logging + error handling
