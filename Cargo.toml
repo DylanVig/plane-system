@@ -67,7 +67,6 @@ prettytable-rs = "0.8"
 rusb = "0.9"
 tokio-serial = { git = "https://github.com/CUAir/tokio-serial.git", default-features = false }
 rppal = "0.13.1"
-tokio-util = { version = "0.7", features = ["codec"] }
 
 [features]
 default = ["udev", "aux-camera"]
@@ -79,6 +78,7 @@ members = ["crates/*"]
 
 [workspace.dependencies]
 anyhow = "1.0"
+log = "0.4"
 serde = { version = "1.0", features = ["derive"] }
 
 chrono = { version = "0.4", features = ["serde"] }
@@ -86,6 +86,7 @@ geo = { version = "0.23", features = ["use-serde"] }
 
 futures = "0.3"
 tokio = { version = "1.16", features = ["full"] }
+tokio-util = { version = "0.7", features = ["codec"] }
 flume = "0.10"
 async-trait = "0.1"
 
