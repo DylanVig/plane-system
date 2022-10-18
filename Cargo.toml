@@ -73,7 +73,6 @@ tokio-util = { version = "0.7", features = ["codec"] }
 default = ["udev", "aux-camera"]
 udev = ["tokio-serial/libudev", "serialport/libudev"]
 aux-camera = ["ps-aux-camera"]
-gstreamer = ["gst"]
 csb = ["rppal"]
 
 [workspace]
