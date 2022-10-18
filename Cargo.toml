@@ -82,7 +82,9 @@ members = ["crates/*"]
 [workspace.dependencies]
 anyhow = "1.0"
 log = "0.4"
+
 serde = { version = "1.0", features = ["derive"] }
+bytes = "1.1"
 
 chrono = { version = "0.4", features = ["serde"] }
 geo = { version = "0.23", features = ["use-serde"] }
@@ -93,3 +95,5 @@ tokio-util = { version = "0.7", features = ["codec"] }
 flume = "0.10"
 async-trait = "0.1"
 
+num-traits = "0.2"
+num-derive = "0.3"
