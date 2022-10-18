@@ -18,7 +18,7 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "registry"] }
 tracing-appender = "0.2"
 color-backtrace = "0.5.1"
-console-subscriber = "0.1.2"
+console-subscriber = "0.1.8"
 anyhow = "1.0"
 
 # async 
@@ -66,12 +66,15 @@ prettytable-rs = "0.8"
 # i/o
 rusb = "0.9"
 tokio-serial = { git = "https://github.com/CUAir/tokio-serial.git", default-features = false }
-rppal = "0.13.1"
+rppal = { version = "0.13.1", optional = true }
+tokio-util = { version = "0.7", features = ["codec"] }
 
 [features]
 default = ["udev", "aux-camera"]
 udev = ["tokio-serial/libudev", "serialport/libudev"]
 aux-camera = ["ps-aux-camera"]
+gstreamer = ["gst"]
+csb = ["rppal"]
 
 [workspace]
 members = ["crates/*"]
