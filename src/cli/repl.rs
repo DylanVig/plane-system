@@ -9,7 +9,7 @@ use tokio::task::spawn_blocking;
 use tracing::Level;
 
 use crate::{
-    camera::main::{CameraCommandRequest, CameraCommandResponse, SaveMedia},
+    camera::main::{CameraRequest, CameraResponse, SaveMedia},
     gimbal::GimbalRequest,
     gs::GroundServerRequest,
     Channels, Command,
@@ -30,7 +30,7 @@ struct Cli {
 enum Commands {
     #[clap(subcommand)]
     #[clap(name = "camera")]
-    MainCamera(CameraCommandRequest),
+    MainCamera(CameraRequest),
 
     #[clap(subcommand)]
     Gimbal(GimbalRequest),
@@ -187,11 +187,11 @@ fn table_format() -> prettytable::format::TableFormat {
         .build()
 }
 
-fn format_camera_response(response: CameraCommandResponse) -> () {
+fn format_camera_response(response: CameraResponse) -> () {
     match response {
-        CameraCommandResponse::Unit => println!("done"),
+        CameraResponse::Unit => println!("done"),
 
-        CameraCommandResponse::Data { data } => {
+        CameraResponse::Data { data } => {
             let size = data
                 .len()
                 .file_size(humansize::file_size_opts::BINARY)
@@ -200,11 +200,11 @@ fn format_camera_response(response: CameraCommandResponse) -> () {
             println!("received {} of data", size);
         }
 
-        CameraCommandResponse::Download { name: path } => {
+        CameraResponse::Download { name: path } => {
             println!("received file: {}", path);
         }
 
-        CameraCommandResponse::StorageInfo { storages } => {
+        CameraResponse::StorageInfo { storages } => {
             let mut table = Table::new();
             table.add_row(row![
                 "id",
@@ -279,7 +279,7 @@ fn format_camera_response(response: CameraCommandResponse) -> () {
             table.printstd();
         }
 
-        CameraCommandResponse::ObjectInfo { objects } => {
+        CameraResponse::ObjectInfo { objects } => {
             let mut table = Table::new();
 
             table.add_row(row![
@@ -372,10 +372,10 @@ fn format_camera_response(response: CameraCommandResponse) -> () {
             table.printstd();
         }
 
-        CameraCommandResponse::ZoomLevel(zoom_level) => {
+        CameraResponse::ZoomLevel(zoom_level) => {
             println!("zoom level: {}", zoom_level);
         }
-        CameraCommandResponse::SaveMode(save_mode) => match save_mode {
+        CameraResponse::SaveMode(save_mode) => match save_mode {
             SaveMedia::HostDevice => {
                 println!("saving to host device");
             }
@@ -383,16 +383,16 @@ fn format_camera_response(response: CameraCommandResponse) -> () {
                 println!("saving to camera memory");
             }
         },
-        CameraCommandResponse::ExposureMode(exposure_mode) => {
+        CameraResponse::ExposureMode(exposure_mode) => {
             println!("exposure mode: {:?}", exposure_mode);
         }
-        CameraCommandResponse::OperatingMode(operating_mode) => {
+        CameraResponse::OperatingMode(operating_mode) => {
             println!("operating mode: {:?}", operating_mode);
         }
-        CameraCommandResponse::FocusMode(focus_mode) => {
+        CameraResponse::FocusMode(focus_mode) => {
             println!("focus mode: {:?}", focus_mode);
         }
-        CameraCommandResponse::CcInterval(interval) => {
+        CameraResponse::CcInterval(interval) => {
             println!("continuous capture interval: {:?}", interval);
         }
     }

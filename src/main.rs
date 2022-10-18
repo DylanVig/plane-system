@@ -52,7 +52,7 @@ pub struct Channels {
     pixhawk_cmd: flume::Sender<pixhawk::PixhawkCommand>,
 
     /// Channel for broadcasting updates to the state of the camera.
-    camera_event: broadcast::Sender<camera::main::CameraClientEvent>,
+    camera_event: broadcast::Sender<camera::main::CameraEvent>,
 
     /// Channel for broadcasting updates from the current-sensing board.
     csb_telemetry: watch::Receiver<Option<camera::main::csb::CurrentSensingTelemetry>>,
