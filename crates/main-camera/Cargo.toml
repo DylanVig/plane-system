@@ -7,7 +7,7 @@ edition = "2021"
 [dependencies]
 ps-serde-util = { path = "../serde-util" }
 ps-client = { path = "../client" }
-ps-main-camera-csb = { path = "../main-camera-csb", optional = true }
+ps-main-camera-csb = { path = "../main-camera-csb" }
 
 # logging + error handling
 anyhow = "1.0"
@@ -39,4 +39,4 @@ tokio-serial = { git = "https://github.com/CUAir/tokio-serial.git", default-feat
 tokio-util = { version = "0.7", features = ["codec"] }
 
 [features]
-csb = ["ps-main-camera-csb"]
+csb = ["ps-main-camera-csb/csb"]

@@ -11,3 +11,5 @@ pub use command::*;
 pub use state::*;
 pub use task::*;
 pub use config::*;
+
+pub use ps_main_camera_csb as csb;
