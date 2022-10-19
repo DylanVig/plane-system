@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+ps-main-camera-csb = { path = "../main-camera-csb" }
 ps-pixhawk = { path = "../pixhawk" }
 ps-client = { path = "../client" }
 ps-types = { path = "../types" }
@@ -17,5 +18,6 @@ log = { workspace = true }
 # async 
 tokio = { workspace = true }
 tokio-util = { workspace = true }
-async-trait = "0.1"
-flume = "0.10"
+async-trait = { workspace = true }
+flume = { workspace = true }
+
