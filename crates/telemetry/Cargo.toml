@@ -1,0 +1,21 @@
+[package]
+name = "ps-telemetry"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+ps-pixhawk = { path = "../pixhawk" }
+ps-client = { path = "../client" }
+ps-types = { path = "../types" }
+
+chrono = { workspace = true }
+
+# logging + error handling
+anyhow = { workspace = true }
+log = { workspace = true }
+
+# async 
+tokio = { workspace = true }
+tokio-util = { workspace = true }
+async-trait = "0.1"
+flume = "0.10"
