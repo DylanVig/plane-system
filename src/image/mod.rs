@@ -38,7 +38,7 @@ pub async fn run(channels: Arc<Channels>, config: ImageConfig) -> anyhow::Result
         warn!("could not create image save directory: {}", err);
     }
 
-    loop {19
+    loop {
         select! {
             camera_evt = camera_recv.recv().fuse() => {
                 if let Ok(camera_evt) = camera_evt {
