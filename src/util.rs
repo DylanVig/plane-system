@@ -19,10 +19,7 @@ where
     serializer.collect_str(&this.format(ISO_8601_FORMAT).to_string())
 }
 
-pub fn serialize_point<S>(
-    this: &geo::Point<f32>,
-    serializer: S,
-) -> Result<S::Ok, S::Error>
+pub fn serialize_point<S>(this: &geo::Point<f32>, serializer: S) -> Result<S::Ok, S::Error>
 where
     S: serde::ser::Serializer,
 {
@@ -63,7 +60,7 @@ pub fn spawn_with_name<T: Send + 'static>(
     task: impl Future<Output = T> + Send + 'static,
 ) -> tokio::task::JoinHandle<T> {
     #[cfg(tokio_unstable)]
-    return tokio::task::Builder::new().name(name).spawn(task);
+    return tokio::task::Builder::new().name(name).spawn(task).unwrap();
 
     #[cfg(not(tokio_unstable))]
     return tokio::task::spawn(task);
@@ -74,7 +71,10 @@ pub fn spawn_blocking_with_name<T: Send + 'static>(
     task: impl FnOnce() -> T + Send + 'static,
 ) -> tokio::task::JoinHandle<T> {
     #[cfg(tokio_unstable)]
-    return tokio::task::Builder::new().name(name).spawn_blocking(task);
+    return tokio::task::Builder::new()
+        .name(name)
+        .spawn_blocking(task)
+        .unwrap();
 
     #[cfg(not(tokio_unstable))]
     return tokio::task::spawn_blocking(task);

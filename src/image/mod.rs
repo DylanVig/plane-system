@@ -5,11 +5,13 @@ use std::{
 
 use anyhow::Context;
 use futures::{select, FutureExt};
-use geo::prelude::HaversineDestination;
 use tokio::{fs::File, io::AsyncWriteExt};
 
+#[cfg(feature = "csb")]
+use crate::camera::main::csb;
+
 use crate::{
-    camera::main::{csb, CameraClientEvent},
+    camera::main::CameraClientEvent,
     cli::config::ImageConfig,
     state::{Point3D, Telemetry},
     util::ISO_8601_FORMAT,
@@ -52,35 +54,43 @@ pub async fn run(channels: Arc<Channels>, config: ImageConfig) -> anyhow::Result
                                 warn!("no pixhawk telemetry data available for image capture")
                             }
 
-                            let csb_timestamp = channels.csb_telemetry.borrow().clone().map(|t| t.timestamp);
+                            #[cfg(feature = "csb")]
+                            let (csb_timestamp, offset_position) = {
+                                let csb_timestamp = channels.csb_telemetry.borrow().clone().map(|t| t.timestamp);
 
-                            if csb_timestamp.is_none() {
-                                warn!("no csb telemetry data available for image capture")
-                            }
+                                if csb_timestamp.is_none() {
+                                    warn!("no csb telemetry data available for image capture")
+                                }
 
-                            let offset_position = if let (Some(pixhawk_telemetry), Some(csb_timestamp)) = (&pixhawk_telemetry, &csb_timestamp) {
-                                // velocity in meters per second east and north
-                                let (vx, vy, vz) = pixhawk_telemetry.velocity;
-                                let delay = *csb_timestamp - pixhawk_telemetry.timestamp;
-                                let delay_seconds = delay.num_milliseconds() as f32 / 1000.;
+                                let offset_position = if let (Some(pixhawk_telemetry), Some(csb_timestamp)) = (&pixhawk_telemetry, &csb_timestamp) {
+                                    // velocity in meters per second east and north
+                                    let (vx, vy, vz) = pixhawk_telemetry.velocity;
+                                    let delay = *csb_timestamp - pixhawk_telemetry.timestamp;
+                                    let delay_seconds = delay.num_milliseconds() as f32 / 1000.;
 
-                                // angle we are traveling at
-                                let heading = pixhawk_telemetry.plane_attitude.yaw;
+                                    // angle we are traveling at
+                                    let heading = pixhawk_telemetry.plane_attitude.yaw;
 
-                                // distance traveled since we received gps from pixhawk
-                                let distance_xy = f32::sqrt(vx * vx + vy * vy) * delay_seconds;
-                                let offset_coords = pixhawk_telemetry.position.point.haversine_destination(heading, distance_xy);
-                                let offset_altitude_rel = pixhawk_telemetry.position.altitude_rel + vz * delay_seconds;
-                                let offset_altitude_msl = pixhawk_telemetry.position.altitude_msl + vz * delay_seconds;
+                                    // distance traveled since we received gps from pixhawk
+                                    let distance_xy = f32::sqrt(vx * vx + vy * vy) * delay_seconds;
+                                    let offset_coords = pixhawk_telemetry.position.point.haversine_destination(heading, distance_xy);
+                                    let offset_altitude_rel = pixhawk_telemetry.position.altitude_rel + vz * delay_seconds;
+                                    let offset_altitude_msl = pixhawk_telemetry.position.altitude_msl + vz * delay_seconds;
 
-                                Some(Point3D {
-                                    point: offset_coords,
-                                    altitude_msl: offset_altitude_msl,
-                                    altitude_rel: offset_altitude_rel,
-                                })
-                            } else {
-                                None
+                                    Some(Point3D {
+                                        point: offset_coords,
+                                        altitude_msl: offset_altitude_msl,
+                                        altitude_rel: offset_altitude_rel,
+                                    })
+                                } else {
+                                    None
+                                };
+
+                                (csb_timestamp, offset_position)
                             };
+
+                            #[cfg(not(feature = "csb"))]
+                            let (csb_timestamp, offset_position) = (None, None);
 
                             let image_filename = match save(&image_save_dir, &image_name, &image_data, &pixhawk_telemetry, offset_position, csb_timestamp, cc_timestamp).await {
                                 Ok(image_filename) => image_filename,
