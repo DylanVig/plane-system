@@ -1,13 +1,10 @@
 use std::net::SocketAddr;
-
-use anyhow::Context;
-use log::*;
-
 use async_trait::async_trait;
 use ps_client::Task;
-use ps_types::{Attitude, Point3D};
+use ps_types::{Euler, Point3D, Velocity3D};
 use tokio::select;
 use tokio_util::sync::CancellationToken;
+use uom::si::{angle::radian, f32::*, length::meter, velocity::meter_per_second};
 
 use mavlink::{ardupilotmega as apm, common, MavlinkVersion};
 
@@ -65,12 +62,12 @@ impl Task for EventTask {
                                     data.lon as f32 / 1e7,
                                     data.lat as f32 / 1e7,
                                 ),
-                                altitude_msl: data.alt as f32 / 1e3,
-                                altitude_rel: data.relative_alt as f32 / 1e3,
+                                altitude_msl: Length::new::<meter>(data.alt as f32 / 1e3),
+                                altitude_rel: Length::new::<meter>(data.relative_alt as f32 / 1e3),
                             },
                             // velocity is provided as (North, East, Down)
                             // so we transform it to more common (East, North, Up)
-                            velocity: (
+                            velocity: Velocity3D::new::<meter_per_second>(
                                 data.vy as f32 / 100.,
                                 data.vx as f32 / 100.,
                                 -data.vz as f32 / 100.,
@@ -79,10 +76,10 @@ impl Task for EventTask {
                     }
                     apm::MavMessage::common(common::MavMessage::ATTITUDE(data)) => {
                         let _ = evt_tx.send(PixhawkEvent::Orientation {
-                            attitude: Attitude::new(
-                                data.roll.to_degrees(),
-                                data.pitch.to_degrees(),
-                                data.yaw.to_degrees(),
+                            attitude: Euler::new::<radian>(
+                                data.roll,
+                                data.pitch,
+                                data.yaw,
                             ),
                         });
                     }
