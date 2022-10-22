@@ -1,0 +1,29 @@
+[package]
+name = "ps-aux-camera"
+version = "1.0.0"
+authors = ["Ibiyemi Abiodun <ibiyemi@intulon.com>"]
+edition = "2021"
+
+[dependencies]
+ps-async-util = { path = "../async-util" }
+ps-client = { path = "../client" }
+
+gst = { version = "0.18", package = "gstreamer" }
+
+# logging + error handling
+anyhow = "1.0"
+log = "0.4"
+
+# async 
+tokio = { version = "1.16", features = ["net", "fs"] }
+async-trait = "0.1"
+flume = "0.10"
+
+# serialization
+serde = { version = "1.0", features = ["derive"] }
+
+# utility
+clap = { version = "3", features = ["derive"] }
+
+# i/o
+tokio-util = { version = "0.7" }
