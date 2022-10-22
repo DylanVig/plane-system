@@ -5,7 +5,7 @@ use std::{
     },
     time::{Duration, Instant, SystemTime},
 };
-
+use log::*;
 use anyhow::Context;
 use bytes::{Buf, BytesMut};
 
@@ -16,28 +16,16 @@ use mavlink::{
     MavlinkVersion,
 };
 
-use crate::{
-    state::{Attitude, Point3D},
-    util::run_loop,
-    Channels,
-};
-
-use super::{state::PixhawkEvent, PixhawkCommand};
-
-pub struct PixhawkClient {
+pub struct PixhawkInterface {
     sock: tokio::net::UdpSocket,
     seq_num: Option<u8>,
     buf: BytesMut,
     sequence: AtomicU8,
-    channels: Arc<Channels>,
-    cmd: flume::Receiver<PixhawkCommand>,
     version: MavlinkVersion,
 }
 
-impl PixhawkClient {
+impl PixhawkInterface {
     pub async fn connect<A: ToSocketAddrs + Clone>(
-        channels: Arc<Channels>,
-        cmd: flume::Receiver<PixhawkCommand>,
         addr: A,
         version: MavlinkVersion,
     ) -> anyhow::Result<Self> {
@@ -67,13 +55,11 @@ impl PixhawkClient {
             MavlinkVersion::V2 => debug!("using mavlink v2"),
         };
 
-        Ok(PixhawkClient {
+        Ok(PixhawkInterface {
             sock,
             seq_num: None,
             buf: BytesMut::with_capacity(1024),
             sequence: AtomicU8::default(),
-            channels,
-            cmd,
             version,
         })
     }
@@ -245,87 +231,8 @@ impl PixhawkClient {
 
             trace!("received message: {:?}", msg);
 
-            self.handle(&msg).await?;
-
             return Ok(msg);
         }
-    }
-
-    pub async fn run(mut self) -> anyhow::Result<()> {
-        info!("initializing pixhawk");
-
-        self.init().await?;
-
-        let mut interrupt_recv = self.channels.interrupt.subscribe();
-
-        run_loop!(
-            async move {
-                // no delay b/c this is an I/O-bound loop
-                loop {
-                    if let Ok(cmd) = self.cmd.try_recv() {
-                        self.exec(cmd).await?;
-                    }
-
-                    let _ = self.recv().await?;
-                }
-            },
-            interrupt_recv.recv()
-        );
-
-        Ok(())
-    }
-
-    async fn exec(&mut self, _cmd: PixhawkCommand) -> anyhow::Result<()> {
-        unimplemented!()
-    }
-
-    /// Reacts to a message received from the Pixhawk.
-    async fn handle(&self, message: &apm::MavMessage) -> anyhow::Result<()> {
-        match message {
-            apm::MavMessage::common(common::MavMessage::GLOBAL_POSITION_INT(data)) => {
-                let _ = self.channels.pixhawk_event.send(PixhawkEvent::Gps {
-                    position: Point3D {
-                        point: geo::Point::new(data.lon as f32 / 1e7, data.lat as f32 / 1e7),
-                        altitude_msl: data.alt as f32 / 1e3,
-                        altitude_rel: data.relative_alt as f32 / 1e3,
-                    },
-                    // velocity is provided as (North, East, Down)
-                    // so we transform it to more common (East, North, Up)
-                    velocity: (
-                        data.vy as f32 / 100.,
-                        data.vx as f32 / 100.,
-                        -data.vz as f32 / 100.,
-                    ),
-                });
-            }
-            apm::MavMessage::common(common::MavMessage::ATTITUDE(data)) => {
-                let _ = self.channels.pixhawk_event.send(PixhawkEvent::Orientation {
-                    attitude: Attitude::new(
-                        data.roll.to_degrees(),
-                        data.pitch.to_degrees(),
-                        data.yaw.to_degrees(),
-                    ),
-                });
-            }
-            apm::MavMessage::CAMERA_FEEDBACK(data) => {
-                let _ = self.channels.pixhawk_event.send(PixhawkEvent::Image {
-                    foc_len: data.foc_len,
-                    img_idx: data.img_idx,
-                    cam_idx: data.cam_idx,
-                    flags: data.flags,
-                    time: SystemTime::UNIX_EPOCH + Duration::from_micros(data.time_usec),
-                    attitude: Attitude::new(data.roll, data.pitch, data.yaw),
-                    coords: Point3D {
-                        point: geo::Point::new(data.lng as f32 / 1e7, data.lat as f32 / 1e7),
-                        altitude_msl: data.alt_msl,
-                        altitude_rel: data.alt_rel,
-                    },
-                });
-            }
-            _ => {}
-        }
-
-        Ok(())
     }
 
     pub async fn wait_for_message<F: Fn(&apm::MavMessage) -> bool>(
@@ -482,7 +389,7 @@ impl PixhawkClient {
             apm::MavMessage::common(common::MavMessage::COMMAND_ACK(data)) => match data.result {
                 common::MavResult::MAV_RESULT_ACCEPTED
                 | common::MavResult::MAV_RESULT_IN_PROGRESS => Ok(data.result),
-                _ => Err(anyhow!(
+                _ => Err(anyhow::anyhow!(
                     "Command {:?} failed with status code {:?}",
                     command,
                     data.result

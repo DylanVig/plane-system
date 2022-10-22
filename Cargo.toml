@@ -57,8 +57,8 @@ clap = { version = "3", features = ["derive"] }
 config = "0.11.0"
 rustyline = "9.0"
 
-chrono = { version = "0.4", features = ["serde"] }
-geo = { version = "0.19.0", features = ["use-serde"] }
+chrono = { workspace = true }
+geo = { workspace = true }
 colored = "2"
 humansize = "1.1"
 prettytable-rs = "0.8"
@@ -66,8 +66,7 @@ prettytable-rs = "0.8"
 # i/o
 rusb = "0.9"
 tokio-serial = { git = "https://github.com/CUAir/tokio-serial.git", default-features = false }
-rppal = { version = "0.13.1", optional = true }
-tokio-util = { version = "0.7", features = ["codec"] }
+rppal = "0.13.1"
 
 [features]
 default = ["udev", "aux-camera"]
@@ -76,3 +75,18 @@ aux-camera = ["ps-aux-camera"]
 
 [workspace]
 members = ["crates/*"]
+
+[workspace.dependencies]
+anyhow = "1.0"
+log = "0.4"
+serde = { version = "1.0", features = ["derive"] }
+
+chrono = { version = "0.4", features = ["serde"] }
+geo = { version = "0.23", features = ["use-serde"] }
+
+futures = "0.3"
+tokio = { version = "1.16", features = ["full"] }
+tokio-util = { version = "0.7", features = ["codec"] }
+flume = "0.10"
+async-trait = "0.1"
+

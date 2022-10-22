@@ -1,0 +1,11 @@
+[package]
+name = "ps-types"
+version = "1.0.0"
+edition = "2021"
+
+[dependencies]
+ps-serde-util = { path = "../serde-util" }
+
+geo = { workspace = true }
+chrono = { workspace = true }
+serde = { workspace = true }

@@ -1,16 +1,7 @@
 use std::{net::SocketAddr, path::PathBuf};
 
 use config::ConfigError;
-use mavlink::MavlinkVersion;
 use serde::Deserialize;
-
-use crate::gimbal::GimbalKind;
-
-#[derive(Debug, Deserialize)]
-pub struct PixhawkConfig {
-    pub address: SocketAddr,
-    pub mavlink: MavlinkVersion,
-}
 
 #[derive(Debug, Deserialize)]
 pub struct PlaneServerConfig {
@@ -51,18 +42,7 @@ pub enum CameraKind {
     R10C,
 }
 
-#[derive(Debug, Deserialize)]
-pub struct CurrentSensingConfig {
-    pub gpio_int: u8,
-    pub gpio_ack: u8,
-    pub i2c: Option<u8>,
-}
 
-#[derive(Debug, Deserialize)]
-pub struct MainCameraConfig {
-    pub kind: CameraKind,
-    pub current_sensing: Option<CurrentSensingConfig>,
-}
 
 #[derive(Debug, Deserialize)]
 pub struct AuxCameraConfig {
