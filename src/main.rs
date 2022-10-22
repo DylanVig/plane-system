@@ -9,13 +9,9 @@ use tokio::{
     task::JoinHandle,
     time::sleep,
 };
+use tokio_util::sync::CancellationToken;
 use tracing::metadata::LevelFilter;
 use tracing_subscriber::{filter::Targets, layer::SubscriberExt, util::SubscriberInitExt, Layer};
-
-use gs::GroundServerClient;
-use pixhawk::{client::PixhawkClient, state::PixhawkEvent};
-use state::Telemetry;
-use telemetry::TelemetryStream;
 
 #[macro_use]
 extern crate tracing;
@@ -26,99 +22,7 @@ extern crate num_derive;
 #[macro_use]
 extern crate async_trait;
 
-mod camera;
 mod cli;
-mod gimbal;
-mod gs;
-mod image;
-mod pixhawk;
-mod scheduler;
-mod server;
-mod state;
-mod telemetry;
-mod util;
-
-pub struct Channels {
-    /// Channel for broadcasting a signal when the system should terminate.
-    interrupt: broadcast::Sender<()>,
-
-    /// Channel for broadcasting telemetry information gathered from the gimbal and pixhawk
-    pixhawk_telemetry: watch::Receiver<Option<Telemetry>>,
-
-    /// Channel for broadcasting updates to the state of the Pixhawk.
-    pixhawk_event: broadcast::Sender<PixhawkEvent>,
-
-    /// Channel for sending instructions to the Pixhawk.
-    pixhawk_cmd: flume::Sender<pixhawk::PixhawkCommand>,
-
-    /// Channel for broadcasting updates to the state of the camera.
-    camera_event: broadcast::Sender<camera::main::CameraEvent>,
-
-    /// Channel for broadcasting updates from the current-sensing board.
-    #[cfg(feature = "csb")]
-    csb_telemetry: watch::Receiver<Option<camera::main::csb::CurrentSensingTelemetry>>,
-
-    /// Channel for sending instructions to the camera.
-    camera_cmd: flume::Sender<camera::main::CameraCommand>,
-
-    /// Channel for sending instructions to the gimbal.
-    gimbal_cmd: flume::Sender<gimbal::GimbalCommand>,
-
-    ///Channel for starting stream.
-    #[cfg(feature = "gstreamer")]
-    stream_cmd: flume::Sender<camera::auxiliary::stream::StreamCommand>,
-
-    ///Channel for starting saver.
-    #[cfg(feature = "gstreamer")]
-    save_cmd: flume::Sender<camera::auxiliary::save::SaveCommand>,
-
-    image_event: broadcast::Sender<image::ImageClientEvent>,
-
-    scheduler_cmd: flume::Sender<scheduler::SchedulerCommand>,
-}
-
-impl std::fmt::Debug for Channels {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Channels").finish()
-    }
-}
-
-#[derive(Debug)]
-pub struct Command<Req, Res, Err = anyhow::Error> {
-    request: Req,
-    chan: oneshot::Sender<Result<Res, Err>>,
-}
-
-impl<Req, Res, Err> Command<Req, Res, Err> {
-    fn new(request: Req) -> (Self, oneshot::Receiver<Result<Res, Err>>) {
-        let (sender, receiver) = oneshot::channel();
-
-        let cmd = Command {
-            chan: sender,
-            request,
-        };
-
-        (cmd, receiver)
-    }
-
-    fn channel(self) -> oneshot::Sender<Result<Res, Err>> {
-        self.chan
-    }
-
-    fn request(&self) -> &Req {
-        &self.request
-    }
-
-    fn respond(self, result: Result<Res, Err>) -> Result<(), Result<Res, Err>> {
-        let chan = self.channel();
-
-        if chan.is_canceled() {
-            panic!("chan is closed");
-        }
-
-        chan.send(result)
-    }
-}
 
 struct TaskBag {
     names: Vec<String>,
@@ -244,13 +148,13 @@ async fn main() -> anyhow::Result<()> {
 }
 
 async fn run_tasks(config: cli::config::PlaneSystemConfig) -> anyhow::Result<()> {
-    let (interrupt_sender, _) = broadcast::channel(1);
+    let cancellation_token = CancellationToken::new();
 
     ctrlc::set_handler({
         let interrupt_sender = interrupt_sender.clone();
         move || {
             info!("received interrupt, shutting down");
-            let _ = interrupt_sender.send(());
+            cancellation_token.cancel();
         }
     })
     .expect("could not set ctrl+c handler");
@@ -291,7 +195,7 @@ async fn run_tasks(config: cli::config::PlaneSystemConfig) -> anyhow::Result<()>
             scheduler_cmd: scheduler_cmd_sender,
         });
 
-        if let Some(pixhawk_config) = config.pixhawk {
+        if let Some(pixhawk_config) = config.0 {
             tasks.add("pixhawk", {
                 let channels = channels.clone();
                 async move {
@@ -316,7 +220,7 @@ async fn run_tasks(config: cli::config::PlaneSystemConfig) -> anyhow::Result<()>
             );
         }
 
-        if let Some(camera_config) = config.main_camera {
+        if let Some(camera_config) = config.3 {
             tasks.add("camera", {
                 camera::main::run(channels.clone(), camera_cmd_receiver)
             });
@@ -329,24 +233,24 @@ async fn run_tasks(config: cli::config::PlaneSystemConfig) -> anyhow::Result<()>
             }
         }
 
-        if let Some(image_config) = config.image {
+        if let Some(image_config) = config.2 {
             tasks.add("image download", {
                 image::run(channels.clone(), image_config)
             });
         }
 
-        if let Some(_gimbal_config) = config.gimbal {
+        if let Some(_gimbal_config) = config.5 {
             panic!("gimbal not implemented");
         }
 
-        if let Some(gs_config) = config.ground_server {
+        if let Some(gs_config) = config.1 {
             tasks.add("ground server", {
                 let gs_client = GroundServerClient::new(channels.clone(), gs_config.address)?;
                 async move { gs_client.run().await }
             });
         }
 
-        if let Some(_scheduler_config) = config.scheduler {
+        if let Some(_scheduler_config) = config.6 {
             tasks.add("scheduler", {
                 scheduler::run(channels.clone(), scheduler_cmd_receiver)
             });

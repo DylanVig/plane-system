@@ -12,6 +12,9 @@ incremental = true
 # subcrates
 ps-aux-camera = { path = "crates/aux-camera", optional = true }
 ps-main-camera = { path = "crates/main-camera" }
+ps-gs = { path = "crates/gs" }
+ps-pixhawk = { path = "crates/pixhawk" }
+ps-types = { path = "crates/types" }
 
 # logging + error handling
 tracing = "0.1"
@@ -19,29 +22,20 @@ tracing-subscriber = { version = "0.3", features = ["env-filter", "registry"] }
 tracing-appender = "0.2"
 color-backtrace = "0.5.1"
 console-subscriber = "0.1.8"
-anyhow = "1.0"
+anyhow = { workspace = true }
 
 # async 
-tokio = { version = "1.16", features = ["full"] }
-tokio-stream = { version = "0.1", features = ["sync"] }
-futures = "0.3"
-flume = "0.10"
-async-trait = "0.1"
+tokio = { workspace = true }
+tokio-util = { workspace = true }
+futures = { workspace = true }
+flume = { workspace = true }
+async-trait = { workspace = true }
 
 # protocols + serialization
-serde = "1.0"
-serde_millis = "0.1.1"
+serde = { workspace = true }
 serde_json = "1.0"
-mavlink = { features = [
-  "ardupilotmega",
-  "uavionix",
-  "icarous",
-], git = "https://github.com/laptou/rust-mavlink" }
-simplebgc = { git = "https://github.com/laptou/simplebgc-rs" }
-ptp = { git = "https://github.com/CUAir/rust-ptp" }
 num-traits = "0.2"
 num-derive = "0.3"
-serialport = "4.0.1"
 
 # http
 warp = "0.3"
@@ -51,29 +45,21 @@ reqwest = { version = "0.11", features = [
 ], default-features = false }
 
 # utility
-bytes = "1.1"
 ctrlc = "3.2"
 clap = { version = "3", features = ["derive"] }
-config = "0.11.0"
-rustyline = "9.0"
+config = "0.13"
+rustyline = "10.0"
 
 chrono = { workspace = true }
 geo = { workspace = true }
 colored = "2"
-humansize = "1.1"
-prettytable-rs = "0.8"
-
-# i/o
-rusb = "0.9"
-tokio-serial = { git = "https://github.com/CUAir/tokio-serial.git", default-features = false }
-rppal = { version = "0.13.1", optional = true }
-tokio-util = { version = "0.7", features = ["codec"] }
+humansize = "2.1"
+prettytable-rs = "0.9"
 
 [features]
-default = ["udev", "aux-camera"]
-udev = ["tokio-serial/libudev", "serialport/libudev"]
+default = ["aux-camera"]
 aux-camera = ["ps-aux-camera"]
-csb = ["rppal"]
+csb = ["ps-main-camera/csb"]
 
 [workspace]
 members = ["crates/*"]
