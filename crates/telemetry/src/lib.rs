@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use chrono::prelude::*;
 use ps_client::Task;
-use ps_types::{Attitude, Point3D};
+use ps_types::{Euler, Point3D, Velocity3D};
 use tokio::{select, sync::watch};
 use tokio_util::sync::CancellationToken;
 
@@ -14,13 +14,14 @@ pub struct Telemetry {
 #[derive(Clone)]
 pub struct PixhawkTelemetry {
     pub position: (Point3D, DateTime<Local>),
-    pub attitude: (Attitude, DateTime<Local>),
+    pub velocity: (Velocity3D, DateTime<Local>),
+    pub attitude: (Euler, DateTime<Local>),
 }
 
 #[derive(Clone)]
 pub struct CsbTelemetry {
     pub position: Point3D,
-    pub attitude: Attitude,
+    pub attitude: Euler,
     pub timestamp: DateTime<Local>,
 }
 
@@ -73,6 +74,7 @@ impl Task for TelemetryTask {
             // separately, but we only want to publish pixhawk telem once we
             // have both
             let mut pixhawk_position = None;
+            let mut pixhawk_velocity = None;
             let mut pixhawk_attitude = None;
 
             loop {
@@ -82,8 +84,10 @@ impl Task for TelemetryTask {
                 select! {
                     evt = pixhawk_recv_fut.unwrap(), if pixhawk_recv_fut.is_some() => {
                         match evt? {
-                            ps_pixhawk::PixhawkEvent::Gps { position, .. } => {
-                                pixhawk_position = Some((position, Local::now()));
+                            ps_pixhawk::PixhawkEvent::Gps { position, velocity, .. } => {
+                                let now = Local::now();
+                                pixhawk_position = Some((position, now));
+                                pixhawk_velocity = Some((velocity, now));
                             },
                             ps_pixhawk::PixhawkEvent::Orientation { attitude } => {
                                 pixhawk_attitude = Some((attitude, Local::now()));
@@ -91,9 +95,13 @@ impl Task for TelemetryTask {
                         }
 
 
-                        if let (Some(position), Some(attitude)) = (pixhawk_position, pixhawk_attitude) {
+                        if let (Some(position), Some(velocity), Some(attitude)) = (pixhawk_position, pixhawk_velocity, pixhawk_attitude) {
                             let _ = telem_tx
-                                .send_modify(|t| t.pixhawk = Some(PixhawkTelemetry { position, attitude }));
+                                .send_modify(|t| t.pixhawk = Some(PixhawkTelemetry {
+                                    position,
+                                    velocity,
+                                    attitude,
+                                }));
                         }
                     }
 
