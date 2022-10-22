@@ -1,4 +1,4 @@
-use std::{net::SocketAddr, path::PathBuf};
+use std::{net::SocketAddr, path::{PathBuf, Path}};
 
 use config::{Config, ConfigError, File};
 use serde::Deserialize;
@@ -21,7 +21,7 @@ pub struct PlaneSystemConfig {
 }
 
 impl PlaneSystemConfig {
-    pub fn read_from_path(path: PathBuf) -> Result<Self, ConfigError> {
+    pub fn read_from_path(path: &'_ Path) -> Result<Self, ConfigError> {
         Config::builder()
             .add_source(File::from(path))
             .build()?
