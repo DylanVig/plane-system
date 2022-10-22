@@ -4,21 +4,22 @@ use ps_client::Task;
 use ps_types::{Euler, Point3D, Velocity3D};
 use tokio::{select, sync::watch};
 use tokio_util::sync::CancellationToken;
+use serde::{Serialize, Deserialize};
 
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct Telemetry {
     pub pixhawk: Option<PixhawkTelemetry>,
     pub csb: Option<CsbTelemetry>,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct PixhawkTelemetry {
     pub position: (Point3D, DateTime<Local>),
     pub velocity: (Velocity3D, DateTime<Local>),
     pub attitude: (Euler, DateTime<Local>),
 }
 
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct CsbTelemetry {
     pub position: Point3D,
     pub attitude: Euler,

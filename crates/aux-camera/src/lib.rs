@@ -6,13 +6,13 @@ pub mod save;
 pub mod stream;
 
 #[derive(Clone, Debug, Deserialize)]
-pub struct Config {
+pub struct AuxCameraConfig {
     pub stream: Option<stream::StreamConfig>,
     pub save: Option<save::SaveConfig>,
 }
 
 pub fn create_tasks(
-    config: Config,
+    config: AuxCameraConfig,
 ) -> anyhow::Result<(
     Option<(
         stream::StreamTask,

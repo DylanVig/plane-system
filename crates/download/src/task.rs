@@ -1,10 +1,8 @@
-use std::{
-    path::{Path, PathBuf},
-};
+use std::path::{Path, PathBuf};
 
-use anyhow::{anyhow, Context};
+use anyhow::{Context, bail};
 use async_trait::async_trait;
-use log::{debug, warn};
+use log::{debug, info, warn};
 use ps_client::Task;
 use ps_telemetry::Telemetry;
 use tokio::{fs::File, io::AsyncWriteExt, select, sync::watch};
@@ -48,7 +46,7 @@ impl Task for DownloadTask {
         save_path.push(chrono::Local::now().format("%FT%H-%M-%S").to_string());
 
         if let Err(err) = tokio::fs::create_dir_all(&save_path).await {
-            anyhow!(
+            bail!(
                 "could not create image save directory {}: {}",
                 save_path.display(),
                 err
@@ -67,59 +65,46 @@ impl Task for DownloadTask {
                     warn!("no pixhawk telemetry data available for image capture")
                 }
 
-                let offset_position = match telem {
-                    Telemetry { pixhawk: Some(pixhawk_telem), csb: Some(csb_telem) } => {
-                        // velocity in meters per second east and north
-                        let (ph_velocity, ph_time) = pixhawk_telem.velocity;
-                        let delay = csb_telem.timestamp - ph_time;
-                        let delay_seconds = delay.num_milliseconds() as f32 / 1000.;
+                // let offset_position = match telem {
+                //     Telemetry { pixhawk: Some(pixhawk_telem), csb: Some(csb_telem) } => {
+                //         // velocity in meters per second east and north
+                //         let (ph_velocity, ph_time) = pixhawk_telem.velocity;
+                //         let delay = csb_telem.timestamp - ph_time;
+                //         let delay_seconds = delay.num_milliseconds() as f32 / 1000.;
 
-                        // angle we are traveling at
-                        let heading = pixhawk_telem.attitude.0.yaw;
+                //         // angle we are traveling at
+                //         let heading = pixhawk_telem.attitude.0.yaw;
 
-                        // distance traveled since we received gps from pixhawk
-                        let distance_xy = f32::sqrt(vx * vx + vy * vy) * delay_seconds;
-                        let offset_coords = pixhawk_telemetry
-                            .position
-                            .point
-                            .haversine_destination(heading, distance_xy);
-                        let offset_altitude_rel =
-                            pixhawk_telemetry.position.altitude_rel + vz * delay_seconds;
-                        let offset_altitude_msl =
-                            pixhawk_telemetry.position.altitude_msl + vz * delay_seconds;
+                //         // distance traveled since we received gps from pixhawk
+                //         let distance_xy = f32::sqrt(vx * vx + vy * vy) * delay_seconds;
+                //         let offset_coords = pixhawk_telemetry
+                //             .position
+                //             .point
+                //             .haversine_destination(heading, distance_xy);
+                //         let offset_altitude_rel =
+                //             pixhawk_telemetry.position.altitude_rel + vz * delay_seconds;
+                //         let offset_altitude_msl =
+                //             pixhawk_telemetry.position.altitude_msl + vz * delay_seconds;
 
-                        Some(Point3D {
-                            point: offset_coords,
-                            altitude_msl: offset_altitude_msl,
-                            altitude_rel: offset_altitude_rel,
-                        })
-                    }
-                    _ => None,
-                };
+                //         Some(Point3D {
+                //             point: offset_coords,
+                //             altitude_msl: offset_altitude_msl,
+                //             altitude_rel: offset_altitude_rel,
+                //         })
+                //     }
+                //     _ => None,
+                // };
 
-                let image_filename = match save(
-                    &image_save_dir,
-                    &image_name,
+                if let Err(err) = save(
+                    &save_path,
+                    &image_metadata.filename,
                     &image_data,
-                    &pixhawk_telemetry,
-                    offset_position,
-                    csb_timestamp,
-                    cc_timestamp,
+                    &Some(telem),
                 )
                 .await
                 {
-                    Ok(image_filename) => image_filename,
-                    Err(err) => {
-                        warn!("failed to download image: {}", err);
-                        continue;
-                    }
+                    warn!("failed to download image: {}", err);
                 };
-
-                let _ = channels.image_event.send(ImageClientEvent {
-                    data: image_data,
-                    file: image_filename,
-                    telemetry: pixhawk_telemetry,
-                });
             }
 
             #[allow(unreachable_code)]
@@ -137,15 +122,13 @@ impl Task for DownloadTask {
 
 async fn save(
     image_save_dir: impl AsRef<Path>,
-    name: &str,
-    image: &Vec<u8>,
-    pixhawk_telemetry: &Option<Telemetry>,
-    offset_position: Option<Point3D>,
-    csb_telemetry: Option<chrono::DateTime<chrono::Local>>,
-    cc_timestamp: Option<chrono::DateTime<chrono::Local>>,
+    image_name: &str,
+    image_data: &[u8],
+    telemetry: &Option<Telemetry>,
 ) -> anyhow::Result<PathBuf> {
     let mut image_path = image_save_dir.as_ref().to_owned();
-    image_path.push(&name);
+    image_path.push(&image_name);
+
     debug!("writing image to file '{}'", image_path.to_string_lossy());
 
     let mut image_file = File::create(&image_path)
@@ -153,7 +136,7 @@ async fn save(
         .context("failed to create image file")?;
 
     image_file
-        .write_all(&image[..])
+        .write_all(&image_data[..])
         .await
         .context("failed to save image")?;
 
@@ -166,16 +149,10 @@ async fn save(
         telem_path.to_string_lossy()
     );
 
-    let cc_timestamp =
-        cc_timestamp.map(|cc_timestamp| cc_timestamp.format(ISO_8601_FORMAT).to_string());
+    let telem_json = serde_json::json!(telemetry);
 
-    let telem_bytes = serde_json::to_vec(&serde_json::json!({
-        "pixhawk_telemetry": pixhawk_telemetry,
-        "offset_position": offset_position,
-        "csb_timestamp": csb_telemetry,
-        "cc_timestamp": cc_timestamp,
-    }))
-    .context("failed to serialize telemetry to JSON")?;
+    let telem_bytes =
+        serde_json::to_vec(&telem_json).context("failed to serialize telemetry to JSON")?;
 
     let mut telem_file = File::create(telem_path)
         .await

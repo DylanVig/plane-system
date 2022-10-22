@@ -139,20 +139,21 @@ pub async fn send_image(
     let timestamp = chrono::Utc::now().timestamp_millis();
 
     let json = if let Some(telemetry) = telemetry {
+        
         json!({
             "timestamp": timestamp,
             "imgMode": "fixed",
             "fov": 60.0,
             "telemetry": {
-                "altitude": telemetry.location.0.altitude_msl,
-                "planeYaw": telemetry.orientation.0.yaw,
+                "altitude": telemetry.pixhawk.as_ref().map(|p| p.position.0.altitude_msl),
+                "planeYaw": telemetry.pixhawk.as_ref().map(|p| p.attitude.0.yaw),
                 "gps": {
-                    "longitude": telemetry.location.0.point.x(),
-                    "latitude": telemetry.location.0.point.y(),
+                    "longitude": telemetry.pixhawk.as_ref().map(|p| p.position.0.point.x()),
+                    "latitude": telemetry.pixhawk.as_ref().map(|p| p.position.0.point.y()),
                 },
                 "gimOrt": {
-                    "pitch": telemetry.orientation.0.pitch,
-                    "roll": telemetry.orientation.0.roll,
+                    "pitch": telemetry.pixhawk.as_ref().map(|p| p.attitude.0.pitch),
+                    "roll": telemetry.pixhawk.as_ref().map(|p| p.attitude.0.roll),
                 }
             }
         })

@@ -10,6 +10,7 @@ ps-client = { path = "../client" }
 ps-types = { path = "../types" }
 
 chrono = { workspace = true }
+serde = { workspace = true }
 
 # logging + error handling
 anyhow = { workspace = true }
