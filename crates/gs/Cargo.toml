@@ -1,0 +1,26 @@
+[package]
+name = "ps-gs"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+
+ps-serde-util = { path = "../serde-util" }
+ ps-client = { path = "../client" }
+ ps-types = { path = "../types" }
+ 
+
+ # logging + error handling
+ anyhow = { workspace = true }
+ log = { workspace = true }
+
+ # async 
+ tokio = { workspace = true }
+ tokio-util = { workspace = true }
+ #does this not match with workspace? 
+ tokio-stream = { version = "0.1", features = ["sync"] }
+ futures = { workspace = true }
+ async-trait = { workspace = true }
+ flume = { workspace = true }
