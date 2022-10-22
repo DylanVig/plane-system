@@ -32,9 +32,9 @@ pub fn create_task(config: PixhawkConfig) -> anyhow::Result<EventTask> {
 }
 
 impl EventTask {
-  pub fn events(&self) -> flume::Receiver<PixhawkEvent> {
-      self.evt_rx.clone()
-  }
+    pub fn events(&self) -> flume::Receiver<PixhawkEvent> {
+        self.evt_rx.clone()
+    }
 }
 
 #[async_trait]
@@ -44,7 +44,12 @@ impl Task for EventTask {
     }
 
     async fn run(self: Box<Self>, cancel: CancellationToken) -> anyhow::Result<()> {
-        let Self { evt_tx, address, version, .. } = *self;
+        let Self {
+            evt_tx,
+            address,
+            version,
+            ..
+        } = *self;
 
         let loop_fut = async move {
             let mut interface = PixhawkInterface::connect(address, version).await?;

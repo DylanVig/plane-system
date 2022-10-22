@@ -8,19 +8,23 @@ edition = "2021"
 [dependencies]
 
 ps-serde-util = { path = "../serde-util" }
- ps-client = { path = "../client" }
- ps-types = { path = "../types" }
- 
+ps-client = { path = "../client" }
+ps-types = { path = "../types" }
+ps-telemetry = {path = "../telemetry" }
 
- # logging + error handling
- anyhow = { workspace = true }
- log = { workspace = true }
+serde = { workspace = true }
+serde_json = { version = "1.0" }
+# logging + error handling
+anyhow = { workspace = true }
+log = { workspace = true }
 
- # async 
- tokio = { workspace = true }
- tokio-util = { workspace = true }
- #does this not match with workspace? 
- tokio-stream = { version = "0.1", features = ["sync"] }
- futures = { workspace = true }
- async-trait = { workspace = true }
- flume = { workspace = true }
+# async 
+tokio = { workspace = true }
+tokio-util = { workspace = true }
+#does this not match with workspace? 
+tokio-stream = { version = "0.1", features = ["sync"] }
+futures = { workspace = true }
+async-trait = { workspace = true }
+flume = { workspace = true }
+reqwest = { version = "0.11", features = ["multipart"] }
+chrono = { workspace = true }
