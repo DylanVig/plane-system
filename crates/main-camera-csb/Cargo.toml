@@ -28,8 +28,8 @@ bytes = "1.1"
 defer = "0.1"
 clap = { version = "3", features = ["derive"] }
 
-chrono = { version = "0.4", features = ["serde"] }
-geo = { version = "0.23.0", features = ["use-serde"] }
+chrono = { workspace = true }
+geo = { workspace = true }
 
 # i/o
 tokio-serial = { git = "https://github.com/CUAir/tokio-serial.git", default-features = false }

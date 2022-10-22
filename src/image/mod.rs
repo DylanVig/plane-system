@@ -11,7 +11,7 @@ use tokio::{fs::File, io::AsyncWriteExt};
 use crate::camera::main::csb;
 
 use crate::{
-    camera::main::CameraClientEvent,
+    camera::main::{csb, CameraEvent},
     cli::config::ImageConfig,
     state::{Point3D, Telemetry},
     util::ISO_8601_FORMAT,
@@ -40,12 +40,12 @@ pub async fn run(channels: Arc<Channels>, config: ImageConfig) -> anyhow::Result
         warn!("could not create image save directory: {}", err);
     }
 
-    loop {
+    loop {19
         select! {
             camera_evt = camera_recv.recv().fuse() => {
                 if let Ok(camera_evt) = camera_evt {
                     match camera_evt {
-                        CameraClientEvent::Download { image_name, image_data, cc_timestamp, .. } => {
+                        CameraEvent::Download { image_name, image_data, cc_timestamp, .. } => {
                             debug!("image download detected, uploading file to ground server");
 
                             let pixhawk_telemetry = channels.pixhawk_telemetry.borrow().clone();
