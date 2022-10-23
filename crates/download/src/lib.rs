@@ -1,5 +1,5 @@
 mod config;
 mod task;
 
-pub use task::*;
 pub use config::*;
+pub use task::*;

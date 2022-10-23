@@ -1,4 +1,3 @@
-use anyhow::{anyhow, Context};
 use clap::Parser;
 use futures::{AsyncWriteExt, FutureExt};
 use ps_client::ChannelCommandSink;

@@ -3,14 +3,14 @@ use std::{sync::Arc, time::Duration};
 use anyhow::Context;
 use async_trait::async_trait;
 use log::*;
-use num_traits::{FromPrimitive, ToPrimitive};
+use num_traits::ToPrimitive;
 use ps_client::Task;
 use ptp::PtpEvent;
 use tokio::{select, sync::RwLock};
 use tokio_util::sync::CancellationToken;
 
 use crate::{
-    interface::{CameraInterface, PropertyCode},
+    interface::PropertyCode,
     task::util::{convert_camera_value, get_camera_values},
 };
 
@@ -32,7 +32,10 @@ pub struct DownloadTask {
 }
 
 impl DownloadTask {
-    pub(super) fn new(interface: Arc<RwLock<InterfaceGuard>>, evt_rx: flume::Receiver<PtpEvent>) -> Self {
+    pub(super) fn new(
+        interface: Arc<RwLock<InterfaceGuard>>,
+        evt_rx: flume::Receiver<PtpEvent>,
+    ) -> Self {
         let (download_tx, download_rx) = flume::bounded(256);
 
         Self {
@@ -78,7 +81,7 @@ impl Task for DownloadTask {
                     }
                 }
 
-                let timestamp = chrono::Local::now();
+                let _timestamp = chrono::Local::now();
 
                 debug!("received capture event from camera");
 

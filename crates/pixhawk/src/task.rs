@@ -1,7 +1,7 @@
-use std::net::SocketAddr;
 use async_trait::async_trait;
 use ps_client::Task;
 use ps_types::{Euler, Point3D, Velocity3D};
+use std::net::SocketAddr;
 use tokio::select;
 use tokio_util::sync::CancellationToken;
 use uom::si::{angle::radian, f32::*, length::meter, velocity::meter_per_second};
@@ -76,11 +76,7 @@ impl Task for EventTask {
                     }
                     apm::MavMessage::common(common::MavMessage::ATTITUDE(data)) => {
                         let _ = evt_tx.send(PixhawkEvent::Orientation {
-                            attitude: Euler::new::<radian>(
-                                data.roll,
-                                data.pitch,
-                                data.yaw,
-                            ),
+                            attitude: Euler::new::<radian>(data.roll, data.pitch, data.yaw),
                         });
                     }
                     _ => {}

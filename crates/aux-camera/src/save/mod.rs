@@ -1,12 +1,12 @@
-pub mod task;
 pub mod command;
 mod interface;
+pub mod task;
 
 use std::path::PathBuf;
 
-pub use task::*;
 pub use command::*;
 use serde::Deserialize;
+pub use task::*;
 
 #[derive(Clone, Debug, Deserialize)]
 pub struct SaveConfig {

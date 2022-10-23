@@ -1,8 +1,8 @@
 mod config;
-mod task;
 mod event;
 mod interface;
+mod task;
 
-pub use task::*;
 pub use config::*;
 pub use event::*;
+pub use task::*;

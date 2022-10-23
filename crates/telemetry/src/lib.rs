@@ -1,11 +1,11 @@
 use async_trait::async_trait;
 use chrono::prelude::*;
+use futures::future::OptionFuture;
 use ps_client::Task;
 use ps_types::{Euler, Point3D, Velocity3D};
-use tokio::{select, sync::watch, task::yield_now};
+use serde::{Deserialize, Serialize};
+use tokio::{select, sync::watch};
 use tokio_util::sync::CancellationToken;
-use futures::future::OptionFuture;
-use serde::{Serialize, Deserialize};
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct Telemetry {
@@ -86,7 +86,7 @@ impl Task for TelemetryTask {
                 select! {
                     evt = OptionFuture::from(pixhawk_recv_fut), if pixhawk_recv_fut.is_some() => {
                         // unwrap b/c if we are here, then the OptionFuture is OptionFuture(Some),
-                        // so it will not evaluate to None when we await it 
+                        // so it will not evaluate to None when we await it
 
                         match evt.unwrap()? {
                             ps_pixhawk::PixhawkEvent::Gps { position, velocity, .. } => {
@@ -112,8 +112,8 @@ impl Task for TelemetryTask {
 
                     evt = OptionFuture::from(csb_recv_fut), if csb_recv_fut.is_some() => {
                         // unwrap b/c if we are here, then the OptionFuture is OptionFuture(Some),
-                        // so it will not evaluate to None when we await it 
-                        
+                        // so it will not evaluate to None when we await it
+
                         let evt = evt.unwrap()?;
 
                         let _ = telem_tx

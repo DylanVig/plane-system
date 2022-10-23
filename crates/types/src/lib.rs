@@ -21,7 +21,11 @@ pub struct Euler {
 }
 
 impl Euler {
-    pub fn new<T: uom::si::angle::Unit + uom::Conversion<f32, T = f32>>(roll: f32, pitch: f32, yaw: f32) -> Self {
+    pub fn new<T: uom::si::angle::Unit + uom::Conversion<f32, T = f32>>(
+        roll: f32,
+        pitch: f32,
+        yaw: f32,
+    ) -> Self {
         Self {
             roll: Angle::new::<T>(roll),
             pitch: Angle::new::<T>(pitch),
@@ -38,7 +42,11 @@ pub struct Velocity3D {
 }
 
 impl Velocity3D {
-    pub fn new<T: uom::si::velocity::Unit + uom::Conversion<f32, T = f32>>(x: f32, y: f32, z: f32) -> Self {
+    pub fn new<T: uom::si::velocity::Unit + uom::Conversion<f32, T = f32>>(
+        x: f32,
+        y: f32,
+        z: f32,
+    ) -> Self {
         Self {
             x: Velocity::new::<T>(x),
             y: Velocity::new::<T>(y),

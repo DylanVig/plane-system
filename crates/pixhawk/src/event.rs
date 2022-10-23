@@ -1,4 +1,4 @@
-use ps_types::{Point3D, Euler, Velocity3D};
+use ps_types::{Euler, Point3D, Velocity3D};
 
 #[derive(Debug, Clone)]
 pub enum PixhawkEvent {

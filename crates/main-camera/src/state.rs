@@ -1,6 +1,6 @@
 use std::{fmt::Display, str::FromStr, sync::Arc};
 
-use anyhow::{Context, bail};
+use anyhow::{bail, Context};
 use num_traits::{FromPrimitive, ToPrimitive};
 use serde::Serialize;
 
