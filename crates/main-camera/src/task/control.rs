@@ -5,7 +5,7 @@ use async_trait::async_trait;
 use log::{debug, info, trace};
 use ps_client::{ChannelCommandSink, ChannelCommandSource, Task};
 use ptp::{PtpData, PtpEvent};
-use tokio::{select, sync::RwLock, time::sleep};
+use tokio::{select, sync::RwLock, time::{sleep, timeout}};
 use tokio_util::sync::CancellationToken;
 
 use super::{util::*, InterfaceGuard};
@@ -316,7 +316,7 @@ pub(super) async fn run_capture(
 
     info!("waiting for image confirmation");
 
-    tokio::time::timeout(Duration::from_millis(3000), async {
+    timeout(Duration::from_millis(3000), async {
         loop {
             // TODO: maybe check ShootingFileInfo
 
