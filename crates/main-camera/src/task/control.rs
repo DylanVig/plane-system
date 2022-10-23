@@ -1,29 +1,37 @@
-use std::sync::Arc;
+use std::{sync::Arc, time::Duration};
 
+use anyhow::Context;
 use async_trait::async_trait;
+use log::{debug, info};
 use ps_client::{ChannelCommandSink, ChannelCommandSource, Task};
+use ptp::{PtpData, PtpEvent};
 use tokio::{select, sync::RwLock};
 use tokio_util::sync::CancellationToken;
 
 use super::{util::*, InterfaceGuard};
 use crate::{
-    interface::{OperatingMode, PropertyCode},
-    Aperture, CameraRequest, CameraResponse, CompressionMode, ErrorMode, ExposureMode, FocusMode,
-    Iso, SaveMedia, ShutterSpeed,
+    interface::{ControlCode, OperatingMode, PropertyCode},
+    Aperture, CameraContinuousCaptureRequest, CameraRequest, CameraResponse, CompressionMode,
+    ErrorMode, ExposureMode, FocusMode, Iso, SaveMedia, ShutterSpeed,
 };
 
 pub struct ControlTask {
     interface: Arc<RwLock<InterfaceGuard>>,
+    evt_rx: flume::Receiver<PtpEvent>,
     cmd_rx: ChannelCommandSource<CameraRequest, CameraResponse>,
     cmd_tx: ChannelCommandSink<CameraRequest, CameraResponse>,
 }
 
 impl ControlTask {
-    pub(super) fn new(interface: Arc<RwLock<InterfaceGuard>>) -> Self {
+    pub(super) fn new(
+        interface: Arc<RwLock<InterfaceGuard>>,
+        evt_rx: flume::Receiver<PtpEvent>,
+    ) -> Self {
         let (cmd_tx, cmd_rx) = flume::bounded(256);
 
         Self {
             interface,
+            evt_rx,
             cmd_rx,
             cmd_tx,
         }
@@ -42,22 +50,24 @@ impl Task for ControlTask {
 
     async fn run(self: Box<Self>, cancel: CancellationToken) -> anyhow::Result<()> {
         let loop_fut = async move {
+            let evt_rx = self.evt_rx;
+
             loop {
                 match self.cmd_rx.recv_async().await {
                     Ok((req, ret)) => {
                         let interface = &*self.interface;
+
                         let result = match req {
                             CameraRequest::Storage(_) => todo!(),
                             CameraRequest::File(_) => todo!(),
-                            CameraRequest::Capture => todo!(),
+                            CameraRequest::Capture => run_capture(interface, evt_rx.clone()).await,
                             CameraRequest::Reconnect => todo!(),
-                            CameraRequest::Status => run_status(interface),
+                            CameraRequest::Status => run_status(interface).await,
                             CameraRequest::Get(_) => todo!(),
                             CameraRequest::Set(_) => todo!(),
-                            CameraRequest::ContinuousCapture(_) => todo!(),
+                            CameraRequest::ContinuousCapture(req) => run_cc(req, interface).await,
                             CameraRequest::Record(_) => todo!(),
-                        }
-                        .await;
+                        };
 
                         let _ = ret.send(result);
                     }
@@ -209,105 +219,92 @@ async fn run_status(interface: &RwLock<InterfaceGuard>) -> anyhow::Result<Camera
 //     Ok(CameraResponse::Unit)
 // }
 
-// pub(super) async fn cmd_capture(
-//     interface: CameraInterfaceRequestBuffer,
-//     ptp_rx: &mut broadcast::Receiver<ptp::PtpEvent>,
-// ) -> anyhow::Result<CameraResponse> {
-//     ensure_mode(&interface, OperatingMode::StillRec).await?;
+pub(super) async fn run_capture(
+    interface: &RwLock<InterfaceGuard>,
+    evt_rx: flume::Receiver<PtpEvent>,
+) -> anyhow::Result<CameraResponse> {
+    ensure_camera_value(
+        interface,
+        PropertyCode::OperatingMode,
+        PtpData::UINT8(OperatingMode::StillRec as u8),
+    )
+    .await
+    .context("failed to set camera to still recording mode")?;
 
-//     interface
-//         .enter(|i| async move {
-//             info!("capturing image");
+    {
+        let interface = interface.write().await;
 
-//             debug!("sending half shutter press");
+        info!("capturing image");
 
-//             // press shutter button halfway to fix the focus
-//             i.control(CameraControlCode::S1Button, ptp::PtpData::UINT16(0x0002))
-//                 .await?;
+        debug!("sending half shutter press");
 
-//             debug!("sending full shutter press");
+        // press shutter button halfway to fix the focus
+        interface.execute(ControlCode::S1Button, PtpData::UINT16(0x0002))?;
 
-//             // shoot!
-//             i.control(CameraControlCode::S2Button, ptp::PtpData::UINT16(0x0002))
-//                 .await?;
+        debug!("sending full shutter press");
 
-//             debug!("sending full shutter release");
+        // shoot!
+        interface.execute(ControlCode::S2Button, PtpData::UINT16(0x0002))?;
 
-//             // release
-//             i.control(CameraControlCode::S2Button, ptp::PtpData::UINT16(0x0001))
-//                 .await?;
+        debug!("sending full shutter release");
 
-//             debug!("sending half shutter release");
+        // release
+        interface.execute(ControlCode::S2Button, PtpData::UINT16(0x0001))?;
 
-//             // hell yeah
-//             i.control(CameraControlCode::S1Button, ptp::PtpData::UINT16(0x0001))
-//                 .await?;
+        debug!("sending half shutter release");
 
-//             Ok::<_, anyhow::Error>(())
-//         })
-//         .await?;
+        // hell yeah
+        interface.execute(ControlCode::S1Button, PtpData::UINT16(0x0001))?;
+    }
 
-//     info!("waiting for image confirmation");
+    info!("waiting for image confirmation");
 
-//     {
-//         let watch_fut = watch(&interface, PropertyCode::ShootingFileInfo);
-//         let wait_fut = wait(ptp_rx, ptp::EventCode::Vendor(0xC204));
+    let timeout_fut = tokio::time::timeout(Duration::from_millis(3000), async {
+        loop {
+            // TODO: maybe check ShootingFileInfo
 
-//         futures::pin_mut!(watch_fut);
-//         futures::pin_mut!(wait_fut);
+            let evt = evt_rx.recv_async().await?;
 
-//         let confirm_fut = futures::future::select(watch_fut, wait_fut);
+            match evt.code {
+                ptp::EventCode::Vendor(0xC204) => {
+                    break;
+                }
+                _ => {}
+            }
+        }
 
-//         let res = tokio::time::timeout(Duration::from_millis(3000), confirm_fut)
-//             .await
-//             .context("timed out while waiting for image confirmation")?;
+        Ok::<_, anyhow::Error>(())
+    })
+    .await
+    .context("timed out while waiting for image confirmation")?
+    .context("error while waiting for image confirmation")?;
 
-//         match res {
-//             futures::future::Either::Left((watch_res, _)) => {
-//                 watch_res.context("error while waiting for change in shooting file counter")?;
-//             }
-//             futures::future::Either::Right((wait_res, _)) => {
-//                 wait_res.context("error while waiting for capture complete event")?;
-//             }
-//         }
-//     }
+    Ok(CameraResponse::Unit)
+}
 
-//     Ok(CameraResponse::Unit)
-// }
+pub(super) async fn run_cc(
+    req: CameraContinuousCaptureRequest,
+    interface: &RwLock<InterfaceGuard>,
+) -> anyhow::Result<CameraResponse> {
+    match req {
+        CameraContinuousCaptureRequest::Start => {
+            interface
+                .write()
+                .await
+                .execute(ControlCode::IntervalStillRecording, PtpData::UINT16(0x0002))
+                .context("failed to start interval recording")?;
+        }
+        CameraContinuousCaptureRequest::Stop => {
+            interface
+                .write()
+                .await
+                .execute(ControlCode::IntervalStillRecording, PtpData::UINT16(0x0001))
+                .context("failed to start interval recording")?;
+        }
+    }
 
-// pub(super) async fn cmd_continuous_capture(
-//     interface: CameraInterfaceRequestBuffer,
-//     req: CameraCommandContinuousCaptureRequest,
-// ) -> anyhow::Result<CameraResponse> {
-//     match req {
-//         CameraCommandContinuousCaptureRequest::Start => {
-//             interface
-//                 .enter(|i| async move {
-//                     i.control(
-//                         CameraControlCode::IntervalStillRecording,
-//                         ptp::PtpData::UINT16(0x0002),
-//                     )
-//                     .await
-//                     .context("failed to start interval recording")
-//                 })
-//                 .await?;
-//         }
-//         CameraCommandContinuousCaptureRequest::Stop => {
-//             interface
-//                 .enter(|i| async move {
-//                     i.control(
-//                         CameraControlCode::IntervalStillRecording,
-//                         ptp::PtpData::UINT16(0x0001),
-//                     )
-//                     .await
-//                     .context("failed to start interval recording")
-//                 })
-//                 .await?;
-//         }
-//     }
-
-//     Ok(CameraResponse::Unit)
-// }
+    Ok(CameraResponse::Unit)
+}
 
 // pub(super) async fn cmd_storage(
 //     interface: CameraInterfaceRequestBuffer,

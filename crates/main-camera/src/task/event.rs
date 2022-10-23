@@ -42,11 +42,13 @@ impl Task for EventTask {
         let loop_fut = async move {
             loop {
                 let event = {
-                    self.interface
-                        .read()
-                        .await
-                        .recv(Some(Duration::from_millis(100)))
-                        .context("error while receiving camera event")?
+                    let interface = self.interface.read().await;
+
+                    tokio::task::block_in_place(|| {
+                        interface
+                            .recv(Some(Duration::from_millis(100)))
+                            .context("error while receiving camera event")
+                    })?
                 };
 
                 if let Some(event) = event {

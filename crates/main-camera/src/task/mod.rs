@@ -26,8 +26,8 @@ pub fn create_tasks(
 ) -> anyhow::Result<(ControlTask, EventTask, DownloadTask)> {
     let interface = Arc::new(RwLock::new(InterfaceGuard::new()?));
 
-    let control_task = ControlTask::new(interface.clone());
     let event_task = EventTask::new(interface.clone());
+    let control_task = ControlTask::new(interface.clone(), event_task.events());
     let download_task = DownloadTask::new(interface, event_task.events());
 
     Ok((control_task, event_task, download_task))
