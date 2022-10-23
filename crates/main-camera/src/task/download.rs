@@ -9,10 +9,7 @@ use ptp::PtpEvent;
 use tokio::{select, sync::RwLock};
 use tokio_util::sync::CancellationToken;
 
-use crate::{
-    interface::PropertyCode,
-    task::util::{convert_camera_value, get_camera_values},
-};
+use crate::{interface::PropertyCode, task::util::convert_camera_value};
 
 use super::InterfaceGuard;
 
@@ -90,8 +87,10 @@ impl Task for DownloadTask {
                 loop {
                     tokio::time::sleep(Duration::from_millis(100)).await;
 
-                    let props = get_camera_values(&*interface)
+                    let props = interface
+                        .write()
                         .await
+                        .query()
                         .context("could not get camera state")?;
                     let shooting_file_info: u16 =
                         convert_camera_value(&props, PropertyCode::ShootingFileInfo)
@@ -106,8 +105,10 @@ impl Task for DownloadTask {
                 loop {
                     tokio::time::sleep(Duration::from_millis(100)).await;
 
-                    let props = get_camera_values(&*interface)
+                    let props = interface
+                        .write()
                         .await
+                        .query()
                         .context("could not get camera state")?;
                     let shooting_file_info: u16 =
                         convert_camera_value(&props, PropertyCode::ShootingFileInfo)
@@ -118,7 +119,7 @@ impl Task for DownloadTask {
                     }
 
                     let (info, data) = {
-                        let interface = interface.write().await;
+                        let mut interface = interface.write().await;
 
                         tokio::task::block_in_place(|| {
                             let handle = ptp::ObjectHandle::from(IMAGE_BUFFER_OBJECT_HANDLE);

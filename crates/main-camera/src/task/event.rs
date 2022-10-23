@@ -42,7 +42,7 @@ impl Task for EventTask {
         let loop_fut = async move {
             loop {
                 let event = {
-                    let interface = self.interface.read().await;
+                    let mut interface = self.interface.write().await;
 
                     tokio::task::block_in_place(|| {
                         interface

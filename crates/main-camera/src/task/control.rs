@@ -1,8 +1,8 @@
 use std::{sync::Arc, time::Duration};
 
-use anyhow::Context;
+use anyhow::{Context, bail};
 use async_trait::async_trait;
-use log::{debug, info};
+use log::{debug, info, trace};
 use ps_client::{ChannelCommandSink, ChannelCommandSource, Task};
 use ptp::{PtpData, PtpEvent};
 use tokio::{select, sync::RwLock};
@@ -12,7 +12,7 @@ use super::{util::*, InterfaceGuard};
 use crate::{
     interface::{ControlCode, OperatingMode, PropertyCode},
     Aperture, CameraContinuousCaptureRequest, CameraRequest, CameraResponse, CompressionMode,
-    ErrorMode, ExposureMode, FocusMode, Iso, SaveMedia, ShutterSpeed,
+    ErrorMode, ExposureMode, FocusIndication, FocusMode, Iso, SaveMedia, ShutterSpeed,
 };
 
 pub struct ControlTask {
@@ -88,7 +88,7 @@ impl Task for ControlTask {
 }
 
 async fn run_status(interface: &RwLock<InterfaceGuard>) -> anyhow::Result<CameraResponse> {
-    let props = get_camera_values(interface).await?;
+    let props = interface.write().await.query()?;
 
     let _op_mode: OperatingMode = convert_camera_value(&props, PropertyCode::OperatingMode)?;
     let _cmp_mode: CompressionMode = convert_camera_value(&props, PropertyCode::Compression)?;
@@ -232,34 +232,58 @@ pub(super) async fn run_capture(
     .context("failed to set camera to still recording mode")?;
 
     {
-        let interface = interface.write().await;
+        let mut interface = interface.write().await;
+        let props = interface
+            .query()
+            .context("failed to query current camera state")?;
 
-        info!("capturing image");
+        let focus_mode: FocusMode = convert_camera_value(&props, PropertyCode::FocusMode)?;
 
-        debug!("sending half shutter press");
+        info!("capturing image (focus mode = {})", focus_mode);
 
         // press shutter button halfway to fix the focus
+        debug!("sending half shutter press");
         interface.execute(ControlCode::S1Button, PtpData::UINT16(0x0002))?;
 
-        debug!("sending full shutter press");
+        if focus_mode == FocusMode::AutoFocusStill {
+            loop {
+                let props = interface
+                    .query()
+                    .context("failed to query current camera state")?;
+
+                let focus_ind: FocusIndication =
+                    convert_camera_value(&props, PropertyCode::FocusIndication)?;
+
+                match focus_ind {
+                    FocusIndication::AFUnlock | FocusIndication::Focusing => trace!("focusing..."),
+                    FocusIndication::AFLock | FocusIndication::FocusedContinuous => {
+                        trace!("focused!")
+                    }
+                    FocusIndication::AFWarning => {
+                        debug!("sending half shutter release");
+                        interface.execute(ControlCode::S1Button, PtpData::UINT16(0x0001))?;
+                        bail!("failed to acquire auto focus lock");
+                    }
+                }
+            }
+        }
 
         // shoot!
+        debug!("sending full shutter press");
         interface.execute(ControlCode::S2Button, PtpData::UINT16(0x0002))?;
 
-        debug!("sending full shutter release");
-
         // release
+        debug!("sending full shutter release");
         interface.execute(ControlCode::S2Button, PtpData::UINT16(0x0001))?;
 
-        debug!("sending half shutter release");
-
         // hell yeah
+        debug!("sending half shutter release");
         interface.execute(ControlCode::S1Button, PtpData::UINT16(0x0001))?;
     }
 
     info!("waiting for image confirmation");
 
-    let _timeout_fut = tokio::time::timeout(Duration::from_millis(3000), async {
+    tokio::time::timeout(Duration::from_millis(3000), async {
         loop {
             // TODO: maybe check ShootingFileInfo
 

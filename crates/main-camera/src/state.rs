@@ -53,6 +53,30 @@ impl Display for FocusMode {
     }
 }
 
+#[repr(u8)]
+#[derive(Debug, Copy, Clone, FromPrimitive, ToPrimitive, Serialize, Eq, PartialEq)]
+pub enum FocusIndication {
+    AFUnlock = 0x01,
+    AFLock = 0x02,
+    /// AF Lock warning (unable to range)
+    AFWarning = 0x03,
+    Focusing = 0x05,
+    /// Focused in continuous focus mode
+    FocusedContinuous = 0x06,
+}
+
+impl Display for FocusIndication {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            FocusIndication::AFUnlock => write!(f, "AF Unlock"),
+            FocusIndication::AFLock => write!(f, "AF Lock"),
+            FocusIndication::AFWarning => write!(f, "AF Warning"),
+            FocusIndication::Focusing => write!(f, "Focusing"),
+            FocusIndication::FocusedContinuous => write!(f, "AF Lock (Continuous)"),
+        }
+    }
+}
+
 #[repr(u16)]
 #[derive(Debug, Copy, Clone, FromPrimitive, ToPrimitive, Serialize, Eq, PartialEq)]
 pub enum ZoomMode {
