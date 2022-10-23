@@ -2,21 +2,23 @@ use std::{sync::Arc, time::Duration};
 
 use anyhow::{bail, Context};
 use async_trait::async_trait;
-use log::{debug, info, trace};
+use log::{debug, error, info, trace, warn};
+use num_traits::ToPrimitive;
 use ps_client::{ChannelCommandSink, ChannelCommandSource, Task};
 use ptp::{PtpData, PtpEvent};
 use tokio::{
     select,
-    sync::RwLock,
-    time::{sleep, timeout},
+    sync::{oneshot, RwLock},
+    time::{interval, sleep, timeout, MissedTickBehavior},
 };
 use tokio_util::sync::CancellationToken;
 
 use super::{util::*, InterfaceGuard};
 use crate::{
     interface::{ControlCode, OperatingMode, PropertyCode},
-    Aperture, CameraContinuousCaptureRequest, CameraRequest, CameraResponse, CompressionMode,
-    DriveMode, ErrorMode, ExposureMode, FocusIndication, FocusMode, Iso, SaveMedia, ShutterSpeed,
+    Aperture, CameraContinuousCaptureRequest, CameraRequest, CameraResponse, CameraSetRequest,
+    CompressionMode, DriveMode, ErrorMode, ExposureMode, FocusIndication, FocusMode, Iso,
+    SaveMedia, ShutterSpeed,
 };
 
 pub struct ControlTask {
@@ -64,14 +66,73 @@ impl Task for ControlTask {
                         let result = match req {
                             CameraRequest::Storage(_) => todo!(),
                             CameraRequest::File(_) => todo!(),
-                            CameraRequest::Capture { burst_duration } => {
-                                run_capture(interface, evt_rx.clone(), burst_duration).await
+                            CameraRequest::Capture {
+                                burst_duration,
+                                burst_high_speed,
+                            } => {
+                                run_capture(
+                                    interface,
+                                    evt_rx.clone(),
+                                    burst_duration,
+                                    burst_high_speed,
+                                )
+                                .await
+                            }
+                            CameraRequest::CCHack { interval, count } => {
+                                let interface = self.interface.clone();
+                                let cmd_tx = self.cmd_tx.clone();
+
+                                tokio::task::spawn(async move {
+                                    let mut counter = 0;
+                                    let mut interval =
+                                        tokio::time::interval(Duration::from_secs(interval as u64));
+
+                                    interval.set_missed_tick_behavior(MissedTickBehavior::Delay);
+
+                                    loop {
+                                        interval.tick().await;
+                                        info!("triggering capture from cc hack");
+
+                                        let (tx, rx) = oneshot::channel();
+
+                                        let res = cmd_tx
+                                            .send_async((
+                                                CameraRequest::Capture {
+                                                    burst_duration: None,
+                                                    burst_high_speed: false,
+                                                },
+                                                tx,
+                                            ))
+                                            .await;
+
+                                        if res.is_err() {
+                                            warn!("sending command from cc hack failed, exiting cc hack");
+                                            break;
+                                        }
+
+                                        let res = rx.await;
+
+                                        if let Err(err) = res {
+                                            error!("error in capture: {err:?}");
+                                        }
+
+                                        if let Some(count) = count {
+                                            if counter >= count {
+                                                break;
+                                            }
+                                        }
+                                    }
+
+                                    info!("cc hack capture series done");
+                                });
+
+                                Ok(CameraResponse::Unit)
                             }
                             CameraRequest::Reset => run_reset(interface).await,
                             CameraRequest::Initialize => run_initialize(interface).await,
                             CameraRequest::Status => run_status(interface).await,
                             CameraRequest::Get(_) => todo!(),
-                            CameraRequest::Set(_) => todo!(),
+                            CameraRequest::Set(req) => run_set(interface, req).await,
                             CameraRequest::ContinuousCapture(req) => run_cc(req, interface).await,
                             CameraRequest::Record(_) => todo!(),
                         };
@@ -105,6 +166,11 @@ async fn run_status(interface: &RwLock<InterfaceGuard>) -> anyhow::Result<Camera
     let save_media: SaveMedia = convert_camera_value(&props, PropertyCode::SaveMedia)?;
     let err_mode: ErrorMode = convert_camera_value(&props, PropertyCode::Caution)?;
 
+    let interval_time: Option<u16> = convert_camera_value(&props, PropertyCode::IntervalTime).ok();
+    let interval_state: Option<u8> =
+        convert_camera_value(&props, PropertyCode::IntervalStillRecordingState).ok();
+    let interval_state = interval_state.map(|s| s != 0);
+
     let shutter_speed: Option<ShutterSpeed> =
         convert_camera_value(&props, PropertyCode::ShutterSpeed).ok();
     let iso: Option<Iso> = convert_camera_value(&props, PropertyCode::ISO).ok();
@@ -123,6 +189,8 @@ async fn run_status(interface: &RwLock<InterfaceGuard>) -> anyhow::Result<Camera
         focus mode: {foc_mode:?}
         error mode: {err_mode:?}
         shutter speed: {shutter_speed}
+        interval time: {interval_time:?}
+        interval state: {interval_state:?}
         iso: {iso}
         aperture: {aperture}
         save destination: {save_media:?}
@@ -234,68 +302,68 @@ async fn run_initialize(interface: &RwLock<InterfaceGuard>) -> anyhow::Result<Ca
 //     })
 // }
 
-// pub(super) async fn cmd_set(
-//     interface: CameraInterfaceRequestBuffer,
-//     req: CameraCommandSetRequest,
-// ) -> anyhow::Result<CameraResponse> {
-//     let (prop, data) = match req {
-//         CameraCommandSetRequest::ExposureMode { mode } => (
-//             PropertyCode::ExposureMode,
-//             ptp::PtpData::UINT16(mode as u16),
-//         ),
-//         CameraCommandSetRequest::OperatingMode { mode } => {
-//             (PropertyCode::OperatingMode, ptp::PtpData::UINT8(mode as u8))
-//         }
-//         CameraCommandSetRequest::SaveMode { mode } => {
-//             (PropertyCode::SaveMedia, ptp::PtpData::UINT16(mode as u16))
-//         }
-//         CameraCommandSetRequest::FocusMode { mode } => {
-//             (PropertyCode::FocusMode, ptp::PtpData::UINT16(mode as u16))
-//         }
-//         CameraCommandSetRequest::ZoomLevel { level } => (
-//             PropertyCode::ZoomAbsolutePosition,
-//             ptp::PtpData::UINT16(level as u16),
-//         ),
-//         CameraCommandSetRequest::CcInterval { interval } => {
-//             let mut interval = (interval * 10.) as u16;
+pub(super) async fn run_set(
+    interface: &RwLock<InterfaceGuard>,
+    req: CameraSetRequest,
+) -> anyhow::Result<CameraResponse> {
+    let (prop, data) = match req {
+        CameraSetRequest::ExposureMode { mode } => (
+            PropertyCode::ExposureMode,
+            ptp::PtpData::UINT16(mode as u16),
+        ),
+        CameraSetRequest::OperatingMode { mode } => {
+            (PropertyCode::OperatingMode, ptp::PtpData::UINT8(mode as u8))
+        }
+        CameraSetRequest::SaveMode { mode } => {
+            (PropertyCode::SaveMedia, ptp::PtpData::UINT16(mode as u16))
+        }
+        CameraSetRequest::FocusMode { mode } => {
+            (PropertyCode::FocusMode, ptp::PtpData::UINT16(mode as u16))
+        }
+        CameraSetRequest::ZoomLevel { level } => (
+            PropertyCode::ZoomAbsolutePosition,
+            ptp::PtpData::UINT16(level as u16),
+        ),
+        CameraSetRequest::CcInterval { interval } => {
+            let mut interval = (interval * 10.) as u16;
 
-//             if interval < 10 {
-//                 bail!("minimum interval is 1 second");
-//             }
+            if interval < 10 {
+                bail!("minimum interval is 1 second");
+            }
 
-//             if interval > 300 {
-//                 bail!("maximum interval is 30 seconds");
-//             }
+            if interval > 300 {
+                bail!("maximum interval is 30 seconds");
+            }
 
-//             if interval % 5 != 0 {
-//                 warn!("valid intervals are in increments of 0.5 seconds; rounding down");
-//                 interval -= interval % 5;
-//             }
+            if interval % 5 != 0 {
+                warn!("valid intervals are in increments of 0.5 seconds; rounding down");
+                interval -= interval % 5;
+            }
 
-//             (PropertyCode::IntervalTime, ptp::PtpData::UINT16(interval))
-//         }
-//         CameraCommandSetRequest::ShutterSpeed { speed } => (
-//             PropertyCode::ShutterSpeed,
-//             ptp::PtpData::UINT32(ToPrimitive::to_u32(&speed).unwrap()),
-//         ),
-//         CameraCommandSetRequest::Aperture { aperture } => (
-//             PropertyCode::FNumber,
-//             ptp::PtpData::UINT16(ToPrimitive::to_u16(&aperture).unwrap()),
-//         ),
-//         // CameraCommandSetRequest::Other(s) => warn!("cannot set {"),
-//     };
+            (PropertyCode::IntervalTime, ptp::PtpData::UINT16(interval))
+        }
+        CameraSetRequest::ShutterSpeed { speed } => (
+            PropertyCode::ShutterSpeed,
+            ptp::PtpData::UINT32(ToPrimitive::to_u32(&speed).unwrap()),
+        ),
+        CameraSetRequest::Aperture { aperture } => (
+            PropertyCode::FNumber,
+            ptp::PtpData::UINT16(ToPrimitive::to_u16(&aperture).unwrap()),
+        ),
+    };
 
-//     debug!("setting {:?} to {:x}", prop, data);
+    debug!("setting {:?} to {:x}", prop, data);
 
-//     ensure(&interface, prop, data).await?;
+    ensure_camera_value(&interface, prop, data).await?;
 
-//     Ok(CameraResponse::Unit)
-// }
+    Ok(CameraResponse::Unit)
+}
 
 pub(super) async fn run_capture(
     interface: &RwLock<InterfaceGuard>,
     evt_rx: flume::Receiver<PtpEvent>,
     burst_duration: Option<u8>,
+    burst_high_speed: bool,
 ) -> anyhow::Result<CameraResponse> {
     debug!("running camera capture");
 
@@ -311,7 +379,11 @@ pub(super) async fn run_capture(
         interface,
         PropertyCode::DriveMode,
         PtpData::UINT16(if burst_duration.is_some() {
-            DriveMode::ContinuousShot
+            if burst_high_speed {
+                DriveMode::SpeedPriorityContinuousShot
+            } else {
+                DriveMode::ContinuousShot
+            }
         } else {
             DriveMode::Normal
         } as u16),
@@ -414,6 +486,7 @@ pub(super) async fn run_cc(
                 .execute(ControlCode::IntervalStillRecording, PtpData::UINT16(0x0002))
                 .context("failed to start interval recording")?;
         }
+
         CameraContinuousCaptureRequest::Stop => {
             interface
                 .write()

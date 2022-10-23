@@ -22,6 +22,17 @@ pub enum CameraRequest {
         /// of seconds
         #[clap(visible_alias = "burst", short, long)]
         burst_duration: Option<u8>,
+
+        #[clap(visible_short_alias = 'h', visible_alias = "fast")]
+        burst_high_speed: bool,
+    },
+
+    CCHack {
+        #[clap(short, long)]
+        interval: u8,
+
+        #[clap(short, long)]
+        count: Option<u32>,
     },
 
     Reset,
