@@ -1,4 +1,4 @@
-use std::{net::SocketAddr, path::{PathBuf, Path}};
+use std::{net::SocketAddr, path::Path};
 
 use config::{Config, ConfigError, File};
 use serde::Deserialize;
