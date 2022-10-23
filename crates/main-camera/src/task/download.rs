@@ -135,6 +135,8 @@ impl Task for DownloadTask {
                         })?
                     };
 
+                    info!("downloaded image information from camera");
+
                     let _ = download_tx.send_async(Arc::new((info, data))).await;
                 }
             }

@@ -4,7 +4,7 @@
     "address": "[::]:8080"
   },
   "ground_server": null,
-  "image": {
+  "downoad": {
     "save_path": "./images/"
   },
   "scheduler": null,
