@@ -72,6 +72,20 @@ async fn main() -> anyhow::Result<()> {
         )
         .init();
 
+    let mut features = vec![];
+
+    #[cfg(feature = "aux-camera")]
+    features.push("aux-camera");
+
+    #[cfg(feature = "csb")]
+    features.push("csb");
+
+    info!(
+        "initializing plane system v{} ({})",
+        env!("CARGO_PKG_VERSION"),
+        features.join(",")
+    );
+
     let main_args: cli::args::MainArgs = cli::args::MainArgs::parse();
 
     debug!("reading config from {:?}", &main_args.config);
@@ -163,19 +177,13 @@ async fn run_tasks(
         // if task terminated w/ error, then will be Some(Ok(Err))
         // need to propagate errors in both cases
 
-        match res {
-            Err(err) => {
-                cancellation_token.cancel();
-                return Err(err).context("task failed").into();
-            }
-            Ok(Err(err)) => {
-                cancellation_token.cancel();
-                return Err(err).context("task terminated with error").into();
-            }
-            _ => {
-                info!("exited task");
-            }
-        }
+        let ctdg = cancellation_token.clone().drop_guard();
+
+        res.context("task failed")?
+            .context("task terminated with error")?;
+
+        info!("exited task");
+        ctdg.disarm();
     }
 
     Ok(())
