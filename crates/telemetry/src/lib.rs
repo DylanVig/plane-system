@@ -2,8 +2,9 @@ use async_trait::async_trait;
 use chrono::prelude::*;
 use ps_client::Task;
 use ps_types::{Euler, Point3D, Velocity3D};
-use tokio::{select, sync::watch};
+use tokio::{select, sync::watch, task::yield_now};
 use tokio_util::sync::CancellationToken;
+use futures::future::OptionFuture;
 use serde::{Serialize, Deserialize};
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -83,8 +84,11 @@ impl Task for TelemetryTask {
                 let csb_recv_fut = csb_evt_rx.as_ref().map(|chan| chan.recv_async());
 
                 select! {
-                    evt = pixhawk_recv_fut.unwrap(), if pixhawk_recv_fut.is_some() => {
-                        match evt? {
+                    evt = OptionFuture::from(pixhawk_recv_fut), if pixhawk_recv_fut.is_some() => {
+                        // unwrap b/c if we are here, then the OptionFuture is OptionFuture(Some),
+                        // so it will not evaluate to None when we await it 
+
+                        match evt.unwrap()? {
                             ps_pixhawk::PixhawkEvent::Gps { position, velocity, .. } => {
                                 let now = Local::now();
                                 pixhawk_position = Some((position, now));
@@ -106,8 +110,11 @@ impl Task for TelemetryTask {
                         }
                     }
 
-                    evt = csb_recv_fut.unwrap(), if csb_recv_fut.is_some() => {
-                        let evt = evt?;
+                    evt = OptionFuture::from(csb_recv_fut), if csb_recv_fut.is_some() => {
+                        // unwrap b/c if we are here, then the OptionFuture is OptionFuture(Some),
+                        // so it will not evaluate to None when we await it 
+                        
+                        let evt = evt.unwrap()?;
 
                         let _ = telem_tx
                             .send_modify(|t| t.csb = Some(CsbTelemetry {
@@ -115,6 +122,10 @@ impl Task for TelemetryTask {
                                 attitude: Default::default(),
                                 timestamp: evt.timestamp,
                             }));
+                    }
+
+                    else => {
+                        break;
                     }
                 }
             }
