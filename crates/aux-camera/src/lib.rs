@@ -13,16 +13,7 @@ pub struct AuxCameraConfig {
 
 pub fn create_tasks(
     config: AuxCameraConfig,
-) -> anyhow::Result<(
-    Option<(
-        stream::StreamTask,
-        ChannelCommandSink<stream::StreamRequest, stream::StreamResponse>,
-    )>,
-    Option<(
-        save::SaveTask,
-        ChannelCommandSink<save::SaveRequest, save::SaveResponse>,
-    )>,
-)> {
+) -> anyhow::Result<(Option<stream::StreamTask>, Option<save::SaveTask>)> {
     if config.stream.is_none() && config.save.is_none() {
         bail!("cannot configure auxiliary cameras without specifying stream settings and/or save settings");
     }

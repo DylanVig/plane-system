@@ -9,13 +9,14 @@ use super::interface::*;
 use super::*;
 
 pub struct SaveTask {
+    cmd_tx: ChannelCommandSink<SaveRequest, SaveResponse>,
     cmd_rx: ChannelCommandSource<SaveRequest, SaveResponse>,
     interface: SaveInterface,
 }
 
 pub fn create_task(
     config: SaveConfig,
-) -> anyhow::Result<(SaveTask, ChannelCommandSink<SaveRequest, SaveResponse>)> {
+) -> anyhow::Result<SaveTask> {
     let (cmd_tx, cmd_rx) = flume::bounded(256);
 
     if !config.path.exists() {
@@ -25,7 +26,13 @@ pub fn create_task(
     let interface = SaveInterface::new(config.path, config.cameras)
         .context("failed to create save interface")?;
 
-    Ok((SaveTask { interface, cmd_rx }, cmd_tx))
+    Ok((SaveTask { interface, cmd_rx, cmd_tx }))
+}
+
+impl SaveTask {
+    pub fn cmd(&self) -> ChannelCommandSink<SaveRequest, SaveResponse> {
+        self.cmd_tx.clone()
+    }
 }
 
 #[async_trait]
@@ -38,6 +45,7 @@ impl Task for SaveTask {
         let Self {
             mut interface,
             cmd_rx,
+            ..
         } = *self;
 
         let cmd_loop = async {

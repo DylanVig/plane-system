@@ -42,10 +42,6 @@ num-derive = "0.3"
 
 # http
 warp = "0.3"
-reqwest = { version = "0.11", features = [
-  "json",
-  "multipart",
-], default-features = false }
 
 # utility
 ctrlc = "3.2"
@@ -55,9 +51,6 @@ rustyline-async = { version = "0.2" }
 
 chrono = { workspace = true }
 geo = { workspace = true }
-colored = "2"
-humansize = "2.1"
-prettytable-rs = "0.9"
 drop_guard = "0.3.0"
 
 [features]

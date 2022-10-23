@@ -10,21 +10,27 @@ use super::*;
 
 pub struct StreamTask {
     interface: StreamInterface,
+    cmd_tx: ChannelCommandSink<StreamRequest, StreamResponse>,
     cmd_rx: ChannelCommandSource<StreamRequest, StreamResponse>,
 }
 
-pub fn create_task(
-    config: StreamConfig,
-) -> anyhow::Result<(
-    StreamTask,
-    ChannelCommandSink<StreamRequest, StreamResponse>,
-)> {
+pub fn create_task(config: StreamConfig) -> anyhow::Result<StreamTask> {
     let (cmd_tx, cmd_rx) = flume::bounded(256);
 
     let interface = StreamInterface::new(config.address, config.cameras)
         .context("failed to create stream interface")?;
 
-    Ok((StreamTask { interface, cmd_rx }, cmd_tx))
+    Ok((StreamTask {
+        interface,
+        cmd_rx,
+        cmd_tx,
+    }))
+}
+
+impl StreamTask {
+    pub fn cmd(&self) -> ChannelCommandSink<StreamRequest, StreamResponse> {
+        self.cmd_tx.clone()
+    }
 }
 
 #[async_trait]
@@ -37,6 +43,7 @@ impl Task for StreamTask {
         let Self {
             mut interface,
             cmd_rx,
+            ..
         } = *self;
 
         let cmd_loop = async {

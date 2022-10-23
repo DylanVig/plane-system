@@ -416,14 +416,14 @@ pub(super) async fn run_capture(
 
                 match focus_ind {
                     FocusIndication::AFUnlock | FocusIndication::Focusing => {
-                        trace!("focusing ({focus_ind})")
+                        debug!("focusing ({focus_ind})")
                     }
                     FocusIndication::AFLock | FocusIndication::FocusedContinuous => {
-                        trace!("focused ({focus_ind})");
+                        debug!("focused ({focus_ind})");
                         break;
                     }
                     FocusIndication::AFWarning => {
-                        trace!("focus failed ({focus_ind})");
+                        debug!("focus failed ({focus_ind})");
                         debug!("sending half shutter release");
                         interface.execute(ControlCode::S1Button, PtpData::UINT16(0x0001))?;
                         bail!("failed to acquire auto focus lock");

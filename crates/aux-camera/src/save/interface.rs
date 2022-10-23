@@ -40,6 +40,8 @@ impl SaveInterface {
             command = format!("{}\n{}", command, new_command)
         }
 
+        info!("running gstreamer pipeline: {command}");
+
         self.pipeline = Some(gst::parse_launch(&command).unwrap());
 
         // Start playing

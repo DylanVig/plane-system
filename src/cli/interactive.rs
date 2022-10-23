@@ -12,6 +12,11 @@ enum Commands {
     #[clap(subcommand)]
     #[clap(name = "camera")]
     MainCamera(ps_main_camera::CameraRequest),
+
+    #[clap(subcommand)]
+    #[clap(name = "aux-camera")]
+    AuxCamera(ps_aux_camera::save::SaveRequest),
+
     Exit,
 }
 
@@ -20,6 +25,9 @@ pub async fn run_interactive_cli(
     mut stdout: SharedWriter,
     camera_cmd_tx: Option<
         ChannelCommandSink<ps_main_camera::CameraRequest, ps_main_camera::CameraResponse>,
+    >,
+    aux_camera_save_cmd_tx: Option<
+        ChannelCommandSink<ps_aux_camera::save::SaveRequest, ps_aux_camera::save::SaveResponse>,
     >,
     cancellation_token: CancellationToken,
 ) -> anyhow::Result<()> {
@@ -60,6 +68,22 @@ pub async fn run_interactive_cli(
                                     error!("camera task is not running");
                                 }
                             }
+
+                            Commands::AuxCamera(request) => {
+                                if let Some(aux_camera_save_cmd_tx) = &aux_camera_save_cmd_tx {
+                                    let (ret_tx, ret_rx) = oneshot::channel();
+                                    if let Err(err) = aux_camera_save_cmd_tx.send_async((request, ret_tx)).await {
+                                        error!("aux camera task did not accept command: {:#?}", err);
+                                    }
+                                    match ret_rx.await? {
+                                        Ok(response) => info!("{:?}", response),
+                                        Err(err) => error!("{:?}", err),
+                                    };
+                                } else {
+                                    error!("aux camera task is not running");
+                                }
+                            }
+
 
                             Commands::Exit => {
                                 info!("exiting");
