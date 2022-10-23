@@ -54,7 +54,7 @@ pub async fn run_interactive_cli(
                                     }
                                     match ret_rx.await? {
                                         Ok(response) => info!("{:?}", response),
-                                        Err(err) => error!("{}", err),
+                                        Err(err) => error!("{:?}", err),
                                     };
                                 } else {
                                     error!("camera task is not running");

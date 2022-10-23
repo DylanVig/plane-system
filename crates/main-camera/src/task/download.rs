@@ -68,7 +68,7 @@ impl Task for DownloadTask {
                 loop {
                     match evt_rx.recv_async().await {
                         Ok(evt) => {
-                            if evt.code.to_u16().unwrap() == 0xC204 {
+                            if let ptp::EventCode::Vendor(0xC204) | ptp::EventCode::Vendor(0xC203) = evt.code {
                                 break;
                             }
                         }
@@ -84,6 +84,7 @@ impl Task for DownloadTask {
 
                 // most significant bit indicates that the image is still being
                 // acquired, so wait for it to flip to zero
+                // MAYBE WRONG? ^
                 loop {
                     tokio::time::sleep(Duration::from_millis(100)).await;
 
@@ -96,7 +97,7 @@ impl Task for DownloadTask {
                         convert_camera_value(&props, PropertyCode::ShootingFileInfo)
                             .context("could not get shooting file info")?;
 
-                    if shooting_file_info & 0x8000 == 0 {
+                    if shooting_file_info & 0x8000 != 0 {
                         break;
                     }
                 }

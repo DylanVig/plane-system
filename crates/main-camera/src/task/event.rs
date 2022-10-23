@@ -42,7 +42,11 @@ impl Task for EventTask {
         let loop_fut = async move {
             loop {
                 let event = {
+                    trace!("acquiring lock on interface");
+
                     let mut interface = self.interface.write().await;
+
+                    trace!("checking for events on interface");
 
                     tokio::task::block_in_place(|| {
                         interface
@@ -59,6 +63,8 @@ impl Task for EventTask {
                         break;
                     }
                 }
+
+                tokio::task::yield_now().await;
             }
 
             Ok::<_, anyhow::Error>(())

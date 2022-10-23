@@ -7,7 +7,7 @@
     {
       "type": "lldb",
       "request": "launch",
-      "name": "run plane-system",
+      "name": "run plane-system (camera only)",
       "cargo": {
         "args": [
           "build",
@@ -20,11 +20,11 @@
         }
       },
       "env": {
-        "RUST_LOG": "plane_system=debug",
+        "RUST_LOG": "plane_system=debug,ps_telemetry=debug,ps_aux_camera=debug,ps_main_camera=debug,ps_pixhawk=debug,ps_gs=debug,ps_download=debug",
         "RUST_LOG_STYLE": "always",
         "RUST_BACKTRACE": "1",
       },
-      "args": [],
+      "args": ["--config", "config/camera-only.json"],
       "cwd": "${workspaceFolder}"
     },
     {

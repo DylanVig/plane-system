@@ -360,4 +360,6 @@ pub enum ErrorMode {
     CaptureOnCapturing = 0x0002,
 
     SettingFailure = 0x0001,
+
+    None = 0x0000,
 }

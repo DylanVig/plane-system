@@ -5,7 +5,11 @@ use async_trait::async_trait;
 use log::{debug, info, trace};
 use ps_client::{ChannelCommandSink, ChannelCommandSource, Task};
 use ptp::{PtpData, PtpEvent};
-use tokio::{select, sync::RwLock, time::{sleep, timeout}};
+use tokio::{
+    select,
+    sync::RwLock,
+    time::{sleep, timeout},
+};
 use tokio_util::sync::CancellationToken;
 
 use super::{util::*, InterfaceGuard};
@@ -63,7 +67,8 @@ impl Task for ControlTask {
                             CameraRequest::Capture { burst_duration } => {
                                 run_capture(interface, evt_rx.clone(), burst_duration).await
                             }
-                            CameraRequest::Reconnect => todo!(),
+                            CameraRequest::Reset => run_reset(interface).await,
+                            CameraRequest::Initialize => run_initialize(interface).await,
                             CameraRequest::Status => run_status(interface).await,
                             CameraRequest::Get(_) => todo!(),
                             CameraRequest::Set(_) => todo!(),
@@ -92,18 +97,26 @@ impl Task for ControlTask {
 async fn run_status(interface: &RwLock<InterfaceGuard>) -> anyhow::Result<CameraResponse> {
     let props = interface.write().await.query()?;
 
+    let sfi: u16 = convert_camera_value(&props, PropertyCode::ShootingFileInfo)?;
     let op_mode: OperatingMode = convert_camera_value(&props, PropertyCode::OperatingMode)?;
     let cmp_mode: CompressionMode = convert_camera_value(&props, PropertyCode::Compression)?;
     let ex_mode: ExposureMode = convert_camera_value(&props, PropertyCode::ExposureMode)?;
     let foc_mode: FocusMode = convert_camera_value(&props, PropertyCode::FocusMode)?;
     let save_media: SaveMedia = convert_camera_value(&props, PropertyCode::SaveMedia)?;
     let err_mode: ErrorMode = convert_camera_value(&props, PropertyCode::Caution)?;
-    let shutter_speed: ShutterSpeed = convert_camera_value(&props, PropertyCode::ShutterSpeed)?;
-    let iso: Iso = convert_camera_value(&props, PropertyCode::ISO)?;
-    let aperture: Aperture = convert_camera_value(&props, PropertyCode::FNumber)?;
+
+    let shutter_speed: Option<ShutterSpeed> =
+        convert_camera_value(&props, PropertyCode::ShutterSpeed).ok();
+    let iso: Option<Iso> = convert_camera_value(&props, PropertyCode::ISO).ok();
+    let aperture: Option<Aperture> = convert_camera_value(&props, PropertyCode::FNumber).ok();
+
+    let shutter_speed = shutter_speed.map_or_else(|| "Unknown".to_owned(), |s| s.to_string());
+    let iso = iso.map_or_else(|| "Unknown".to_owned(), |s| s.to_string());
+    let aperture = aperture.map_or_else(|| "Unknown".to_owned(), |s| s.to_string());
 
     info!(
         "
+        shooting file info: {sfi:#06x}
         operating mode: {op_mode:?}
         compression mode: {cmp_mode:?}
         exposure mode: {ex_mode:?}
@@ -115,6 +128,50 @@ async fn run_status(interface: &RwLock<InterfaceGuard>) -> anyhow::Result<Camera
         save destination: {save_media:?}
     "
     );
+
+    Ok(CameraResponse::Unit)
+}
+
+async fn run_reset(interface: &RwLock<InterfaceGuard>) -> anyhow::Result<CameraResponse> {
+    info!("resetting camera");
+
+    ensure_camera_value(
+        interface,
+        PropertyCode::OperatingMode,
+        PtpData::UINT8(OperatingMode::Standby as u8),
+    )
+    .await
+    .context("failed to set camera to still recording mode")?;
+
+    let mut interface = interface.write().await;
+
+    interface.execute(ControlCode::CameraSettingReset, PtpData::UINT16(0x0002))?;
+
+    sleep(Duration::from_secs(1)).await;
+
+    interface.execute(ControlCode::CameraSettingReset, PtpData::UINT16(0x0001))?;
+
+    Ok(CameraResponse::Unit)
+}
+
+async fn run_initialize(interface: &RwLock<InterfaceGuard>) -> anyhow::Result<CameraResponse> {
+    info!("initializing camera");
+
+    ensure_camera_value(
+        interface,
+        PropertyCode::OperatingMode,
+        PtpData::UINT8(OperatingMode::Standby as u8),
+    )
+    .await
+    .context("failed to set camera to still recording mode")?;
+
+    let mut interface = interface.write().await;
+
+    interface.execute(ControlCode::SystemInit, PtpData::UINT16(0x0002))?;
+
+    sleep(Duration::from_secs(1)).await;
+
+    interface.execute(ControlCode::SystemInit, PtpData::UINT16(0x0001))?;
 
     Ok(CameraResponse::Unit)
 }
@@ -240,6 +297,8 @@ pub(super) async fn run_capture(
     evt_rx: flume::Receiver<PtpEvent>,
     burst_duration: Option<u8>,
 ) -> anyhow::Result<CameraResponse> {
+    debug!("running camera capture");
+
     ensure_camera_value(
         interface,
         PropertyCode::OperatingMode,
@@ -284,11 +343,15 @@ pub(super) async fn run_capture(
                     convert_camera_value(&props, PropertyCode::FocusIndication)?;
 
                 match focus_ind {
-                    FocusIndication::AFUnlock | FocusIndication::Focusing => trace!("focusing..."),
+                    FocusIndication::AFUnlock | FocusIndication::Focusing => {
+                        trace!("focusing ({focus_ind})")
+                    }
                     FocusIndication::AFLock | FocusIndication::FocusedContinuous => {
-                        trace!("focused!")
+                        trace!("focused ({focus_ind})");
+                        break;
                     }
                     FocusIndication::AFWarning => {
+                        trace!("focus failed ({focus_ind})");
                         debug!("sending half shutter release");
                         interface.execute(ControlCode::S1Button, PtpData::UINT16(0x0001))?;
                         bail!("failed to acquire auto focus lock");
@@ -323,7 +386,7 @@ pub(super) async fn run_capture(
             let evt = evt_rx.recv_async().await?;
 
             match evt.code {
-                ptp::EventCode::Vendor(0xC204) => {
+                ptp::EventCode::Vendor(0xC204) | ptp::EventCode::Vendor(0xC203) => {
                     break;
                 }
                 _ => {}

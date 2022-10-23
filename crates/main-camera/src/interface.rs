@@ -277,10 +277,16 @@ impl CameraInterface {
         for _ in 0..num_entries {
             let current_prop = ptp::PtpPropInfo::decode(&mut cursor)?;
 
+            let current_prop_code = match PropertyCode::from_u16(current_prop.property_code) {
+                Some(code) => code,
+                None => {
+                    trace!("ignoring invalid property with code {:#0x}: {:?}", current_prop.property_code, current_prop);
+                    continue;
+                }
+            };
+
             properties.insert(
-                PropertyCode::from_u16(current_prop.property_code).with_context(|| {
-                    format!("invalid property code {:#0x}", current_prop.property_code)
-                })?,
+                current_prop_code,
                 current_prop,
             );
         }

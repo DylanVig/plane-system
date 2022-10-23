@@ -24,8 +24,9 @@ pub enum CameraRequest {
         burst_duration: Option<u8>,
     },
 
-    /// disconnect and reconnect to the camera
-    Reconnect,
+    Reset,
+
+    Initialize,
 
     Status,
 

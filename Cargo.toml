@@ -58,6 +58,7 @@ geo = { workspace = true }
 colored = "2"
 humansize = "2.1"
 prettytable-rs = "0.9"
+drop_guard = "0.3.0"
 
 [features]
 default = ["aux-camera"]

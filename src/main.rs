@@ -118,7 +118,7 @@ async fn run_tasks(
     })
     .expect("could not set ctrl+c handler");
 
-    let mut tasks = Vec::<Box<dyn ps_client::Task>>::new();
+    let mut tasks = Vec::<Box<dyn ps_client::Task + Send>>::new();
 
     let pixhawk_evt_rx = match config.pixhawk {
         Some(c) => {
@@ -174,8 +174,17 @@ async fn run_tasks(
     ));
 
     for task in tasks {
-        debug!("starting {} task", task.name());
-        join_set.spawn(task.run(cancellation_token.clone()));
+        let task_name = task.name();
+        debug!("starting {} task", task_name);
+        let ct = cancellation_token.clone();
+
+        join_set.spawn(async move {
+            // drop guard is there to print a log message when the future is
+            // dropped, which happens when the task terminates for any reason
+            let _dg = drop_guard::guard((), |_| debug!("exiting {} task", task_name));
+
+            task.run(ct).await
+        });
     }
 
     while let Some(res) = join_set.join_next().await {
@@ -188,7 +197,8 @@ async fn run_tasks(
         res.context("task failed")?
             .context("task terminated with error")?;
 
-        info!("exited task");
+        // if task exited w/o any sort of error, don't trigger cancellation of
+        // other tasks
         ctdg.disarm();
     }
 

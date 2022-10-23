@@ -1,6 +1,7 @@
 use async_trait::async_trait;
 use chrono::prelude::*;
 use futures::future::OptionFuture;
+use log::info;
 use ps_client::Task;
 use ps_types::{Euler, Point3D, Velocity3D};
 use serde::{Deserialize, Serialize};
@@ -125,6 +126,7 @@ impl Task for TelemetryTask {
                     }
 
                     else => {
+                        info!("no available telemetry sources, exiting");
                         break;
                     }
                 }
