@@ -2,10 +2,7 @@ use crate::GsConfig;
 use anyhow::bail;
 use anyhow::Context;
 use flume;
-use futures::FutureExt;
-use log::debug;
-use log::trace;
-use log::warn;
+use log::{debug, trace, warn};
 
 use ps_telemetry::Telemetry;
 use reqwest;

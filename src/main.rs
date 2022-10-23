@@ -24,23 +24,27 @@ async fn main() -> anyhow::Result<()> {
     let (editor, stdout) =
         Readline::new("ps> ".into()).context("failed to create interactive editor")?;
 
-    let mut targets = tracing_subscriber::filter::Targets::new();
+    let mut logging_unset_warning = false;
+    let mut logging_targets = tracing_subscriber::filter::Targets::new();
 
     if let Ok(directives) = std::env::var("RUST_LOG") {
         for directive in directives.split(',') {
             if let Some((target, level)) = directive.split_once('=') {
-                targets = targets.with_target(
+                logging_targets = logging_targets.with_target(
                     target,
                     level.parse::<LevelFilter>().context("invalid log level")?,
                 );
             } else {
-                targets = targets.with_default(
+                logging_targets = logging_targets.with_default(
                     directive
                         .parse::<LevelFilter>()
                         .context("invalid log level")?,
                 );
             }
         }
+    } else {
+        logging_targets = logging_targets.with_target("plane_system", LevelFilter::INFO);
+        logging_unset_warning = true;
     }
 
     let (writer, _guard) =
@@ -59,16 +63,14 @@ async fn main() -> anyhow::Result<()> {
                     let stdout = stdout.clone();
                     move || stdout.clone()
                 })
-                .with_filter(targets),
+                .with_filter(logging_targets),
         )
         // writer that outputs to files
         .with(
             tracing_subscriber::fmt::layer()
                 .with_ansi(false)
                 .with_writer(writer)
-                .with_filter(
-                    Targets::new().with_targets(vec![("plane_system", LevelFilter::DEBUG)]),
-                ),
+                .with_filter(Targets::new().with_target("plane_system", LevelFilter::DEBUG)),
         )
         .init();
 
@@ -85,6 +87,10 @@ async fn main() -> anyhow::Result<()> {
         env!("CARGO_PKG_VERSION"),
         features.join(",")
     );
+
+    if logging_unset_warning {
+        warn!("RUST_LOG environment variable was not specified, so only logs from the plane system w/ level INFO or higher will be shown! specifying RUST_LOG is strongly recommended");
+    }
 
     let main_args: cli::args::MainArgs = cli::args::MainArgs::parse();
 
