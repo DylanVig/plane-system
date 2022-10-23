@@ -90,17 +90,27 @@ impl Task for ControlTask {
 async fn run_status(interface: &RwLock<InterfaceGuard>) -> anyhow::Result<CameraResponse> {
     let props = interface.write().await.query()?;
 
-    let _op_mode: OperatingMode = convert_camera_value(&props, PropertyCode::OperatingMode)?;
-    let _cmp_mode: CompressionMode = convert_camera_value(&props, PropertyCode::Compression)?;
-    let _ex_mode: ExposureMode = convert_camera_value(&props, PropertyCode::ExposureMode)?;
-    let _foc_mode: FocusMode = convert_camera_value(&props, PropertyCode::FocusMode)?;
-    let _save_media: SaveMedia = convert_camera_value(&props, PropertyCode::SaveMedia)?;
-    let _err_mode: ErrorMode = convert_camera_value(&props, PropertyCode::Caution)?;
-    let _shutter_speed: ShutterSpeed = convert_camera_value(&props, PropertyCode::ShutterSpeed)?;
-    let _iso: Iso = convert_camera_value(&props, PropertyCode::ISO)?;
-    let _aperture: Aperture = convert_camera_value(&props, PropertyCode::FNumber)?;
+    let op_mode: OperatingMode = convert_camera_value(&props, PropertyCode::OperatingMode)?;
+    let cmp_mode: CompressionMode = convert_camera_value(&props, PropertyCode::Compression)?;
+    let ex_mode: ExposureMode = convert_camera_value(&props, PropertyCode::ExposureMode)?;
+    let foc_mode: FocusMode = convert_camera_value(&props, PropertyCode::FocusMode)?;
+    let save_media: SaveMedia = convert_camera_value(&props, PropertyCode::SaveMedia)?;
+    let err_mode: ErrorMode = convert_camera_value(&props, PropertyCode::Caution)?;
+    let shutter_speed: ShutterSpeed = convert_camera_value(&props, PropertyCode::ShutterSpeed)?;
+    let iso: Iso = convert_camera_value(&props, PropertyCode::ISO)?;
+    let aperture: Aperture = convert_camera_value(&props, PropertyCode::FNumber)?;
 
-    todo!()
+    info!("
+        operating mode: {op_mode}
+        compression mode: {cmp_mode}
+        exposure mode: {ex_mode}
+        focus mode: {foc_mode}
+        error mode: {err_mode}
+        shutter speed: {shutter_speed}
+        iso: {iso}
+        aperture: {aperture}
+        save destination: {save_media}
+    ");
 }
 
 // pub(super) async fn cmd_get(
