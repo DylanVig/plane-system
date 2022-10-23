@@ -1,6 +1,6 @@
 use anyhow::{anyhow, Context};
 use clap::Parser;
-use futures::{FutureExt, AsyncWriteExt};
+use futures::{AsyncWriteExt, FutureExt};
 use ps_client::ChannelCommandSink;
 use rustyline_async::{Readline, SharedWriter};
 use tokio::{select, sync::oneshot};
@@ -32,6 +32,8 @@ pub async fn run_interactive_cli(
             result = editor.readline().fuse() => {
                 match result {
                     Ok(line) => {
+                        stdout.write_all(format!("ps> {}\n", line).as_bytes()).await?;
+
                         let request: Result<Commands, _> = Parser::try_parse_from(line.split_ascii_whitespace());
 
                         let request = match request {
@@ -41,6 +43,8 @@ pub async fn run_interactive_cli(
                                 continue;
                             },
                         };
+
+                        editor.add_history_entry(line);
 
                         match request {
                             Commands::MainCamera(request) => {
