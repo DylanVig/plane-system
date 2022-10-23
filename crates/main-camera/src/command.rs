@@ -23,7 +23,7 @@ pub enum CameraRequest {
         #[clap(visible_alias = "burst", short, long)]
         burst_duration: Option<u8>,
 
-        #[clap(visible_short_alias = 'h', visible_alias = "fast")]
+        #[clap(visible_alias = "fast", short = 'f', long)]
         burst_high_speed: bool,
     },
 
