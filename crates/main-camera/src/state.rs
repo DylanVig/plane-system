@@ -79,6 +79,28 @@ impl Display for FocusIndication {
 
 #[repr(u16)]
 #[derive(Debug, Copy, Clone, FromPrimitive, ToPrimitive, Serialize, Eq, PartialEq)]
+pub enum DriveMode {
+    Normal = 0x0001,
+    SelfTimer10 = 0x8004,
+    SelfTimer2 = 0x8005,
+    ContinuousShot = 0x8013,
+    SpeedPriorityContinuousShot = 0x8014,
+}
+
+impl Display for DriveMode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            DriveMode::Normal => write!(f, "Normal"),
+            DriveMode::SelfTimer10 => write!(f, "Self Timer 10s"),
+            DriveMode::SelfTimer2 => write!(f, "Self Timer 2s"),
+            DriveMode::ContinuousShot => write!(f, "Continuous Shot"),
+            DriveMode::SpeedPriorityContinuousShot => write!(f, "Speed Priority Continuous Shot"),
+        }
+    }
+}
+
+#[repr(u16)]
+#[derive(Debug, Copy, Clone, FromPrimitive, ToPrimitive, Serialize, Eq, PartialEq)]
 pub enum ZoomMode {
     Optical,
     OpticalDigital,

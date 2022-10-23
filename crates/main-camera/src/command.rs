@@ -17,7 +17,12 @@ pub enum CameraRequest {
     File(CameraFileRequest),
 
     /// capture an image
-    Capture,
+    Capture {
+        /// if specified, will capture a burst of images over the given number
+        /// of seconds
+        #[clap(visible_alias = "burst", short, long)]
+        burst_duration: Option<u8>,
+    },
 
     /// disconnect and reconnect to the camera
     Reconnect,

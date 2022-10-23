@@ -1,18 +1,18 @@
 use std::{sync::Arc, time::Duration};
 
-use anyhow::{Context, bail};
+use anyhow::{bail, Context};
 use async_trait::async_trait;
 use log::{debug, info, trace};
 use ps_client::{ChannelCommandSink, ChannelCommandSource, Task};
 use ptp::{PtpData, PtpEvent};
-use tokio::{select, sync::RwLock};
+use tokio::{select, sync::RwLock, time::sleep};
 use tokio_util::sync::CancellationToken;
 
 use super::{util::*, InterfaceGuard};
 use crate::{
     interface::{ControlCode, OperatingMode, PropertyCode},
     Aperture, CameraContinuousCaptureRequest, CameraRequest, CameraResponse, CompressionMode,
-    ErrorMode, ExposureMode, FocusIndication, FocusMode, Iso, SaveMedia, ShutterSpeed,
+    DriveMode, ErrorMode, ExposureMode, FocusIndication, FocusMode, Iso, SaveMedia, ShutterSpeed,
 };
 
 pub struct ControlTask {
@@ -60,7 +60,9 @@ impl Task for ControlTask {
                         let result = match req {
                             CameraRequest::Storage(_) => todo!(),
                             CameraRequest::File(_) => todo!(),
-                            CameraRequest::Capture => run_capture(interface, evt_rx.clone()).await,
+                            CameraRequest::Capture { burst_duration } => {
+                                run_capture(interface, evt_rx.clone(), burst_duration).await
+                            }
                             CameraRequest::Reconnect => todo!(),
                             CameraRequest::Status => run_status(interface).await,
                             CameraRequest::Get(_) => todo!(),
@@ -100,17 +102,21 @@ async fn run_status(interface: &RwLock<InterfaceGuard>) -> anyhow::Result<Camera
     let iso: Iso = convert_camera_value(&props, PropertyCode::ISO)?;
     let aperture: Aperture = convert_camera_value(&props, PropertyCode::FNumber)?;
 
-    info!("
-        operating mode: {op_mode}
-        compression mode: {cmp_mode}
-        exposure mode: {ex_mode}
-        focus mode: {foc_mode}
-        error mode: {err_mode}
+    info!(
+        "
+        operating mode: {op_mode:?}
+        compression mode: {cmp_mode:?}
+        exposure mode: {ex_mode:?}
+        focus mode: {foc_mode:?}
+        error mode: {err_mode:?}
         shutter speed: {shutter_speed}
         iso: {iso}
         aperture: {aperture}
-        save destination: {save_media}
-    ");
+        save destination: {save_media:?}
+    "
+    );
+
+    Ok(CameraResponse::Unit)
 }
 
 // pub(super) async fn cmd_get(
@@ -232,6 +238,7 @@ async fn run_status(interface: &RwLock<InterfaceGuard>) -> anyhow::Result<Camera
 pub(super) async fn run_capture(
     interface: &RwLock<InterfaceGuard>,
     evt_rx: flume::Receiver<PtpEvent>,
+    burst_duration: Option<u8>,
 ) -> anyhow::Result<CameraResponse> {
     ensure_camera_value(
         interface,
@@ -241,6 +248,18 @@ pub(super) async fn run_capture(
     .await
     .context("failed to set camera to still recording mode")?;
 
+    ensure_camera_value(
+        interface,
+        PropertyCode::DriveMode,
+        PtpData::UINT16(if burst_duration.is_some() {
+            DriveMode::ContinuousShot
+        } else {
+            DriveMode::Normal
+        } as u16),
+    )
+    .await
+    .context("failed to set camera to correct drive mode")?;
+
     {
         let mut interface = interface.write().await;
         let props = interface
@@ -249,7 +268,7 @@ pub(super) async fn run_capture(
 
         let focus_mode: FocusMode = convert_camera_value(&props, PropertyCode::FocusMode)?;
 
-        info!("capturing image (focus mode = {})", focus_mode);
+        info!("capturing image (focus mode = {focus_mode}, burst duration = {burst_duration:?})");
 
         // press shutter button halfway to fix the focus
         debug!("sending half shutter press");
@@ -281,6 +300,10 @@ pub(super) async fn run_capture(
         // shoot!
         debug!("sending full shutter press");
         interface.execute(ControlCode::S2Button, PtpData::UINT16(0x0002))?;
+
+        if let Some(burst_duration) = burst_duration {
+            sleep(Duration::from_secs(burst_duration as u64)).await;
+        }
 
         // release
         debug!("sending full shutter release");
