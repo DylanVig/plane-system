@@ -2,14 +2,14 @@ use crate::GsConfig;
 use anyhow::bail;
 use anyhow::Context;
 use flume;
-use futures::FutureExt;
+
 use log::{debug, trace, warn};
-use ps_client::{ChannelCommandSink, Task};
+
 use ps_telemetry::Telemetry;
 use reqwest;
 use serde_json::json;
-use std::path::{Path, PathBuf};
-use std::{ffi::OsStr, str::FromStr, sync::Arc};
+use std::path::PathBuf;
+use std::{str::FromStr, sync::Arc};
 use tokio::select;
 use tokio_util::sync::CancellationToken;
 
@@ -22,7 +22,7 @@ pub enum GsCommand {
 }
 
 pub fn create_task(config: GsConfig) -> anyhow::Result<UploadTask> {
-    let (cmd_tx, cmd_rx) = flume::bounded(256);
+    let (_cmd_tx, cmd_rx) = flume::bounded(256);
 
     Ok(UploadTask {
         base_url: reqwest::Url::from_str(&config.address).context("invalid ground server url")?,
@@ -56,7 +56,7 @@ impl UploadTask {
 
             while let Ok(cmd) = cmd_rx.recv_async().await {
                 //once image is recieved match data,file, and telemtry to now send to ground server
-                let result = match cmd {
+                let _result = match cmd {
                     GsCommand::UploadImage {
                         data,
                         file,
