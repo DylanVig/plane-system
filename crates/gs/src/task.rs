@@ -3,9 +3,7 @@ use anyhow::bail;
 use anyhow::Context;
 use flume;
 use futures::FutureExt;
-use log::debug;
-use log::trace;
-use log::warn;
+use log::{debug, trace, warn};
 use ps_client::{ChannelCommandSink, Task};
 use ps_telemetry::Telemetry;
 use reqwest;
@@ -15,7 +13,6 @@ use std::{ffi::OsStr, str::FromStr, sync::Arc};
 use tokio::select;
 use tokio_util::sync::CancellationToken;
 
-//enum to send command to ground server
 pub enum GsCommand {
     UploadImage {
         data: Arc<Vec<u8>>,
@@ -24,28 +21,21 @@ pub enum GsCommand {
     },
 }
 
-//create task from aux camera, save crate
-//purpose of this is to establish connection to ground server, the establihs a task to listen for communication from camera crate
-//return the communication channle it created
-//I made the channel two way, but it needs to be one
 pub fn create_task(config: GsConfig) -> anyhow::Result<UploadTask> {
-    //here I want to establish connection to ground server
-
-    //create channel
     let (cmd_tx, cmd_rx) = flume::bounded(256);
 
-    //Here I want to establish a task
     Ok(UploadTask {
         base_url: reqwest::Url::from_str(&config.address).context("invalid ground server url")?,
-        http: reqwest::Client::new(),
+        http_client: reqwest::Client::new(),
         cmd_rx,
     })
 }
 
-//Task has the client to ocmmunicate to ground server and cmd_rx to communicate with camera crate
+///Task has the client communicate to the ground server. cmd_rx communicates with the camera crate.
+///Listens for command and uploads file to ground server.
 pub struct UploadTask {
     base_url: reqwest::Url,
-    http: reqwest::Client,
+    http_client: reqwest::Client,
     //receiving half of the channel
     cmd_rx: flume::Receiver<GsCommand>,
 }
@@ -57,7 +47,7 @@ impl UploadTask {
         let Self {
             cmd_rx,
             base_url,
-            http,
+            http_client,
         } = *self;
 
         //wait for image to be send
@@ -86,7 +76,7 @@ impl UploadTask {
                                 .to_string_lossy()
                                 .into_owned(),
                             telemetry,
-                            &http,
+                            &http_client,
                             &base_url,
                         )
                         .await?;
@@ -94,7 +84,6 @@ impl UploadTask {
                 };
             }
 
-            //if ever gets past loop, then its an error cause that loop supposed ot be infinite
             Ok::<_, anyhow::Error>(())
         };
 
@@ -108,7 +97,7 @@ impl UploadTask {
 }
 
 // Sends an image to the ground server.
-pub async fn send_image(
+async fn send_image(
     file_data: &[u8],
     file_name: String,
     telemetry: Option<Telemetry>,
