@@ -13,6 +13,7 @@ use std::{str::FromStr, sync::Arc};
 use tokio::select;
 use tokio_util::sync::CancellationToken;
 
+///This is a struct to contain the data to send to the ground server
 pub enum GsCommand {
     UploadImage {
         data: Arc<Vec<u8>>,
@@ -21,13 +22,15 @@ pub enum GsCommand {
     },
 }
 
+///Creates task returning an upload task and transmitting channel
 pub fn create_task(config: GsConfig) -> anyhow::Result<UploadTask> {
-    let (_cmd_tx, cmd_rx) = flume::bounded(256);
+    let (cmd_tx, cmd_rx) = flume::bounded(256);
 
     Ok(UploadTask {
         base_url: reqwest::Url::from_str(&config.address).context("invalid ground server url")?,
         http_client: reqwest::Client::new(),
         cmd_rx,
+        cmd_tx,
     })
 }
 
@@ -38,14 +41,18 @@ pub struct UploadTask {
     http_client: reqwest::Client,
     //receiving half of the channel
     cmd_rx: flume::Receiver<GsCommand>,
+    //transmitting half of the channel
+    cmd_tx: flume::Sender<GsCommand>,
 }
 
+///Sends image to the ground server
 impl UploadTask {
-    //this should wait for a command, then send image to ground server
+    //this waits for a command, then send image to ground server
     pub async fn run(self: Box<Self>, cancel: CancellationToken) -> anyhow::Result<()> {
         //extract the input parameters of ground server client and channnel to recieve commands
         let Self {
             cmd_rx,
+            cmd_tx,
             base_url,
             http_client,
         } = *self;
@@ -62,7 +69,7 @@ impl UploadTask {
                         file,
                         telemetry,
                     } => {
-                        // start image download process
+                        //image download completed, starting upload process
                         debug!("image download detected, uploading file to ground server");
 
                         if telemetry.is_none() {
@@ -108,7 +115,7 @@ async fn send_image(
 
     let mime_type = {
         let file_ext = file_name.split(".").last();
-
+        //tells the reciever the type of data being recieved
         match file_ext {
             Some("jpg") | Some("jpeg") => "image/jpeg",
             Some("mp4") => "video/mp4",
@@ -145,7 +152,9 @@ async fn send_image(
                 }
             }
         })
+    //when there's no telemetry (no pixhawk, or not connected, etc), sends the telemetry below
     } else {
+        //runs when in debug mode
         if cfg!(debug_assertions) {
             warn!("no telemetry information available, uploading filler telemetry info");
 
@@ -167,6 +176,7 @@ async fn send_image(
                 }
             })
         } else {
+            //in release mode, will not upload anything if there is no telemetry
             bail!("no telemetry information available, cannot upload to ground server");
         }
     };
