@@ -29,16 +29,18 @@ Use a `.json` file in the `config` folder or
   create your own `.json` file with the proper rules outlined.
 
 ### when debugging
-```
-RUST_LOG=plane_system=debug cargo run -- --config=config/<config>.json
+```bash
+source set-env.sh # to set environment variables to enable logging
+cargo run -- --config=config/<config>.json
 ```
 
 `plane-system` requires a configuration file. Use a `.json` file in the `config`
 folder or create your own `.json` file with the proper rules outlined.
 
 ### in production
-```
-RUST_LOG=plane_system=info plane-system --config=<path/to/config>.json
+```bash
+./set-env.sh  # to set environment variables to enable logging
+./plane-system --config=<path/to/config>.json
 ```
 ## wsl setup
 
