@@ -3,16 +3,13 @@ use std::{sync::Arc, time::Duration};
 use anyhow::Context;
 use async_trait::async_trait;
 use log::*;
-use num_traits::{FromPrimitive, ToPrimitive};
+use num_traits::ToPrimitive;
 use ps_client::Task;
 use ptp::PtpEvent;
 use tokio::{select, sync::RwLock};
 use tokio_util::sync::CancellationToken;
 
-use crate::{
-    interface::{CameraInterface, PropertyCode},
-    task::util::{convert_camera_value, get_camera_values},
-};
+use crate::{interface::PropertyCode, task::util::convert_camera_value};
 
 use super::InterfaceGuard;
 
@@ -32,7 +29,10 @@ pub struct DownloadTask {
 }
 
 impl DownloadTask {
-    pub(super) fn new(interface: Arc<RwLock<InterfaceGuard>>, evt_rx: flume::Receiver<PtpEvent>) -> Self {
+    pub(super) fn new(
+        interface: Arc<RwLock<InterfaceGuard>>,
+        evt_rx: flume::Receiver<PtpEvent>,
+    ) -> Self {
         let (download_tx, download_rx) = flume::bounded(256);
 
         Self {
@@ -68,7 +68,7 @@ impl Task for DownloadTask {
                 loop {
                     match evt_rx.recv_async().await {
                         Ok(evt) => {
-                            if evt.code.to_u16().unwrap() == 0xC204 {
+                            if let ptp::EventCode::Vendor(0xC204) | ptp::EventCode::Vendor(0xC203) = evt.code {
                                 break;
                             }
                         }
@@ -78,23 +78,26 @@ impl Task for DownloadTask {
                     }
                 }
 
-                let timestamp = chrono::Local::now();
+                let _timestamp = chrono::Local::now();
 
                 debug!("received capture event from camera");
 
                 // most significant bit indicates that the image is still being
                 // acquired, so wait for it to flip to zero
+                // MAYBE WRONG? ^
                 loop {
                     tokio::time::sleep(Duration::from_millis(100)).await;
 
-                    let props = get_camera_values(&*interface)
+                    let props = interface
+                        .write()
                         .await
+                        .query()
                         .context("could not get camera state")?;
                     let shooting_file_info: u16 =
                         convert_camera_value(&props, PropertyCode::ShootingFileInfo)
                             .context("could not get shooting file info")?;
 
-                    if shooting_file_info & 0x8000 == 0 {
+                    if shooting_file_info & 0x8000 != 0 {
                         break;
                     }
                 }
@@ -103,8 +106,10 @@ impl Task for DownloadTask {
                 loop {
                     tokio::time::sleep(Duration::from_millis(100)).await;
 
-                    let props = get_camera_values(&*interface)
+                    let props = interface
+                        .write()
                         .await
+                        .query()
                         .context("could not get camera state")?;
                     let shooting_file_info: u16 =
                         convert_camera_value(&props, PropertyCode::ShootingFileInfo)
@@ -115,7 +120,7 @@ impl Task for DownloadTask {
                     }
 
                     let (info, data) = {
-                        let interface = interface.write().await;
+                        let mut interface = interface.write().await;
 
                         tokio::task::block_in_place(|| {
                             let handle = ptp::ObjectHandle::from(IMAGE_BUFFER_OBJECT_HANDLE);
@@ -129,6 +134,8 @@ impl Task for DownloadTask {
                             Ok::<_, anyhow::Error>((info, data))
                         })?
                     };
+
+                    info!("downloaded image information from camera");
 
                     let _ = download_tx.send_async(Arc::new((info, data))).await;
                 }

@@ -1,33 +1,59 @@
 use async_trait::async_trait;
 use chrono::prelude::*;
+use futures::future::OptionFuture;
+use log::info;
 use ps_client::Task;
-use ps_types::{Attitude, Point3D};
-use tokio::{sync::watch, select};
+use ps_types::{Euler, Point3D, Velocity3D};
+use serde::{Deserialize, Serialize};
+use tokio::{select, sync::watch};
 use tokio_util::sync::CancellationToken;
 
+#[derive(Clone, Serialize, Deserialize)]
 pub struct Telemetry {
-    pub location: (Point3D, DateTime<Local>),
-    pub orientation: (Attitude, DateTime<Local>),
+    pub pixhawk: Option<PixhawkTelemetry>,
+    pub csb: Option<CsbTelemetry>,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+pub struct PixhawkTelemetry {
+    pub position: (Point3D, DateTime<Local>),
+    pub velocity: (Velocity3D, DateTime<Local>),
+    pub attitude: (Euler, DateTime<Local>),
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+pub struct CsbTelemetry {
+    pub position: Point3D,
+    pub attitude: Euler,
+    pub timestamp: DateTime<Local>,
 }
 
 pub struct TelemetryTask {
-    pixhawk_evt_rx: flume::Receiver<ps_pixhawk::PixhawkEvent>,
-    telem_rx: watch::Receiver<Option<Telemetry>>,
-    telem_tx: watch::Sender<Option<Telemetry>>,
+    pixhawk_evt_rx: Option<flume::Receiver<ps_pixhawk::PixhawkEvent>>,
+    csb_evt_rx: Option<flume::Receiver<ps_main_camera_csb::CsbEvent>>,
+    telem_rx: watch::Receiver<Telemetry>,
+    telem_tx: watch::Sender<Telemetry>,
 }
 
-pub fn create_task(pixhawk_task: &ps_pixhawk::EventTask) -> anyhow::Result<TelemetryTask> {
-    let (telem_tx, telem_rx) = watch::channel(None);
+pub fn create_task(
+    pixhawk_evt_rx: Option<flume::Receiver<ps_pixhawk::PixhawkEvent>>,
+    csb_evt_rx: Option<flume::Receiver<ps_main_camera_csb::CsbEvent>>,
+) -> anyhow::Result<TelemetryTask> {
+    let (telem_tx, telem_rx) = watch::channel(Telemetry {
+        pixhawk: None,
+        csb: None,
+    });
 
     Ok(TelemetryTask {
-        pixhawk_evt_rx: pixhawk_task.events(),
+        pixhawk_evt_rx,
+        csb_evt_rx,
         telem_rx,
         telem_tx,
     })
 }
 
 impl TelemetryTask {
-    pub fn telemetry(&self) -> watch::Receiver<Option<Telemetry>> {
+    pub fn telemetry(&self) -> watch::Receiver<Telemetry> {
         self.telem_rx.clone()
     }
 }
@@ -41,31 +67,68 @@ impl Task for TelemetryTask {
     async fn run(self: Box<Self>, cancel: CancellationToken) -> anyhow::Result<()> {
         let Self {
             pixhawk_evt_rx,
+            csb_evt_rx,
             telem_tx,
             ..
         } = *self;
 
         let loop_fut = async move {
-            let mut location = None;
-            let mut orientation = None;
+            // store position and attitude, because pixhawk sends these
+            // separately, but we only want to publish pixhawk telem once we
+            // have both
+            let mut pixhawk_position = None;
+            let mut pixhawk_velocity = None;
+            let mut pixhawk_attitude = None;
 
             loop {
-                let evt = pixhawk_evt_rx.recv_async().await?;
+                let pixhawk_recv_fut = pixhawk_evt_rx.as_ref().map(|chan| chan.recv_async());
+                let csb_recv_fut = csb_evt_rx.as_ref().map(|chan| chan.recv_async());
 
-                match evt {
-                    ps_pixhawk::PixhawkEvent::Gps { position, .. } => {
-                        location = Some((position, Local::now()));
-                    },
-                    ps_pixhawk::PixhawkEvent::Orientation { attitude } => {
-                        orientation = Some((attitude, Local::now()));
-                    },
-                }
+                select! {
+                    evt = OptionFuture::from(pixhawk_recv_fut), if pixhawk_recv_fut.is_some() => {
+                        // unwrap b/c if we are here, then the OptionFuture is OptionFuture(Some),
+                        // so it will not evaluate to None when we await it
 
-                if let (Some(location), Some(orientation)) = (location, orientation) {
-                    let _ = telem_tx.send(Some(Telemetry {
-                        location,
-                        orientation
-                    }));
+                        match evt.unwrap()? {
+                            ps_pixhawk::PixhawkEvent::Gps { position, velocity, .. } => {
+                                let now = Local::now();
+                                pixhawk_position = Some((position, now));
+                                pixhawk_velocity = Some((velocity, now));
+                            },
+                            ps_pixhawk::PixhawkEvent::Orientation { attitude } => {
+                                pixhawk_attitude = Some((attitude, Local::now()));
+                            },
+                        }
+
+
+                        if let (Some(position), Some(velocity), Some(attitude)) = (pixhawk_position, pixhawk_velocity, pixhawk_attitude) {
+                            let _ = telem_tx
+                                .send_modify(|t| t.pixhawk = Some(PixhawkTelemetry {
+                                    position,
+                                    velocity,
+                                    attitude,
+                                }));
+                        }
+                    }
+
+                    evt = OptionFuture::from(csb_recv_fut), if csb_recv_fut.is_some() => {
+                        // unwrap b/c if we are here, then the OptionFuture is OptionFuture(Some),
+                        // so it will not evaluate to None when we await it
+
+                        let evt = evt.unwrap()?;
+
+                        let _ = telem_tx
+                            .send_modify(|t| t.csb = Some(CsbTelemetry {
+                                position: Default::default(),
+                                attitude: Default::default(),
+                                timestamp: evt.timestamp,
+                            }));
+                    }
+
+                    else => {
+                        info!("no available telemetry sources, exiting");
+                        break;
+                    }
                 }
             }
 

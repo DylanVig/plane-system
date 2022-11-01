@@ -42,11 +42,17 @@ impl Task for EventTask {
         let loop_fut = async move {
             loop {
                 let event = {
-                    self.interface
-                        .read()
-                        .await
-                        .recv(Some(Duration::from_millis(100)))
-                        .context("error while receiving camera event")?
+                    trace!("acquiring lock on interface");
+
+                    let mut interface = self.interface.write().await;
+
+                    trace!("checking for events on interface");
+
+                    tokio::task::block_in_place(|| {
+                        interface
+                            .recv(Some(Duration::from_millis(100)))
+                            .context("error while receiving camera event")
+                    })?
                 };
 
                 if let Some(event) = event {
@@ -57,6 +63,8 @@ impl Task for EventTask {
                         break;
                     }
                 }
+
+                tokio::task::yield_now().await;
             }
 
             Ok::<_, anyhow::Error>(())

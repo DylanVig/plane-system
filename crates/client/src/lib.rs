@@ -1,15 +1,7 @@
 use async_trait::async_trait;
-
+use log::debug;
 use tokio::sync::oneshot;
-use tokio_stream::Stream;
 use tokio_util::sync::CancellationToken;
-
-pub trait EventSource {
-    type Event;
-    type Stream: Stream<Item = Self::Event>;
-
-    fn subscribe(&self) -> Self::Stream;
-}
 
 #[async_trait]
 pub trait CommandSink {

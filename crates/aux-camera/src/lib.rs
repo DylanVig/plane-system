@@ -6,23 +6,14 @@ pub mod save;
 pub mod stream;
 
 #[derive(Clone, Debug, Deserialize)]
-pub struct Config {
+pub struct AuxCameraConfig {
     pub stream: Option<stream::StreamConfig>,
     pub save: Option<save::SaveConfig>,
 }
 
 pub fn create_tasks(
-    config: Config,
-) -> anyhow::Result<(
-    Option<(
-        stream::StreamTask,
-        ChannelCommandSink<stream::StreamRequest, stream::StreamResponse>,
-    )>,
-    Option<(
-        save::SaveTask,
-        ChannelCommandSink<save::SaveRequest, save::SaveResponse>,
-    )>,
-)> {
+    config: AuxCameraConfig,
+) -> anyhow::Result<(Option<stream::StreamTask>, Option<save::SaveTask>)> {
     if config.stream.is_none() && config.save.is_none() {
         bail!("cannot configure auxiliary cameras without specifying stream settings and/or save settings");
     }

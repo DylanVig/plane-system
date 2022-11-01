@@ -1,13 +1,10 @@
-use std::{
-    sync::{
-        atomic::{AtomicU8, Ordering},
-        Arc,
-    },
-    time::{Duration, Instant, SystemTime},
-};
-use log::*;
 use anyhow::Context;
 use bytes::{Buf, BytesMut};
+use log::*;
+use std::{
+    sync::atomic::{AtomicU8, Ordering},
+    time::{Duration, Instant, SystemTime},
+};
 
 use tokio::net::ToSocketAddrs;
 

@@ -3,6 +3,7 @@ use log::*;
 use num_traits::{FromPrimitive, ToPrimitive};
 use ptp::{ObjectFormatCode, ObjectHandle, PtpRead, StandardCommandCode, StorageId};
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::io::Cursor;
 use std::{collections::HashSet, fmt::Debug, time::Duration};
 
@@ -253,9 +254,7 @@ impl CameraInterface {
         Ok(())
     }
 
-    /// Queries the camera for its current state and updates the hashmap held by
-    /// this interface. Returns only the properties that have changed.
-    pub fn update(&self) -> anyhow::Result<Vec<ptp::PtpPropInfo>> {
+    pub fn query(&mut self) -> anyhow::Result<HashMap<PropertyCode, ptp::PtpPropInfo>> {
         let timeout = self.timeout();
 
         trace!("sending SDIO_GetAllExtDevicePropInfo");
@@ -273,11 +272,23 @@ impl CameraInterface {
 
         trace!("reading {:?} entries", num_entries);
 
-        let mut properties = Vec::new();
+        let mut properties = HashMap::new();
 
         for _ in 0..num_entries {
             let current_prop = ptp::PtpPropInfo::decode(&mut cursor)?;
-            properties.push(current_prop);
+
+            let current_prop_code = match PropertyCode::from_u16(current_prop.property_code) {
+                Some(code) => code,
+                None => {
+                    trace!("ignoring invalid property with code {:#0x}: {:?}", current_prop.property_code, current_prop);
+                    continue;
+                }
+            };
+
+            properties.insert(
+                current_prop_code,
+                current_prop,
+            );
         }
 
         Ok(properties)
@@ -286,7 +297,7 @@ impl CameraInterface {
     /// Sets the value of a camera property. This should be followed by a call
     /// to update() and a check to make sure that the intended result was
     /// achieved.
-    pub fn set(&self, code: PropertyCode, new_value: ptp::PtpData) -> anyhow::Result<()> {
+    pub fn set(&mut self, code: PropertyCode, new_value: ptp::PtpData) -> anyhow::Result<()> {
         let buf = new_value.encode();
 
         trace!("sending SDIO_SetExtDevicePropValue");
@@ -303,7 +314,7 @@ impl CameraInterface {
 
     /// Executes a command on the camera. This should be followed by a call to
     /// update() and a check to make sure that the intended result was achieved.
-    pub fn execute(&self, code: ControlCode, payload: ptp::PtpData) -> anyhow::Result<()> {
+    pub fn execute(&mut self, code: ControlCode, payload: ptp::PtpData) -> anyhow::Result<()> {
         let buf = payload.encode();
 
         trace!("sending SDIO_ControlDevice");
@@ -319,7 +330,7 @@ impl CameraInterface {
     }
 
     /// Receives an event from the camera.
-    pub fn recv(&self, timeout: Option<Duration>) -> anyhow::Result<Option<ptp::PtpEvent>> {
+    pub fn recv(&mut self, timeout: Option<Duration>) -> anyhow::Result<Option<ptp::PtpEvent>> {
         let event = self.camera.event(timeout)?;
         if let Some(event) = &event {
             trace!("received event: {:?}", event);
@@ -327,16 +338,16 @@ impl CameraInterface {
         Ok(event)
     }
 
-    pub fn device_info(&self, timeout: Option<Duration>) -> anyhow::Result<ptp::PtpDeviceInfo> {
+    pub fn device_info(&mut self, timeout: Option<Duration>) -> anyhow::Result<ptp::PtpDeviceInfo> {
         Ok(self.camera.get_device_info(timeout)?)
     }
 
-    pub fn storage_ids(&self, timeout: Option<Duration>) -> anyhow::Result<Vec<StorageId>> {
+    pub fn storage_ids(&mut self, timeout: Option<Duration>) -> anyhow::Result<Vec<StorageId>> {
         Ok(self.camera.get_storage_ids(timeout)?)
     }
 
     pub fn storage_info(
-        &self,
+        &mut self,
         storage_id: StorageId,
         timeout: Option<Duration>,
     ) -> anyhow::Result<ptp::PtpStorageInfo> {
@@ -344,7 +355,7 @@ impl CameraInterface {
     }
 
     pub fn object_handles(
-        &self,
+        &mut self,
         storage_id: StorageId,
         parent_id: Option<ObjectHandle>,
         timeout: Option<Duration>,
@@ -355,7 +366,7 @@ impl CameraInterface {
     }
 
     pub fn object_info(
-        &self,
+        &mut self,
         object_id: ObjectHandle,
         timeout: Option<Duration>,
     ) -> anyhow::Result<ptp::PtpObjectInfo> {
@@ -363,7 +374,7 @@ impl CameraInterface {
     }
 
     pub fn object_data(
-        &self,
+        &mut self,
         object_id: ObjectHandle,
         timeout: Option<Duration>,
     ) -> anyhow::Result<Vec<u8>> {
@@ -371,7 +382,7 @@ impl CameraInterface {
     }
 
     pub fn init_capture(
-        &self,
+        &mut self,
         storage: StorageId,
         format: ObjectFormatCode,
         timeout: Option<Duration>,

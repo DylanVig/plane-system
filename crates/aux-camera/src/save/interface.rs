@@ -34,11 +34,13 @@ impl SaveInterface {
             path.set_extension("mp4");
 
             let new_command = &format!(
-                "{} ! queue ! x264enc ! mpegtsmux ! filesink location={:?}",
+                "{} ! filesink location={:?}",
                 &self.cameras[i], &path
             );
             command = format!("{}\n{}", command, new_command)
         }
+
+        info!("running gstreamer pipeline: {command}");
 
         self.pipeline = Some(gst::parse_launch(&command).unwrap());
 

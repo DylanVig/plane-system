@@ -9,3 +9,4 @@ ps-serde-util = { path = "../serde-util" }
 geo = { workspace = true }
 chrono = { workspace = true }
 serde = { workspace = true }
+uom = { version = "0.33", features = ["use_serde"] }

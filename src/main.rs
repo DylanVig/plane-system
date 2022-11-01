@@ -1,209 +1,50 @@
-use std::{process::exit, sync::Arc, time::Duration};
-
 use anyhow::Context;
 use clap::Parser;
 use ctrlc;
-use futures::{channel::oneshot, Future};
-use tokio::{
-    sync::{broadcast, watch},
-    task::JoinHandle,
-    time::sleep,
-};
+use rustyline_async::{Readline, SharedWriter};
+use tokio::task::JoinSet;
+use tokio_util::sync::CancellationToken;
 use tracing::metadata::LevelFilter;
 use tracing_subscriber::{filter::Targets, layer::SubscriberExt, util::SubscriberInitExt, Layer};
 
-use gs::GroundServerClient;
-use pixhawk::{client::PixhawkClient, state::PixhawkEvent};
-use state::Telemetry;
-use telemetry::TelemetryStream;
+use crate::cli::interactive::run_interactive_cli;
 
 #[macro_use]
 extern crate tracing;
-#[macro_use]
-extern crate anyhow;
-#[macro_use]
-extern crate num_derive;
-#[macro_use]
-extern crate async_trait;
 
-mod camera;
 mod cli;
-mod gimbal;
-mod gs;
-mod image;
-mod pixhawk;
-mod scheduler;
-mod server;
-mod state;
-mod telemetry;
-mod util;
-
-pub struct Channels {
-    /// Channel for broadcasting a signal when the system should terminate.
-    interrupt: broadcast::Sender<()>,
-
-    /// Channel for broadcasting telemetry information gathered from the gimbal and pixhawk
-    pixhawk_telemetry: watch::Receiver<Option<Telemetry>>,
-
-    /// Channel for broadcasting updates to the state of the Pixhawk.
-    pixhawk_event: broadcast::Sender<PixhawkEvent>,
-
-    /// Channel for sending instructions to the Pixhawk.
-    pixhawk_cmd: flume::Sender<pixhawk::PixhawkCommand>,
-
-    /// Channel for broadcasting updates to the state of the camera.
-    camera_event: broadcast::Sender<camera::main::CameraEvent>,
-
-    /// Channel for broadcasting updates from the current-sensing board.
-    #[cfg(feature = "csb")]
-    csb_telemetry: watch::Receiver<Option<camera::main::csb::CurrentSensingTelemetry>>,
-
-    /// Channel for sending instructions to the camera.
-    camera_cmd: flume::Sender<camera::main::CameraCommand>,
-
-    /// Channel for sending instructions to the gimbal.
-    gimbal_cmd: flume::Sender<gimbal::GimbalCommand>,
-
-    ///Channel for starting stream.
-    #[cfg(feature = "gstreamer")]
-    stream_cmd: flume::Sender<camera::auxiliary::stream::StreamCommand>,
-
-    ///Channel for starting saver.
-    #[cfg(feature = "gstreamer")]
-    save_cmd: flume::Sender<camera::auxiliary::save::SaveCommand>,
-
-    image_event: broadcast::Sender<image::ImageClientEvent>,
-
-    scheduler_cmd: flume::Sender<scheduler::SchedulerCommand>,
-}
-
-impl std::fmt::Debug for Channels {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Channels").finish()
-    }
-}
-
-#[derive(Debug)]
-pub struct Command<Req, Res, Err = anyhow::Error> {
-    request: Req,
-    chan: oneshot::Sender<Result<Res, Err>>,
-}
-
-impl<Req, Res, Err> Command<Req, Res, Err> {
-    fn new(request: Req) -> (Self, oneshot::Receiver<Result<Res, Err>>) {
-        let (sender, receiver) = oneshot::channel();
-
-        let cmd = Command {
-            chan: sender,
-            request,
-        };
-
-        (cmd, receiver)
-    }
-
-    fn channel(self) -> oneshot::Sender<Result<Res, Err>> {
-        self.chan
-    }
-
-    fn request(&self) -> &Req {
-        &self.request
-    }
-
-    fn respond(self, result: Result<Res, Err>) -> Result<(), Result<Res, Err>> {
-        let chan = self.channel();
-
-        if chan.is_canceled() {
-            panic!("chan is closed");
-        }
-
-        chan.send(result)
-    }
-}
-
-struct TaskBag {
-    names: Vec<String>,
-    tasks: Vec<JoinHandle<anyhow::Result<()>>>,
-}
-
-impl TaskBag {
-    pub fn new() -> Self {
-        Self {
-            names: vec![],
-            tasks: vec![],
-        }
-    }
-
-    pub fn add(
-        &mut self,
-        name: &str,
-        task: impl Future<Output = anyhow::Result<()>> + Send + 'static,
-    ) {
-        info!("spawning task \"{}\"", name);
-        self.names.push(name.to_owned());
-
-        #[cfg(tokio_unstable)]
-        self.tasks
-            .push(tokio::task::Builder::new().name(name).spawn(task).unwrap());
-
-        #[cfg(not(tokio_unstable))]
-        self.tasks.push(tokio::spawn(task));
-    }
-
-    pub async fn wait(&mut self) -> anyhow::Result<()> {
-        while self.tasks.len() > 0 {
-            let tasks = std::mem::replace(&mut self.tasks, vec![]);
-
-            // wait for each task to end
-            let (result, i, remaining) = futures::future::select_all(tasks).await;
-            let name = self.names.remove(i);
-
-            if self.names.len() > 0 {
-                let names_quoted = self
-                    .names
-                    .iter()
-                    .map(|n| format!("\"{}\"", n))
-                    .collect::<Vec<_>>()
-                    .join(", ");
-
-                info!("task \"{}\" ended, tasks {} remaining", name, names_quoted);
-            } else {
-                info!("task \"{}\" ended, no tasks remaining", name);
-            }
-
-            // if a task ended with an error, end the process with an interrupt
-            if let Err(err) = result.unwrap() {
-                error!("got error from task \"{}\": {:?}", name, err);
-                return Err(err);
-            }
-
-            self.tasks = remaining;
-        }
-
-        Ok(())
-    }
-}
+mod config;
 
 #[tokio::main(flavor = "multi_thread")]
 async fn main() -> anyhow::Result<()> {
+    // setup colorful backtraces
     color_backtrace::install();
 
-    let mut targets = tracing_subscriber::filter::Targets::new();
+    // set up logging and interactive line editor
+    let (editor, stdout) =
+        Readline::new("ps> ".into()).context("failed to create interactive editor")?;
+
+    let mut logging_unset_warning = false;
+    let mut logging_targets = tracing_subscriber::filter::Targets::new();
 
     if let Ok(directives) = std::env::var("RUST_LOG") {
         for directive in directives.split(',') {
             if let Some((target, level)) = directive.split_once('=') {
-                targets = targets.with_target(
+                logging_targets = logging_targets.with_target(
                     target,
                     level.parse::<LevelFilter>().context("invalid log level")?,
                 );
             } else {
-                targets = targets.with_default(
+                logging_targets = logging_targets.with_default(
                     directive
                         .parse::<LevelFilter>()
                         .context("invalid log level")?,
                 );
             }
         }
+    } else {
+        logging_targets = logging_targets.with_target("plane_system", LevelFilter::INFO);
+        logging_unset_warning = true;
     }
 
     let (writer, _guard) =
@@ -216,196 +57,175 @@ async fn main() -> anyhow::Result<()> {
 
     reg
         // writer that outputs to console
-        .with(tracing_subscriber::fmt::layer().with_filter(targets))
+        .with(
+            tracing_subscriber::fmt::layer()
+                .with_writer({
+                    let stdout = stdout.clone();
+                    move || stdout.clone()
+                })
+                .with_filter(logging_targets),
+        )
         // writer that outputs to files
         .with(
             tracing_subscriber::fmt::layer()
                 .with_ansi(false)
                 .with_writer(writer)
-                .with_filter(
-                    Targets::new().with_targets(vec![("plane_system", LevelFilter::DEBUG)]),
-                ),
+                .with_filter(Targets::new().with_target("plane_system", LevelFilter::DEBUG)),
         )
         .init();
 
+    let mut features = vec![];
+
+    #[cfg(feature = "aux-camera")]
+    features.push("aux-camera");
+
+    #[cfg(feature = "csb")]
+    features.push("csb");
+
+    info!(
+        "initializing plane system v{} ({})",
+        env!("CARGO_PKG_VERSION"),
+        features.join(",")
+    );
+
+    if logging_unset_warning {
+        warn!("RUST_LOG environment variable was not specified, so only logs from the plane system w/ level INFO or higher will be shown! specifying RUST_LOG is strongly recommended");
+    }
+
     let main_args: cli::args::MainArgs = cli::args::MainArgs::parse();
 
-    let config = if let Some(config_path) = main_args.config {
-        debug!("reading config from {:?}", &config_path);
-        cli::config::PlaneSystemConfig::read_from_path(config_path)
-    } else {
-        debug!("reading config from default location");
-        cli::config::PlaneSystemConfig::read()
-    };
+    debug!("reading config from {:?}", &main_args.config);
+    let config = crate::config::PlaneSystemConfig::read_from_path(&main_args.config)
+        .context("failed to read config file")?;
+    let config = config;
 
-    let config = config.context("failed to read config file")?;
-
-    run_tasks(config).await
+    run_tasks(config, editor, stdout).await
 }
 
-async fn run_tasks(config: cli::config::PlaneSystemConfig) -> anyhow::Result<()> {
-    let (interrupt_sender, _) = broadcast::channel(1);
+async fn run_tasks(
+    config: crate::config::PlaneSystemConfig,
+    editor: Readline,
+    stdout: SharedWriter,
+) -> anyhow::Result<()> {
+    let cancellation_token = CancellationToken::new();
 
     ctrlc::set_handler({
-        let interrupt_sender = interrupt_sender.clone();
+        let cancellation_token = cancellation_token.clone();
         move || {
             info!("received interrupt, shutting down");
-            let _ = interrupt_sender.send(());
+            cancellation_token.cancel();
         }
     })
     .expect("could not set ctrl+c handler");
 
-    let mut tasks = TaskBag::new();
+    let mut tasks = Vec::<Box<dyn ps_client::Task + Send>>::new();
 
-    {
-        let (pixhawk_telemetry_sender, pixhawk_telemetry_receiver) = watch::channel(None);
-        let (pixhawk_event_sender, _) = broadcast::channel(64);
-        let (camera_event_sender, _) = broadcast::channel(256);
-        #[cfg(feature = "csb")]
-        let (csb_telemetry_sender, csb_telemetry_receiver) = watch::channel(None);
-        let (camera_cmd_sender, camera_cmd_receiver) = flume::unbounded();
-        let (gimbal_cmd_sender, _gimbal_cmd_receiver) = flume::unbounded();
-        let (scheduler_cmd_sender, scheduler_cmd_receiver) = flume::unbounded();
-        #[cfg(feature = "gstreamer")]
-        let (stream_cmd_sender, stream_cmd_receiver) = flume::unbounded();
-        #[cfg(feature = "gstreamer")]
-        let (save_cmd_sender, save_cmd_receiver) = flume::unbounded();
-        let (image_event_sender, _) = broadcast::channel(256);
-        let (pixhawk_cmd_sender, pixhawk_cmd_receiver) = flume::unbounded();
+    let pixhawk_evt_rx = match config.pixhawk {
+        Some(c) => {
+            debug!("initializing pixhawk task");
+            let evt_task =
+                ps_pixhawk::create_task(c).context("failed to initialize pixhawk task")?;
+            let pixhawk_evt_rx = evt_task.events();
+            tasks.push(Box::new(evt_task));
+            Some(pixhawk_evt_rx)
+        }
+        None => None,
+    };
 
-        let channels = Arc::new(Channels {
-            interrupt: interrupt_sender.clone(),
-            pixhawk_telemetry: pixhawk_telemetry_receiver,
-            pixhawk_event: pixhawk_event_sender,
-            pixhawk_cmd: pixhawk_cmd_sender,
-            camera_event: camera_event_sender,
-            #[cfg(feature = "csb")]
-            csb_telemetry: csb_telemetry_receiver,
-            camera_cmd: camera_cmd_sender,
-            gimbal_cmd: gimbal_cmd_sender,
-            #[cfg(feature = "gstreamer")]
-            stream_cmd: stream_cmd_sender,
-            #[cfg(feature = "gstreamer")]
-            save_cmd: save_cmd_sender,
-            image_event: image_event_sender,
-            scheduler_cmd: scheduler_cmd_sender,
-        });
+    debug!("initializing telemetry task");
+    let telem_task = ps_telemetry::create_task(pixhawk_evt_rx, None)
+        .context("failed to initialize telemetry task")?;
+    let telem_rx = telem_task.telemetry();
+    tasks.push(Box::new(telem_task));
 
-        if let Some(pixhawk_config) = config.pixhawk {
-            tasks.add("pixhawk", {
-                let channels = channels.clone();
-                async move {
-                    let pixhawk_client = PixhawkClient::connect(
-                        channels.clone(),
-                        pixhawk_cmd_receiver,
-                        pixhawk_config.address,
-                        pixhawk_config.mavlink,
-                    )
-                    .await?;
-                    pixhawk_client.run().await
-                }
-            });
+    let camera_cmd_tx = if let Some(c) = config.main_camera {
+        debug!("initializing camera tasks");
+        let (control_task, evt_task, download_task) =
+            ps_main_camera::create_tasks(c).context("failed to initialize camera tasks")?;
 
-            tasks.add("telemetry", {
-                let telemetry = TelemetryStream::new(channels.clone(), pixhawk_telemetry_sender);
-                async move { telemetry.run().await }
-            });
-        } else {
-            info!(
-                "pixhawk address not specified, disabling pixhawk connection and telemetry stream"
-            );
+        let camera_cmd_tx = control_task.cmd();
+        let camera_download_rx = download_task.download();
+
+        tasks.push(Box::new(control_task));
+        tasks.push(Box::new(evt_task));
+        tasks.push(Box::new(download_task));
+
+        if let Some(c) = config.download {
+            debug!("initializing download task");
+            let download_task = ps_download::create_task(c, telem_rx, camera_download_rx)
+                .context("failed to initialize download task")?;
+            tasks.push(Box::new(download_task));
         }
 
-        if let Some(camera_config) = config.main_camera {
-            tasks.add("camera", {
-                camera::main::run(channels.clone(), camera_cmd_receiver)
-            });
+        Some(camera_cmd_tx)
+    } else {
+        None
+    };
 
-            #[cfg(feature = "csb")]
-            if let Some(csb_config) = camera_config.current_sensing {
-                tasks.add("current sensing", {
-                    camera::main::csb::run(channels.clone(), csb_telemetry_sender, csb_config)
-                });
-            }
+    #[cfg(feature = "aux-camera")]
+    let aux_camera_save_cmd_tx = if let Some(c) = config.aux_camera {
+        debug!("initializing aux camera tasks");
+
+        let (stream_task, save_task) = ps_aux_camera::create_tasks(c)?;
+
+        let mut aux_camera_save_cmd_tx = None;
+
+        if let Some(stream_task) = stream_task {
+            tasks.push(Box::new(stream_task));
+        }
+        if let Some(save_task) = save_task {
+            aux_camera_save_cmd_tx = Some(save_task.cmd());
+            tasks.push(Box::new(save_task));
         }
 
-        if let Some(image_config) = config.image {
-            tasks.add("image download", {
-                image::run(channels.clone(), image_config)
-            });
-        }
+        aux_camera_save_cmd_tx
+    } else {
+        None
+    };
 
-        if let Some(_gimbal_config) = config.gimbal {
-            panic!("gimbal not implemented");
-        }
+    #[cfg(not(feature = "aux-camera"))]
+    let aux_camera_save_cmd_tx = None;
 
-        if let Some(gs_config) = config.ground_server {
-            tasks.add("ground server", {
-                let gs_client = GroundServerClient::new(channels.clone(), gs_config.address)?;
-                async move { gs_client.run().await }
-            });
-        }
+    // TODO: gs task
 
-        if let Some(_scheduler_config) = config.scheduler {
-            tasks.add("scheduler", {
-                scheduler::run(channels.clone(), scheduler_cmd_receiver)
-            });
-        }
+    let mut join_set = JoinSet::new();
 
-        #[cfg(feature = "gstreamer")]
-        if let Some(aux_config) = config.aux_camera {
-            if let Some(stream_config) = aux_config.stream {
-                tasks.add("aux camera live stream", {
-                    let mut stream_client = camera::auxiliary::stream::StreamClient::connect(
-                        channels.clone(),
-                        stream_cmd_receiver,
-                        stream_config.address,
-                        aux_config.cameras.clone(),
-                    )?;
-                    async move { stream_client.run().await }
-                });
-            }
+    join_set.spawn(run_interactive_cli(
+        editor,
+        stdout,
+        camera_cmd_tx,
+        aux_camera_save_cmd_tx,
+        cancellation_token.clone(),
+    ));
 
-            if let Some(save_config) = aux_config.save {
-                tasks.add("aux camera live record", {
-                    let mut save_client = camera::auxiliary::save::SaveClient::connect(
-                        channels.clone(),
-                        save_cmd_receiver,
-                        save_config.save_path,
-                        aux_config.cameras.clone(),
-                    )?;
-                    async move { save_client.run().await }
-                });
-            }
-        }
+    for task in tasks {
+        let task_name = task.name();
+        debug!("starting {} task", task_name);
+        let ct = cancellation_token.clone();
 
-        tasks.add("command line interface", {
-            let channels = channels.clone();
-            cli::repl::run(channels)
-        });
+        join_set.spawn(async move {
+            // drop guard is there to print a log message when the future is
+            // dropped, which happens when the task terminates for any reason
+            let _dg = drop_guard::guard((), |_| debug!("exiting {} task", task_name));
 
-        tasks.add("plane server", {
-            let channels = channels.clone();
-            server::serve(channels, config.plane_server.address)
+            task.run(ct).await
         });
     }
 
-    if let Err(_) = tasks.wait().await {
-        let _ = interrupt_sender.send(());
+    while let Some(res) = join_set.join_next().await {
+        // if task panicked, then will be Some(Err)
+        // if task terminated w/ error, then will be Some(Ok(Err))
+        // need to propagate errors in both cases
 
-        info!(
-            "terminating in 5 seconds, remaining tasks: {}",
-            tasks.names.join(", ")
-        );
-        sleep(Duration::from_secs(5)).await;
-        info!(
-            "terminating now, remaining tasks: {}",
-            tasks.names.join(", ")
-        );
-        exit(1);
+        let ctdg = cancellation_token.clone().drop_guard();
+
+        res.context("task failed")?
+            .context("task terminated with error")?;
+
+        // if task exited w/o any sort of error, don't trigger cancellation of
+        // other tasks
+        ctdg.disarm();
     }
-
-    info!("exit");
 
     Ok(())
 }

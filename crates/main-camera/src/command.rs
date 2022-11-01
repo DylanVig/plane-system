@@ -17,10 +17,27 @@ pub enum CameraRequest {
     File(CameraFileRequest),
 
     /// capture an image
-    Capture,
+    Capture {
+        /// if specified, will capture a burst of images over the given number
+        /// of seconds
+        #[clap(visible_alias = "burst", short, long)]
+        burst_duration: Option<u8>,
 
-    /// disconnect and reconnect to the camera
-    Reconnect,
+        #[clap(visible_alias = "fast", short = 'f', long)]
+        burst_high_speed: bool,
+    },
+
+    CCHack {
+        #[clap(short, long)]
+        interval: u8,
+
+        #[clap(short, long)]
+        count: Option<u32>,
+    },
+
+    Reset,
+
+    Initialize,
 
     Status,
 
