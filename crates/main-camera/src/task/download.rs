@@ -68,7 +68,9 @@ impl Task for DownloadTask {
                 loop {
                     match evt_rx.recv_async().await {
                         Ok(evt) => {
-                            if let ptp::EventCode::Vendor(0xC204) | ptp::EventCode::Vendor(0xC203) = evt.code {
+                            if let ptp::EventCode::Vendor(0xC204) | ptp::EventCode::Vendor(0xC203) =
+                                evt.code
+                            {
                                 break;
                             }
                         }

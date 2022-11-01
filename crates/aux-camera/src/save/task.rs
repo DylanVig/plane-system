@@ -14,9 +14,7 @@ pub struct SaveTask {
     interface: SaveInterface,
 }
 
-pub fn create_task(
-    config: SaveConfig,
-) -> anyhow::Result<SaveTask> {
+pub fn create_task(config: SaveConfig) -> anyhow::Result<SaveTask> {
     let (cmd_tx, cmd_rx) = flume::bounded(256);
 
     if !config.path.exists() {
@@ -26,7 +24,11 @@ pub fn create_task(
     let interface = SaveInterface::new(config.path, config.cameras)
         .context("failed to create save interface")?;
 
-    Ok((SaveTask { interface, cmd_rx, cmd_tx }))
+    Ok((SaveTask {
+        interface,
+        cmd_rx,
+        cmd_tx,
+    }))
 }
 
 impl SaveTask {

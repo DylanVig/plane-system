@@ -326,7 +326,7 @@ pub(super) async fn run_set(
         ),
         CameraSetRequest::CcInterval { interval } => {
             let mut interval = (interval * 10.) as u16;
-            
+
             if interval < 10 {
                 bail!("minimum interval is 1 second");
             }

@@ -33,10 +33,7 @@ impl SaveInterface {
             path.push(i.to_string());
             path.set_extension("mp4");
 
-            let new_command = &format!(
-                "{} ! filesink location={:?}",
-                &self.cameras[i], &path
-            );
+            let new_command = &format!("{} ! filesink location={:?}", &self.cameras[i], &path);
             command = format!("{}\n{}", command, new_command)
         }
 
