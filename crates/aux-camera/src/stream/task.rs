@@ -20,11 +20,11 @@ pub fn create_task(config: StreamConfig) -> anyhow::Result<StreamTask> {
     let interface = StreamInterface::new(config.address, config.cameras)
         .context("failed to create stream interface")?;
 
-    Ok((StreamTask {
+    Ok(StreamTask {
         interface,
         cmd_rx,
         cmd_tx,
-    }))
+    })
 }
 
 impl StreamTask {

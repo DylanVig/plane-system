@@ -24,11 +24,11 @@ pub fn create_task(config: SaveConfig) -> anyhow::Result<SaveTask> {
     let interface = SaveInterface::new(config.path, config.cameras)
         .context("failed to create save interface")?;
 
-    Ok((SaveTask {
+    Ok(SaveTask {
         interface,
         cmd_rx,
         cmd_tx,
-    }))
+    })
 }
 
 impl SaveTask {

@@ -2,14 +2,14 @@ use std::{sync::Arc, time::Duration};
 
 use anyhow::{bail, Context};
 use async_trait::async_trait;
-use log::{debug, error, info, trace, warn};
+use log::{debug, error, info, warn};
 use num_traits::ToPrimitive;
 use ps_client::{ChannelCommandSink, ChannelCommandSource, Task};
 use ptp::{PtpData, PtpEvent};
 use tokio::{
     select,
     sync::{oneshot, RwLock},
-    time::{interval, sleep, timeout, MissedTickBehavior},
+    time::{sleep, timeout, MissedTickBehavior},
 };
 use tokio_util::sync::CancellationToken;
 
@@ -79,11 +79,11 @@ impl Task for ControlTask {
                                 .await
                             }
                             CameraRequest::CCHack { interval, count } => {
-                                let interface = self.interface.clone();
+                                let _interface = self.interface.clone();
                                 let cmd_tx = self.cmd_tx.clone();
 
                                 tokio::task::spawn(async move {
-                                    let mut counter = 0;
+                                    let counter = 0;
                                     let mut interval =
                                         tokio::time::interval(Duration::from_secs(interval as u64));
 

@@ -3,7 +3,7 @@ use std::{sync::Arc, time::Duration};
 use anyhow::Context;
 use async_trait::async_trait;
 use log::*;
-use num_traits::ToPrimitive;
+
 use ps_client::Task;
 use ptp::PtpEvent;
 use tokio::{select, sync::RwLock};

@@ -1,5 +1,5 @@
 use anyhow::bail;
-use ps_client::ChannelCommandSink;
+
 use serde::Deserialize;
 
 pub mod save;

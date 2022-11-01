@@ -52,7 +52,7 @@ impl UploadTask {
         //extract the input parameters of ground server client and channnel to recieve commands
         let Self {
             cmd_rx,
-            cmd_tx,
+            cmd_tx: _,
             base_url,
             http_client,
         } = *self;
