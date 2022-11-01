@@ -24,6 +24,9 @@ The plane system is designed to run on Unix. On Windows, you will need to use WS
   - `rpi4-ubuntu-v1`
 
 ## how to run
+`plane-system` requires a configuration file. 
+Use a `.json` file in the `config` folder or
+  create your own `.json` file with the proper rules outlined.
 
 ### when debugging
 ```

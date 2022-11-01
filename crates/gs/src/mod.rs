@@ -31,6 +31,9 @@ impl GroundServerClient {
         })
     }
 
+
+
+    //run
     pub async fn run(self) -> anyhow::Result<()> {
         let mut interrupt_recv = self.channels.interrupt.subscribe();
         let mut image_recv = self.channels.image_event.subscribe();
