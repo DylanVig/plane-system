@@ -2,6 +2,7 @@ use crate::GsConfig;
 use anyhow::bail;
 use anyhow::Context;
 use flume;
+
 use log::{debug, trace, warn};
 
 use ps_telemetry::Telemetry;
@@ -12,7 +13,7 @@ use std::{str::FromStr, sync::Arc};
 use tokio::select;
 use tokio_util::sync::CancellationToken;
 
-//enum to send command to ground server
+///This is a struct to contain the data to send to the ground server
 pub enum GsCommand {
     UploadImage {
         data: Arc<Vec<u8>>,
@@ -21,40 +22,39 @@ pub enum GsCommand {
     },
 }
 
-//create task from aux camera, save crate
-//purpose of this is to establish connection to ground server, the establihs a task to listen for communication from camera crate
-//return the communication channle it created
-//I made the channel two way, but it needs to be one
+///Creates task returning an upload task and transmitting channel
 pub fn create_task(config: GsConfig) -> anyhow::Result<UploadTask> {
-    //here I want to establish connection to ground server
+    let (cmd_tx, cmd_rx) = flume::bounded(256);
 
-    //create channel
-    let (_cmd_tx, cmd_rx) = flume::bounded(256);
-
-    //Here I want to establish a task
     Ok(UploadTask {
         base_url: reqwest::Url::from_str(&config.address).context("invalid ground server url")?,
-        http: reqwest::Client::new(),
+        http_client: reqwest::Client::new(),
         cmd_rx,
+        cmd_tx,
     })
 }
 
-//Task has the client to ocmmunicate to ground server and cmd_rx to communicate with camera crate
+///Task has the client communicate to the ground server. cmd_rx communicates with the camera crate.
+///Listens for command and uploads file to ground server.
 pub struct UploadTask {
     base_url: reqwest::Url,
-    http: reqwest::Client,
+    http_client: reqwest::Client,
     //receiving half of the channel
     cmd_rx: flume::Receiver<GsCommand>,
+    //transmitting half of the channel
+    cmd_tx: flume::Sender<GsCommand>,
 }
 
+///Sends image to the ground server
 impl UploadTask {
-    //this should wait for a command, then send image to ground server
+    //this waits for a command, then send image to ground server
     pub async fn run(self: Box<Self>, cancel: CancellationToken) -> anyhow::Result<()> {
         //extract the input parameters of ground server client and channnel to recieve commands
         let Self {
             cmd_rx,
+            cmd_tx,
             base_url,
-            http,
+            http_client,
         } = *self;
 
         //wait for image to be send
@@ -69,7 +69,7 @@ impl UploadTask {
                         file,
                         telemetry,
                     } => {
-                        // start image download process
+                        //image download completed, starting upload process
                         debug!("image download detected, uploading file to ground server");
 
                         if telemetry.is_none() {
@@ -83,7 +83,7 @@ impl UploadTask {
                                 .to_string_lossy()
                                 .into_owned(),
                             telemetry,
-                            &http,
+                            &http_client,
                             &base_url,
                         )
                         .await?;
@@ -91,7 +91,6 @@ impl UploadTask {
                 };
             }
 
-            //if ever gets past loop, then its an error cause that loop supposed ot be infinite
             Ok::<_, anyhow::Error>(())
         };
 
@@ -105,7 +104,7 @@ impl UploadTask {
 }
 
 // Sends an image to the ground server.
-pub async fn send_image(
+async fn send_image(
     file_data: &[u8],
     file_name: String,
     telemetry: Option<Telemetry>,
@@ -116,7 +115,7 @@ pub async fn send_image(
 
     let mime_type = {
         let file_ext = file_name.split(".").last();
-
+        //tells the reciever the type of data being recieved
         match file_ext {
             Some("jpg") | Some("jpeg") => "image/jpeg",
             Some("mp4") => "video/mp4",
@@ -153,7 +152,9 @@ pub async fn send_image(
                 }
             }
         })
+    //when there's no telemetry (no pixhawk, or not connected, etc), sends the telemetry below
     } else {
+        //runs when in debug mode
         if cfg!(debug_assertions) {
             warn!("no telemetry information available, uploading filler telemetry info");
 
@@ -175,6 +176,7 @@ pub async fn send_image(
                 }
             })
         } else {
+            //in release mode, will not upload anything if there is no telemetry
             bail!("no telemetry information available, cannot upload to ground server");
         }
     };
