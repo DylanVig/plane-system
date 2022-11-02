@@ -25,6 +25,7 @@ serde = { workspace = true }
 
 # utility
 clap = { version = "3", features = ["derive"] }
+chrono = { workspace = true }
 
 # i/o
 tokio-util = { version = "0.7" }
