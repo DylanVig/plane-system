@@ -55,8 +55,8 @@ impl Task for SaveTask {
 
             while let Ok((cmd, ret_tx)) = cmd_rx.recv_async().await {
                 let result = match cmd {
-                    SaveRequest::Start {} => interface.start_save(),
-                    SaveRequest::Stop {} => interface.end_save().await,
+                    SaveRequest::Start {} => interface.start().await,
+                    SaveRequest::Stop {} => interface.stop().await,
                 };
 
                 let _ = ret_tx.send(result);

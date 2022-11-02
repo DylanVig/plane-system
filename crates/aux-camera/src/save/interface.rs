@@ -21,8 +21,7 @@ impl SaveInterface {
         // Initialize GStreamer
         gst::init().context("failed to init gstreamer")?;
 
-        let mut save_path = save_path.as_ref().to_owned();
-        save_path.push(chrono::Local::now().format("%FT%H-%M-%S").to_string());
+        let save_path = save_path.as_ref().to_owned();
 
         let pipeline = None;
         Ok(Self {
@@ -33,23 +32,32 @@ impl SaveInterface {
         })
     }
 
-    pub fn start_save(&mut self) -> anyhow::Result<()> {
+    pub async fn start(&mut self) -> anyhow::Result<()> {
         if self.pipeline.is_some() {
             info!("saver is already running");
+            return Ok(());
         }
 
-        info!("Starting saver");
+        let mut save_path = self.save_path.clone();
+        save_path.push(chrono::Local::now().format("%FT%H-%M-%S").to_string());
 
-        let mut command = String::from("");
+        tokio::fs::create_dir_all(&save_path)
+            .await
+            .context("failed to create folder for saving videos")?;
+
+        info!("starting saver");
+
+        let mut commands = vec![];
 
         for i in 0..self.cameras.len() {
             let mut path = self.save_path.clone();
             path.push(format!("camera_{i}"));
-            path.set_extension(self.save_ext);
+            path.set_extension(&self.save_ext);
 
-            let new_command = &format!("{} ! filesink location={:?}", &self.cameras[i], &path);
-            command = format!("{}\n{}", command, new_command)
+            commands.push(format!("{} ! filesink location={:?}", &self.cameras[i], &path));
         }
+
+        let command = commands.join("\n");
 
         info!("running gstreamer pipeline: {command}");
 
@@ -66,7 +74,7 @@ impl SaveInterface {
         Ok(())
     }
 
-    pub async fn end_save(&mut self) -> anyhow::Result<()> {
+    pub async fn stop(&mut self) -> anyhow::Result<()> {
         if let Some(pipeline) = &self.pipeline {
             let bus = pipeline.bus().context("pipeline has no bus")?;
             let mut bus_stream = bus.stream_filtered(&[gst::MessageType::Eos]);
