@@ -58,9 +58,15 @@ impl SaveInterface {
 
     pub fn end_save(&mut self) -> anyhow::Result<()> {
         if let Some(pipeline) = &self.pipeline {
+            debug!("sending eos to pipeline");
+            pipeline.send_event(gst::event::Eos::new());
+
+            debug!("setting pipeline to null state");
             pipeline
                 .set_state(gst::State::Null)
                 .context("failed to set the pipeline to the `Null` state")?;
+
+            debug!("dropping pipeline");
         }
 
         self.pipeline = None;
