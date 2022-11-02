@@ -63,6 +63,8 @@ impl SaveInterface {
                 .context("failed to set the pipeline to the `Null` state")?;
         }
 
+        self.pipeline = None;
+
         Ok(())
     }
 }
