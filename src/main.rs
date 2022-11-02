@@ -138,6 +138,20 @@ async fn run_tasks(
     let telem_rx = telem_task.telemetry();
     tasks.push(Box::new(telem_task));
 
+    let gs_cmd_tx = if let Some(c) = config.ground_server {
+        debug!("initializing ground server tasks");
+
+        let upload_task = ps_gs::create_task(c)?;
+
+        let cmd_tx = upload_task.cmd();
+
+        tasks.push(Box::new(upload_task));
+
+        Some(cmd_tx)
+    } else {
+        None
+    };
+
     let camera_cmd_tx = if let Some(c) = config.main_camera {
         debug!("initializing camera tasks");
         let (control_task, evt_task, download_task) =
@@ -185,8 +199,6 @@ async fn run_tasks(
 
     #[cfg(not(feature = "aux-camera"))]
     let aux_camera_save_cmd_tx = None;
-
-    // TODO: gs task
 
     let mut join_set = JoinSet::new();
 

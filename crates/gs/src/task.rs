@@ -1,10 +1,12 @@
 use crate::GsConfig;
 use anyhow::bail;
 use anyhow::Context;
+use async_trait::async_trait;
 use flume;
 
 use log::{debug, trace, warn};
 
+use ps_client::Task;
 use ps_telemetry::Telemetry;
 use reqwest;
 use serde_json::json;
@@ -45,10 +47,21 @@ pub struct UploadTask {
     cmd_tx: flume::Sender<GsCommand>,
 }
 
-///Sends image to the ground server
 impl UploadTask {
+    pub fn cmd(&self) -> flume::Sender<GsCommand> {
+        self.cmd_tx.clone()
+    }
+}
+
+///Sends image to the ground server
+#[async_trait]
+impl Task for UploadTask {
+    fn name(&self) -> &'static str {
+        "gs/upload"
+    }
+
     //this waits for a command, then send image to ground server
-    pub async fn run(self: Box<Self>, cancel: CancellationToken) -> anyhow::Result<()> {
+    async fn run(self: Box<Self>, cancel: CancellationToken) -> anyhow::Result<()> {
         //extract the input parameters of ground server client and channnel to recieve commands
         let Self {
             cmd_rx,
