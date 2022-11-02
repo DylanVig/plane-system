@@ -1,24 +1,34 @@
 use std::path::{Path, PathBuf};
 
 use anyhow::Context;
+use futures::stream::StreamExt;
 use gst::prelude::*;
 use log::*;
 
 pub struct SaveInterface {
     pipeline: Option<gst::Element>,
-    path: PathBuf,
+    save_path: PathBuf,
+    save_ext: String,
     cameras: Vec<String>,
 }
 
 impl SaveInterface {
-    pub fn new(path: impl AsRef<Path>, cameras: Vec<String>) -> anyhow::Result<Self> {
+    pub fn new(
+        save_path: impl AsRef<Path>,
+        save_ext: String,
+        cameras: Vec<String>,
+    ) -> anyhow::Result<Self> {
         // Initialize GStreamer
         gst::init().context("failed to init gstreamer")?;
+
+        let mut save_path = save_path.as_ref().to_owned();
+        save_path.push(chrono::Local::now().format("%FT%H-%M-%S").to_string());
 
         let pipeline = None;
         Ok(Self {
             pipeline,
-            path: path.as_ref().to_owned(),
+            save_path,
+            save_ext,
             cameras,
         })
     }
@@ -33,9 +43,9 @@ impl SaveInterface {
         let mut command = String::from("");
 
         for i in 0..self.cameras.len() {
-            let mut path = self.path.clone();
-            path.push(i.to_string());
-            path.set_extension("mp4");
+            let mut path = self.save_path.clone();
+            path.push(format!("camera_{i}"));
+            path.set_extension(self.save_ext);
 
             let new_command = &format!("{} ! filesink location={:?}", &self.cameras[i], &path);
             command = format!("{}\n{}", command, new_command)
@@ -56,10 +66,16 @@ impl SaveInterface {
         Ok(())
     }
 
-    pub fn end_save(&mut self) -> anyhow::Result<()> {
+    pub async fn end_save(&mut self) -> anyhow::Result<()> {
         if let Some(pipeline) = &self.pipeline {
+            let bus = pipeline.bus().context("pipeline has no bus")?;
+            let mut bus_stream = bus.stream_filtered(&[gst::MessageType::Eos]);
+
             debug!("sending eos to pipeline");
             pipeline.send_event(gst::event::Eos::new());
+
+            debug!("waiting for eos message from bus");
+            bus_stream.next().await.context("no message from bus")?;
 
             debug!("setting pipeline to null state");
             pipeline

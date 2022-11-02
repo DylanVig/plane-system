@@ -17,11 +17,11 @@ pub struct SaveTask {
 pub fn create_task(config: SaveConfig) -> anyhow::Result<SaveTask> {
     let (cmd_tx, cmd_rx) = flume::bounded(256);
 
-    if !config.path.exists() {
-        std::fs::create_dir(&config.path).context("failed to create save directory")?;
+    if !config.save_path.exists() {
+        std::fs::create_dir(&config.save_path).context("failed to create save directory")?;
     }
 
-    let interface = SaveInterface::new(config.path, config.cameras)
+    let interface = SaveInterface::new(config.save_path, config.save_ext, config.pipelines)
         .context("failed to create save interface")?;
 
     Ok(SaveTask {
@@ -54,10 +54,10 @@ impl Task for SaveTask {
             trace!("initializing saver");
 
             while let Ok((cmd, ret_tx)) = cmd_rx.recv_async().await {
-                let result = tokio::task::block_in_place(|| match cmd {
+                let result = match cmd {
                     SaveRequest::Start {} => interface.start_save(),
-                    SaveRequest::Stop {} => interface.end_save(),
-                });
+                    SaveRequest::Stop {} => interface.end_save().await,
+                };
 
                 let _ = ret_tx.send(result);
             }

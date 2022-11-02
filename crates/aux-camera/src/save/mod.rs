@@ -10,9 +10,13 @@ pub use task::*;
 
 #[derive(Clone, Debug, Deserialize)]
 pub struct SaveConfig {
-    /// Path where videos from auxiliary cameras should be saved.
-    pub path: PathBuf,
+    /// Path where videos from auxiliary cameras should be saved
+    pub save_path: PathBuf,
 
-    /// A list of gstreamer camera specifications
-    pub cameras: Vec<String>,
+    /// File extension of output videos.
+    pub save_ext: String,
+
+    /// A list of gstreamer pipeline specifications. A filesink will be appended
+    /// to the end of each one.
+    pub pipelines: Vec<String>,
 }

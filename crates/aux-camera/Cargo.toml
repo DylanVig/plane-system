@@ -8,19 +8,20 @@ edition = "2021"
 ps-async-util = { path = "../async-util" }
 ps-client = { path = "../client" }
 
-gst = { version = "0.18", package = "gstreamer" }
+gst = { version = "0.19", package = "gstreamer" }
 
 # logging + error handling
 anyhow = "1.0"
 log = "0.4"
 
 # async 
-tokio = { version = "1.16", features = ["net", "fs"] }
-async-trait = "0.1"
-flume = "0.10"
+tokio = { workspace = true }
+async-trait = { workspace = true }
+futures = { workspace = true }
+flume = { workspace = true }
 
 # serialization
-serde = { version = "1.0", features = ["derive"] }
+serde = { workspace = true }
 
 # utility
 clap = { version = "3", features = ["derive"] }
