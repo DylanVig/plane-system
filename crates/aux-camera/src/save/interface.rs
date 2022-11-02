@@ -50,11 +50,11 @@ impl SaveInterface {
         let mut commands = vec![];
 
         for i in 0..self.cameras.len() {
-            let mut path = self.save_path.clone();
-            path.push(format!("camera_{i}"));
-            path.set_extension(&self.save_ext);
+            let mut file_save_path = save_path.clone();
+            file_save_path.push(format!("camera_{i}"));
+            file_save_path.set_extension(&self.save_ext);
 
-            commands.push(format!("{} ! filesink location={:?}", &self.cameras[i], &path));
+            commands.push(format!("{} ! filesink location={:?}", &self.cameras[i], &file_save_path));
         }
 
         let command = commands.join("\n");
