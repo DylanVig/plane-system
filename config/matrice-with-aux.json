@@ -1,0 +1,29 @@
+  {
+    "pixhawk": {
+      "address": "127.0.0.1:5760",
+      "mavlink": {
+        "type": "V2"
+      }
+    },
+    "plane_server": {
+      "address": "[::]:8080"
+    },
+    "ground_server": null,
+    "download": {
+      "save_path": "./images/"
+    },
+    "scheduler": null,
+    "gimbal": null,
+    "main_camera": {
+      "kind": "R10C"
+    },
+    "aux_camera": {
+      "save": {
+        "save_path": "./videos/",
+        "save_ext": "mp4",
+        "pipelines": [
+          "v4l2src device=\"/dev/video0\" ! videoconvert ! v4l2h264enc extra-controls=\"controls,video_bitrate=20000000,video_bitrate_mode=1\" ! video/x-h264,level=(string)4.2 ! h264parse ! mp4mux"
+        ]
+      }
+    }
+  }
