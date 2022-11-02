@@ -52,7 +52,7 @@ impl Task for StreamTask {
             while let Ok((cmd, ret_tx)) = cmd_rx.recv_async().await {
                 let result = tokio::task::block_in_place(|| match cmd {
                     StreamRequest::Start {} => interface.start_stream(),
-                    StreamRequest::End {} => interface.end_stream(),
+                    StreamRequest::Stop {} => interface.end_stream(),
                 });
 
                 let _ = ret_tx.send(result);

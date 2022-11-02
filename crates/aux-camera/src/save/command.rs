@@ -4,8 +4,8 @@ use clap::{AppSettings, Subcommand};
 #[clap(setting(AppSettings::NoBinaryName))]
 #[clap(rename_all = "kebab-case")]
 pub enum SaveRequest {
-    Start {},
-    End {},
+    Start,
+    Stop,
 }
 
 pub type SaveResponse = ();

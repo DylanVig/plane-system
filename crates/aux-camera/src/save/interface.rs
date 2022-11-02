@@ -24,6 +24,10 @@ impl SaveInterface {
     }
 
     pub fn start_save(&mut self) -> anyhow::Result<()> {
+        if self.pipeline.is_some() {
+            info!("saver is already running");
+        }
+
         info!("Starting saver");
 
         let mut command = String::from("");
@@ -39,7 +43,8 @@ impl SaveInterface {
 
         info!("running gstreamer pipeline: {command}");
 
-        self.pipeline = Some(gst::parse_launch(&command).unwrap());
+        self.pipeline =
+            Some(gst::parse_launch(&command).context("failed to start gstreamer pipeline"));
 
         // Start playing
         self.pipeline
@@ -52,12 +57,11 @@ impl SaveInterface {
     }
 
     pub fn end_save(&mut self) -> anyhow::Result<()> {
-        // End pipeline
-        self.pipeline
-            .as_ref()
-            .unwrap()
-            .set_state(gst::State::Null)
-            .context("failed to set the pipeline to the `Null` state")?;
+        if let Some(pipeline) = &self.pipeline {
+            pipeline
+                .set_state(gst::State::Null)
+                .context("failed to set the pipeline to the `Null` state")?;
+        }
 
         Ok(())
     }

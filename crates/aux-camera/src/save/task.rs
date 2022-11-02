@@ -56,7 +56,7 @@ impl Task for SaveTask {
             while let Ok((cmd, ret_tx)) = cmd_rx.recv_async().await {
                 let result = tokio::task::block_in_place(|| match cmd {
                     SaveRequest::Start {} => interface.start_save(),
-                    SaveRequest::End {} => interface.end_save(),
+                    SaveRequest::Stop {} => interface.end_save(),
                 });
 
                 let _ = ret_tx.send(result);
