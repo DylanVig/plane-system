@@ -44,7 +44,7 @@ impl SaveInterface {
         info!("running gstreamer pipeline: {command}");
 
         self.pipeline =
-            Some(gst::parse_launch(&command).context("failed to start gstreamer pipeline"));
+            Some(gst::parse_launch(&command).context("failed to start gstreamer pipeline")?);
 
         // Start playing
         self.pipeline
