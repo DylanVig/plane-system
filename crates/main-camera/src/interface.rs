@@ -280,15 +280,16 @@ impl CameraInterface {
             let current_prop_code = match PropertyCode::from_u16(current_prop.property_code) {
                 Some(code) => code,
                 None => {
-                    trace!("ignoring invalid property with code {:#0x}: {:?}", current_prop.property_code, current_prop);
+                    trace!(
+                        "ignoring invalid property with code {:#0x}: {:?}",
+                        current_prop.property_code,
+                        current_prop
+                    );
                     continue;
                 }
             };
 
-            properties.insert(
-                current_prop_code,
-                current_prop,
-            );
+            properties.insert(current_prop_code, current_prop);
         }
 
         Ok(properties)
@@ -317,7 +318,7 @@ impl CameraInterface {
     pub fn execute(&mut self, code: ControlCode, payload: ptp::PtpData) -> anyhow::Result<()> {
         let buf = payload.encode();
 
-        trace!("sending SDIO_ControlDevice");
+        trace!("sending SDIO_ControlDevice {code:?} {payload:?}");
 
         self.camera.command(
             CommandCode::SdioControlDevice.into(),
