@@ -267,7 +267,7 @@ async fn run_zoom(
             interface.set(
                 PropertyCode::ZoomAbsolutePosition,
                 ptp::PtpData::UINT8(level),
-            );
+            )?;
             //do button press down
             interface.execute(ControlCode::ZoomControlAbsolute, PtpData::UINT16(0x0002))?;
             sleep(Duration::from_secs(1)).await;
