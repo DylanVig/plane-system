@@ -524,6 +524,10 @@ pub(super) async fn run_capture(
                                 reason: CaptureFailure::Error(err_mode),
                             });
                         }
+
+                        other => {
+                            warn!("unexpected status from camera: {other:?}");
+                        }
                     }
 
                     break;

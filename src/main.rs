@@ -155,7 +155,7 @@ async fn run_tasks(
     let camera_cmd_tx = if let Some(c) = config.main_camera {
         debug!("initializing camera tasks");
         let (control_task, evt_task, download_task) =
-            ps_main_camera::create_tasks(c).context("failed to initialize camera tasks")?;
+            ps_main_camera::create_tasks(c, telem_rx).context("failed to initialize camera tasks")?;
 
         let camera_cmd_tx = control_task.cmd();
         let camera_download_rx = download_task.download();
@@ -163,13 +163,6 @@ async fn run_tasks(
         tasks.push(Box::new(control_task));
         tasks.push(Box::new(evt_task));
         tasks.push(Box::new(download_task));
-
-        if let Some(c) = config.download {
-            debug!("initializing download task");
-            let download_task = ps_download::create_task(c, telem_rx, camera_download_rx)
-                .context("failed to initialize download task")?;
-            tasks.push(Box::new(download_task));
-        }
 
         Some(camera_cmd_tx)
     } else {

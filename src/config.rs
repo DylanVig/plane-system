@@ -13,7 +13,6 @@ pub struct PlaneSystemConfig {
     // pub plane_server: PlaneServerConfig,
     pub pixhawk: Option<ps_pixhawk::PixhawkConfig>,
     pub ground_server: Option<ps_gs::GsConfig>,
-    pub download: Option<ps_download::DownloadConfig>,
     pub main_camera: Option<ps_main_camera::MainCameraConfig>,
 
     #[cfg(feature = "aux-camera")]
