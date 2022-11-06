@@ -348,10 +348,9 @@ pub(super) async fn run_set(
     req: CameraSetRequest,
 ) -> anyhow::Result<CameraResponse> {
     let (prop, data) = match req {
-        CameraSetRequest::ExposureMode { mode } => (
-            PropertyCode::ExposureMode,
-            ptp::Data::UINT16(mode as u16),
-        ),
+        CameraSetRequest::ExposureMode { mode } => {
+            (PropertyCode::ExposureMode, ptp::Data::UINT16(mode as u16))
+        }
         CameraSetRequest::OperatingMode { mode } => {
             (PropertyCode::OperatingMode, ptp::Data::UINT8(mode as u8))
         }
@@ -505,15 +504,27 @@ pub(super) async fn run_capture(
 
             match evt.code {
                 ptp::EventCode::Vendor(0xC204) | ptp::EventCode::Vendor(0xC203) => {
-                    // match evt.params[0] {
-                    //     Some(0x0001) => {
+                    match evt.params.get(0) {
+                        Some(0x0001) => {
+                            let _ = ctrl_evt_tx.try_send(ControlEvent::CaptureSuccess {
+                                timestamp: Local::now(),
+                            });
+                        }
 
-                    //     }
-                    // }
+                        Some(0x0002) => {
+                            let mut interface = interface.write().await;
+                            let props = interface
+                                .query()
+                                .context("failed to query current camera state")?;
+                            let err_mode: ErrorMode =
+                                convert_camera_value(&props, PropertyCode::Caution)?;
 
-                    let _ = ctrl_evt_tx.try_send(ControlEvent::CaptureTrigger {
-                        timestamp: Local::now(),
-                    });
+                            let _ = ctrl_evt_tx.try_send(ControlEvent::CaptureFailed {
+                                timestamp: Local::now(),
+                                reason: CaptureFailure::Error(err_mode),
+                            });
+                        }
+                    }
 
                     break;
                 }
