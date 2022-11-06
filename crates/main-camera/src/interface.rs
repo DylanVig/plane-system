@@ -132,7 +132,7 @@ struct CameraState {
 }
 
 pub struct CameraInterface {
-    camera: ptp::PtpCamera<rusb::GlobalContext>,
+    camera: ptp::Camera<rusb::GlobalContext>,
 }
 
 impl CameraInterface {
@@ -146,7 +146,7 @@ impl CameraInterface {
             .context("could not open Sony R10C usb device")?;
 
         Ok(CameraInterface {
-            camera: ptp::PtpCamera::new(handle).context("could not initialize Sony R10C")?,
+            camera: ptp::Camera::new(handle).context("could not initialize Sony R10C")?,
         })
     }
 
@@ -254,7 +254,7 @@ impl CameraInterface {
         Ok(())
     }
 
-    pub fn query(&mut self) -> anyhow::Result<HashMap<PropertyCode, ptp::PtpPropInfo>> {
+    pub fn query(&mut self) -> anyhow::Result<HashMap<PropertyCode, ptp::PropInfo>> {
         let timeout = self.timeout();
 
         trace!("sending SDIO_GetAllExtDevicePropInfo");
@@ -275,7 +275,7 @@ impl CameraInterface {
         let mut properties = HashMap::new();
 
         for _ in 0..num_entries {
-            let current_prop = ptp::PtpPropInfo::decode(&mut cursor)?;
+            let current_prop = ptp::PropInfo::decode(&mut cursor)?;
 
             let current_prop_code = match PropertyCode::from_u16(current_prop.property_code) {
                 Some(code) => code,
@@ -298,7 +298,7 @@ impl CameraInterface {
     /// Sets the value of a camera property. This should be followed by a call
     /// to update() and a check to make sure that the intended result was
     /// achieved.
-    pub fn set(&mut self, code: PropertyCode, new_value: ptp::PtpData) -> anyhow::Result<()> {
+    pub fn set(&mut self, code: PropertyCode, new_value: ptp::Data) -> anyhow::Result<()> {
         let buf = new_value.encode();
 
         trace!("sending SDIO_SetExtDevicePropValue");
@@ -315,7 +315,7 @@ impl CameraInterface {
 
     /// Executes a command on the camera. This should be followed by a call to
     /// update() and a check to make sure that the intended result was achieved.
-    pub fn execute(&mut self, code: ControlCode, payload: ptp::PtpData) -> anyhow::Result<()> {
+    pub fn execute(&mut self, code: ControlCode, payload: ptp::Data) -> anyhow::Result<()> {
         let buf = payload.encode();
 
         trace!("sending SDIO_ControlDevice");
@@ -331,7 +331,7 @@ impl CameraInterface {
     }
 
     /// Receives an event from the camera.
-    pub fn recv(&mut self, timeout: Option<Duration>) -> anyhow::Result<Option<ptp::PtpEvent>> {
+    pub fn recv(&mut self, timeout: Option<Duration>) -> anyhow::Result<Option<ptp::Event>> {
         let event = self.camera.event(timeout)?;
         if let Some(event) = &event {
             trace!("received event: {:?}", event);
@@ -339,7 +339,7 @@ impl CameraInterface {
         Ok(event)
     }
 
-    pub fn device_info(&mut self, timeout: Option<Duration>) -> anyhow::Result<ptp::PtpDeviceInfo> {
+    pub fn device_info(&mut self, timeout: Option<Duration>) -> anyhow::Result<ptp::DeviceInfo> {
         Ok(self.camera.get_device_info(timeout)?)
     }
 
@@ -351,7 +351,7 @@ impl CameraInterface {
         &mut self,
         storage_id: StorageId,
         timeout: Option<Duration>,
-    ) -> anyhow::Result<ptp::PtpStorageInfo> {
+    ) -> anyhow::Result<ptp::StorageInfo> {
         Ok(self.camera.get_storage_info(storage_id, timeout)?)
     }
 
@@ -370,7 +370,7 @@ impl CameraInterface {
         &mut self,
         object_id: ObjectHandle,
         timeout: Option<Duration>,
-    ) -> anyhow::Result<ptp::PtpObjectInfo> {
+    ) -> anyhow::Result<ptp::ObjectInfo> {
         Ok(self.camera.get_object_info(object_id, timeout)?)
     }
 

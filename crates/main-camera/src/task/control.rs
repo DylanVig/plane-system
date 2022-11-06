@@ -2,10 +2,11 @@ use std::{sync::Arc, time::Duration};
 
 use anyhow::{bail, Context};
 use async_trait::async_trait;
+use chrono::{DateTime, Local};
 use log::{debug, error, info, warn};
 use num_traits::ToPrimitive;
 use ps_client::{ChannelCommandSink, ChannelCommandSource, Task};
-use ptp::{PtpData, PtpEvent};
+use ptp::{Data, Event};
 use tokio::{
     select,
     sync::{oneshot, RwLock},
@@ -21,9 +22,40 @@ use crate::{
     SaveMedia, ShutterSpeed,
 };
 
+#[derive(Debug, Clone)]
+pub enum ControlEvent {
+    /// The shutter was triggered. Note that this may not be sent after the
+    /// control task receives a capture command if the camera fails to acquire
+    /// auto focus lock.
+    CaptureTrigger { timestamp: DateTime<Local> },
+
+    /// A capture failed.
+    CaptureFailed {
+        timestamp: DateTime<Local>,
+        reason: CaptureFailure,
+    },
+
+    /// A capture succeeded.
+    CaptureSuccess { timestamp: DateTime<Local> },
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum CaptureFailure {
+    /// The camera failed to acquire auto focus lock.
+    AutoFocusFailed,
+
+    /// The shutter was fired, but the camera did not register a capture event.
+    NoAcknowledgement,
+
+    /// The camera registered a capture failure.
+    Error(ErrorMode),
+}
+
 pub struct ControlTask {
     interface: Arc<RwLock<InterfaceGuard>>,
-    evt_rx: flume::Receiver<PtpEvent>,
+    ptp_evt_rx: flume::Receiver<Event>,
+    ctrl_evt_rx: flume::Receiver<ControlEvent>,
+    ctrl_evt_tx: flume::Sender<ControlEvent>,
     cmd_rx: ChannelCommandSource<CameraRequest, CameraResponse>,
     cmd_tx: ChannelCommandSink<CameraRequest, CameraResponse>,
 }
@@ -31,13 +63,16 @@ pub struct ControlTask {
 impl ControlTask {
     pub(super) fn new(
         interface: Arc<RwLock<InterfaceGuard>>,
-        evt_rx: flume::Receiver<PtpEvent>,
+        ptp_evt_rx: flume::Receiver<Event>,
     ) -> Self {
         let (cmd_tx, cmd_rx) = flume::bounded(256);
+        let (ctrl_evt_tx, ctrl_evt_rx) = flume::bounded(256);
 
         Self {
             interface,
-            evt_rx,
+            ptp_evt_rx,
+            ctrl_evt_rx,
+            ctrl_evt_tx,
             cmd_rx,
             cmd_tx,
         }
@@ -45,6 +80,10 @@ impl ControlTask {
 
     pub fn cmd(&self) -> ChannelCommandSink<CameraRequest, CameraResponse> {
         self.cmd_tx.clone()
+    }
+
+    pub fn event(&self) -> flume::Receiver<ControlEvent> {
+        self.ctrl_evt_rx.clone()
     }
 }
 
@@ -56,7 +95,8 @@ impl Task for ControlTask {
 
     async fn run(self: Box<Self>, cancel: CancellationToken) -> anyhow::Result<()> {
         let loop_fut = async move {
-            let evt_rx = self.evt_rx;
+            let evt_rx = self.ptp_evt_rx;
+            let ctrl_evt_tx = self.ctrl_evt_tx;
 
             loop {
                 match self.cmd_rx.recv_async().await {
@@ -73,6 +113,7 @@ impl Task for ControlTask {
                                 run_capture(
                                     interface,
                                     evt_rx.clone(),
+                                    ctrl_evt_tx.clone(),
                                     burst_duration,
                                     burst_high_speed,
                                 )
@@ -206,18 +247,18 @@ async fn run_reset(interface: &RwLock<InterfaceGuard>) -> anyhow::Result<CameraR
     ensure_camera_value(
         interface,
         PropertyCode::OperatingMode,
-        PtpData::UINT8(OperatingMode::Standby as u8),
+        Data::UINT8(OperatingMode::Standby as u8),
     )
     .await
     .context("failed to set camera to still recording mode")?;
 
     let mut interface = interface.write().await;
 
-    interface.execute(ControlCode::CameraSettingReset, PtpData::UINT16(0x0002))?;
+    interface.execute(ControlCode::CameraSettingReset, Data::UINT16(0x0002))?;
 
     sleep(Duration::from_secs(1)).await;
 
-    interface.execute(ControlCode::CameraSettingReset, PtpData::UINT16(0x0001))?;
+    interface.execute(ControlCode::CameraSettingReset, Data::UINT16(0x0001))?;
 
     Ok(CameraResponse::Unit)
 }
@@ -228,18 +269,18 @@ async fn run_initialize(interface: &RwLock<InterfaceGuard>) -> anyhow::Result<Ca
     ensure_camera_value(
         interface,
         PropertyCode::OperatingMode,
-        PtpData::UINT8(OperatingMode::Standby as u8),
+        Data::UINT8(OperatingMode::Standby as u8),
     )
     .await
     .context("failed to set camera to still recording mode")?;
 
     let mut interface = interface.write().await;
 
-    interface.execute(ControlCode::SystemInit, PtpData::UINT16(0x0002))?;
+    interface.execute(ControlCode::SystemInit, Data::UINT16(0x0002))?;
 
     sleep(Duration::from_secs(1)).await;
 
-    interface.execute(ControlCode::SystemInit, PtpData::UINT16(0x0001))?;
+    interface.execute(ControlCode::SystemInit, Data::UINT16(0x0001))?;
 
     Ok(CameraResponse::Unit)
 }
@@ -265,37 +306,37 @@ async fn run_initialize(interface: &RwLock<InterfaceGuard>) -> anyhow::Result<Ca
 
 //     Ok(match req {
 //         CameraCommandGetRequest::ExposureMode => match prop_info.current {
-//             ptp::PtpData::UINT16(mode) => CameraResponse::ExposureMode(
+//             ptp::Data::UINT16(mode) => CameraResponse::ExposureMode(
 //                 FromPrimitive::from_u16(mode)
 //                     .context("invalid camera exposure mode (wrong value)")?,
 //             ),
 //             _ => bail!("invalid camera exposure mode (wrong data type)"),
 //         },
 //         CameraCommandGetRequest::OperatingMode => match prop_info.current {
-//             ptp::PtpData::UINT8(mode) => CameraResponse::OperatingMode(
+//             ptp::Data::UINT8(mode) => CameraResponse::OperatingMode(
 //                 FromPrimitive::from_u8(mode)
 //                     .context("invalid camera operating mode (wrong value)")?,
 //             ),
 //             _ => bail!("invalid camera operating mode (wrong data type)"),
 //         },
 //         CameraCommandGetRequest::SaveMode => match prop_info.current {
-//             ptp::PtpData::UINT16(mode) => CameraResponse::SaveMode(
+//             ptp::Data::UINT16(mode) => CameraResponse::SaveMode(
 //                 FromPrimitive::from_u16(mode).context("invalid camera save mode (wrong value)")?,
 //             ),
 //             _ => bail!("invalid camera save mode (wrong data type)"),
 //         },
 //         CameraCommandGetRequest::FocusMode => match prop_info.current {
-//             ptp::PtpData::UINT16(mode) => CameraResponse::FocusMode(
+//             ptp::Data::UINT16(mode) => CameraResponse::FocusMode(
 //                 FromPrimitive::from_u16(mode).context("invalid camera focus mode (wrong value)")?,
 //             ),
 //             _ => bail!("invalid camera focus mode (wrong data type)"),
 //         },
 //         CameraCommandGetRequest::ZoomLevel => match prop_info.current {
-//             ptp::PtpData::UINT16(level) => CameraResponse::ZoomLevel(level as u8),
+//             ptp::Data::UINT16(level) => CameraResponse::ZoomLevel(level as u8),
 //             _ => bail!("invalid camera zoom level (wrong data type)"),
 //         },
 //         CameraCommandGetRequest::CcInterval => match prop_info.current {
-//             ptp::PtpData::UINT16(interval) => CameraResponse::CcInterval(interval as f32 / 10.0),
+//             ptp::Data::UINT16(interval) => CameraResponse::CcInterval(interval as f32 / 10.0),
 //             _ => bail!("invalid camera zoom level (wrong data type)"),
 //         },
 //         CameraCommandGetRequest::Other(_) => todo!(),
@@ -309,20 +350,20 @@ pub(super) async fn run_set(
     let (prop, data) = match req {
         CameraSetRequest::ExposureMode { mode } => (
             PropertyCode::ExposureMode,
-            ptp::PtpData::UINT16(mode as u16),
+            ptp::Data::UINT16(mode as u16),
         ),
         CameraSetRequest::OperatingMode { mode } => {
-            (PropertyCode::OperatingMode, ptp::PtpData::UINT8(mode as u8))
+            (PropertyCode::OperatingMode, ptp::Data::UINT8(mode as u8))
         }
         CameraSetRequest::SaveMode { mode } => {
-            (PropertyCode::SaveMedia, ptp::PtpData::UINT16(mode as u16))
+            (PropertyCode::SaveMedia, ptp::Data::UINT16(mode as u16))
         }
         CameraSetRequest::FocusMode { mode } => {
-            (PropertyCode::FocusMode, ptp::PtpData::UINT16(mode as u16))
+            (PropertyCode::FocusMode, ptp::Data::UINT16(mode as u16))
         }
         CameraSetRequest::ZoomLevel { level } => (
             PropertyCode::ZoomAbsolutePosition,
-            ptp::PtpData::UINT16(level as u16),
+            ptp::Data::UINT16(level as u16),
         ),
         CameraSetRequest::CcInterval { interval } => {
             let mut interval = (interval * 10.) as u16;
@@ -340,15 +381,15 @@ pub(super) async fn run_set(
                 interval -= interval % 5;
             }
 
-            (PropertyCode::IntervalTime, ptp::PtpData::UINT16(interval))
+            (PropertyCode::IntervalTime, ptp::Data::UINT16(interval))
         }
         CameraSetRequest::ShutterSpeed { speed } => (
             PropertyCode::ShutterSpeed,
-            ptp::PtpData::UINT32(ToPrimitive::to_u32(&speed).unwrap()),
+            ptp::Data::UINT32(ToPrimitive::to_u32(&speed).unwrap()),
         ),
         CameraSetRequest::Aperture { aperture } => (
             PropertyCode::FNumber,
-            ptp::PtpData::UINT16(ToPrimitive::to_u16(&aperture).unwrap()),
+            ptp::Data::UINT16(ToPrimitive::to_u16(&aperture).unwrap()),
         ),
     };
 
@@ -361,7 +402,8 @@ pub(super) async fn run_set(
 
 pub(super) async fn run_capture(
     interface: &RwLock<InterfaceGuard>,
-    evt_rx: flume::Receiver<PtpEvent>,
+    evt_rx: flume::Receiver<Event>,
+    ctrl_evt_tx: flume::Sender<ControlEvent>,
     burst_duration: Option<u8>,
     burst_high_speed: bool,
 ) -> anyhow::Result<CameraResponse> {
@@ -370,7 +412,7 @@ pub(super) async fn run_capture(
     ensure_camera_value(
         interface,
         PropertyCode::OperatingMode,
-        PtpData::UINT8(OperatingMode::StillRec as u8),
+        Data::UINT8(OperatingMode::StillRec as u8),
     )
     .await
     .context("failed to set camera to still recording mode")?;
@@ -378,7 +420,7 @@ pub(super) async fn run_capture(
     ensure_camera_value(
         interface,
         PropertyCode::DriveMode,
-        PtpData::UINT16(if burst_duration.is_some() {
+        Data::UINT16(if burst_duration.is_some() {
             if burst_high_speed {
                 DriveMode::SpeedPriorityContinuousShot
             } else {
@@ -403,7 +445,7 @@ pub(super) async fn run_capture(
 
         // press shutter button halfway to fix the focus
         debug!("sending half shutter press");
-        interface.execute(ControlCode::S1Button, PtpData::UINT16(0x0002))?;
+        interface.execute(ControlCode::S1Button, Data::UINT16(0x0002))?;
 
         if focus_mode == FocusMode::AutoFocusStill {
             loop {
@@ -425,7 +467,7 @@ pub(super) async fn run_capture(
                     FocusIndication::AFWarning => {
                         debug!("focus failed ({focus_ind})");
                         debug!("sending half shutter release");
-                        interface.execute(ControlCode::S1Button, PtpData::UINT16(0x0001))?;
+                        interface.execute(ControlCode::S1Button, Data::UINT16(0x0001))?;
                         bail!("failed to acquire auto focus lock");
                     }
                 }
@@ -434,7 +476,11 @@ pub(super) async fn run_capture(
 
         // shoot!
         debug!("sending full shutter press");
-        interface.execute(ControlCode::S2Button, PtpData::UINT16(0x0002))?;
+        interface.execute(ControlCode::S2Button, Data::UINT16(0x0002))?;
+
+        let _ = ctrl_evt_tx.try_send(ControlEvent::CaptureTrigger {
+            timestamp: Local::now(),
+        });
 
         if let Some(burst_duration) = burst_duration {
             sleep(Duration::from_secs(burst_duration as u64)).await;
@@ -442,16 +488,16 @@ pub(super) async fn run_capture(
 
         // release
         debug!("sending full shutter release");
-        interface.execute(ControlCode::S2Button, PtpData::UINT16(0x0001))?;
+        interface.execute(ControlCode::S2Button, Data::UINT16(0x0001))?;
 
         // hell yeah
         debug!("sending half shutter release");
-        interface.execute(ControlCode::S1Button, PtpData::UINT16(0x0001))?;
+        interface.execute(ControlCode::S1Button, Data::UINT16(0x0001))?;
     }
 
     info!("waiting for image confirmation");
 
-    timeout(Duration::from_millis(3000), async {
+    timeout(Duration::from_millis(1000), async {
         loop {
             // TODO: maybe check ShootingFileInfo
 
@@ -459,6 +505,16 @@ pub(super) async fn run_capture(
 
             match evt.code {
                 ptp::EventCode::Vendor(0xC204) | ptp::EventCode::Vendor(0xC203) => {
+                    // match evt.params[0] {
+                    //     Some(0x0001) => {
+
+                    //     }
+                    // }
+
+                    let _ = ctrl_evt_tx.try_send(ControlEvent::CaptureTrigger {
+                        timestamp: Local::now(),
+                    });
+
                     break;
                 }
                 _ => {}
@@ -483,7 +539,7 @@ pub(super) async fn run_cc(
             interface
                 .write()
                 .await
-                .execute(ControlCode::IntervalStillRecording, PtpData::UINT16(0x0002))
+                .execute(ControlCode::IntervalStillRecording, Data::UINT16(0x0002))
                 .context("failed to start interval recording")?;
         }
 
@@ -491,7 +547,7 @@ pub(super) async fn run_cc(
             interface
                 .write()
                 .await
-                .execute(ControlCode::IntervalStillRecording, PtpData::UINT16(0x0001))
+                .execute(ControlCode::IntervalStillRecording, Data::UINT16(0x0001))
                 .context("failed to start interval recording")?;
         }
     }

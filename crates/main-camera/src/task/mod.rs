@@ -51,7 +51,7 @@ impl InterfaceGuard {
 
         info!("setting time on camera to '{}'", &time_str);
 
-        if let Err(err) = interface.set(PropertyCode::DateTime, ptp::PtpData::STR(time_str)) {
+        if let Err(err) = interface.set(PropertyCode::DateTime, ptp::Data::STR(time_str)) {
             warn!("could not set time on camera: {:?}", err);
         }
 

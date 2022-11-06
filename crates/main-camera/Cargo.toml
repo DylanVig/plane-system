@@ -22,7 +22,7 @@ async-trait = "0.1"
 
 # protocols + serialization
 serde = "1.0"
-ptp = { git = "https://github.com/CUAir/rust-ptp" }
+ptp = { git = "https://github.com/CUAir/rust-ptp", rev = "cf633770" }
 num-traits = "0.2"
 num-derive = "0.3"
 

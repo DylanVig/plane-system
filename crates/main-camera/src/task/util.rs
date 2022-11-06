@@ -10,16 +10,16 @@ use super::InterfaceGuard;
 
 /// Converts a raw PTP data object into something that implements
 /// `FromPrimitive` (such as an enum).
-pub(crate) fn from_ptp_primitive<T: FromPrimitive>(ptp: &ptp::PtpData) -> Option<T> {
+pub(crate) fn from_ptp_primitive<T: FromPrimitive>(ptp: &ptp::Data) -> Option<T> {
     match *ptp {
-        ptp::PtpData::INT8(x) => T::from_i8(x),
-        ptp::PtpData::UINT8(x) => T::from_u8(x),
-        ptp::PtpData::INT16(x) => T::from_i16(x),
-        ptp::PtpData::UINT16(x) => T::from_u16(x),
-        ptp::PtpData::INT32(x) => T::from_i32(x),
-        ptp::PtpData::UINT32(x) => T::from_u32(x),
-        ptp::PtpData::INT64(x) => T::from_i64(x),
-        ptp::PtpData::UINT64(x) => T::from_u64(x),
+        ptp::Data::INT8(x) => T::from_i8(x),
+        ptp::Data::UINT8(x) => T::from_u8(x),
+        ptp::Data::INT16(x) => T::from_i16(x),
+        ptp::Data::UINT16(x) => T::from_u16(x),
+        ptp::Data::INT32(x) => T::from_i32(x),
+        ptp::Data::UINT32(x) => T::from_u32(x),
+        ptp::Data::INT64(x) => T::from_i64(x),
+        ptp::Data::UINT64(x) => T::from_u64(x),
         _ => None,
     }
 }
@@ -28,7 +28,7 @@ pub(crate) fn from_ptp_primitive<T: FromPrimitive>(ptp: &ptp::PtpData) -> Option
 /// [`CameraInterface::query`] and converts it to something that implements
 /// `FromPrimitive` (such as an enum).
 pub(super) fn convert_camera_value<T: FromPrimitive>(
-    values: &HashMap<PropertyCode, ptp::PtpPropInfo>,
+    values: &HashMap<PropertyCode, ptp::PropInfo>,
     prop: PropertyCode,
 ) -> anyhow::Result<T> {
     from_ptp_primitive::<T>(
@@ -51,7 +51,7 @@ pub(super) fn convert_camera_value<T: FromPrimitive>(
 pub(super) async fn ensure_camera_value(
     interface: &RwLock<InterfaceGuard>,
     prop: PropertyCode,
-    value: ptp::PtpData,
+    value: ptp::Data,
 ) -> anyhow::Result<()> {
     debug!("ensuring {prop:?} is set to {value:?}");
 

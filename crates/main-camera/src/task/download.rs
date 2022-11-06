@@ -5,7 +5,6 @@ use async_trait::async_trait;
 use log::*;
 
 use ps_client::Task;
-use ptp::PtpEvent;
 use tokio::{select, sync::RwLock};
 use tokio_util::sync::CancellationToken;
 
@@ -18,12 +17,12 @@ use super::InterfaceGuard;
 /// retrieve images that are stored temporarily on the camera after capture.
 const IMAGE_BUFFER_OBJECT_HANDLE: u32 = 0xFFFFC001;
 
-pub type Download = Arc<(ptp::PtpObjectInfo, Vec<u8>)>;
+pub type Download = Arc<(ptp::ObjectInfo, Vec<u8>)>;
 
 pub struct DownloadTask {
     interface: Arc<RwLock<InterfaceGuard>>,
 
-    evt_rx: flume::Receiver<PtpEvent>,
+    evt_rx: flume::Receiver<ptp::Event>,
     download_tx: flume::Sender<Download>,
     download_rx: flume::Receiver<Download>,
 }
@@ -31,7 +30,7 @@ pub struct DownloadTask {
 impl DownloadTask {
     pub(super) fn new(
         interface: Arc<RwLock<InterfaceGuard>>,
-        evt_rx: flume::Receiver<PtpEvent>,
+        evt_rx: flume::Receiver<ptp::Event>,
     ) -> Self {
         let (download_tx, download_rx) = flume::bounded(256);
 
@@ -79,8 +78,6 @@ impl Task for DownloadTask {
                         }
                     }
                 }
-
-                let _timestamp = chrono::Local::now();
 
                 debug!("received capture event from camera");
 
