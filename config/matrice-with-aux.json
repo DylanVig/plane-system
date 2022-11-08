@@ -16,7 +16,7 @@
         "save_path": "./images/"
       }
     },
-    "aux_camera": {
+    "livestream": {
       "save": {
         "save_path": "./videos/",
         "save_ext": "mp4",

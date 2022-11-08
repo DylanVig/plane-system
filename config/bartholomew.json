@@ -10,5 +10,5 @@
   "scheduler": null,
   "gimbal": null,
   "main_camera": { "kind": "R10C" },
-  "aux_camera": null
+  "livestream": null
 }

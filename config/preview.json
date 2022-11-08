@@ -11,7 +11,7 @@
       "save_path": "./images/"
     }
   },
-  "aux_camera": {
+  "livestream": {
     "preview": {
       "pipelines": []
     }

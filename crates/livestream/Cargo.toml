@@ -1,6 +1,6 @@
 [package]
-name = "ps-aux-camera"
-version = "1.0.0"
+name = "ps-livestream"
+version = "0.10.0"
 authors = ["Ibiyemi Abiodun <ibiyemi@intulon.com>"]
 edition = "2021"
 

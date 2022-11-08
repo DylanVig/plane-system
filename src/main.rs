@@ -76,8 +76,8 @@ async fn main() -> anyhow::Result<()> {
 
     let mut features = vec![];
 
-    #[cfg(feature = "aux-camera")]
-    features.push("aux-camera");
+    #[cfg(feature = "livestream")]
+    features.push("livestream");
 
     #[cfg(feature = "csb")]
     features.push("csb");
@@ -171,21 +171,21 @@ async fn run_tasks(
         (None, None)
     };
 
-    #[cfg(feature = "aux-camera")]
-    let aux_camera_save_cmd_tx = if let Some(c) = config.aux_camera {
+    #[cfg(feature = "livestream")]
+    let livestream_save_cmd_tx = if let Some(c) = config.livestream {
         debug!("initializing aux camera tasks");
 
         let (stream_task, save_task, preview_task) =
-            ps_aux_camera::create_tasks(c, camera_preview_frame_rx)?;
+            ps_livestream::create_tasks(c, camera_preview_frame_rx)?;
 
-        let mut aux_camera_save_cmd_tx = None;
+        let mut livestream_save_cmd_tx = None;
 
         if let Some(stream_task) = stream_task {
             tasks.push(Box::new(stream_task));
         }
 
         if let Some(save_task) = save_task {
-            aux_camera_save_cmd_tx = Some(save_task.cmd());
+            livestream_save_cmd_tx = Some(save_task.cmd());
             tasks.push(Box::new(save_task));
         }
 
@@ -193,13 +193,13 @@ async fn run_tasks(
             tasks.push(Box::new(preview_task));
         }
 
-        aux_camera_save_cmd_tx
+        livestream_save_cmd_tx
     } else {
         None
     };
 
-    #[cfg(not(feature = "aux-camera"))]
-    let aux_camera_save_cmd_tx = None;
+    #[cfg(not(feature = "livestream"))]
+    let livestream_save_cmd_tx = None;
 
     let mut join_set = JoinSet::new();
 
@@ -207,7 +207,7 @@ async fn run_tasks(
         editor,
         stdout,
         camera_ctrl_cmd_tx,
-        aux_camera_save_cmd_tx,
+        livestream_save_cmd_tx,
         cancellation_token.clone(),
     ));
 

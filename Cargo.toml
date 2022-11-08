@@ -10,7 +10,7 @@ incremental = true
 
 [dependencies]
 # subcrates
-ps-aux-camera = { path = "crates/aux-camera", optional = true }
+ps-livestream = { path = "crates/livestream", optional = true }
 ps-main-camera = { path = "crates/main-camera" }
 ps-gs = { path = "crates/gs" }
 ps-pixhawk = { path = "crates/pixhawk" }
@@ -53,8 +53,8 @@ geo = { workspace = true }
 drop_guard = "0.3.0"
 
 [features]
-default = ["aux-camera"]
-aux-camera = ["ps-aux-camera"]
+default = ["livestream"]
+livestream = ["ps-livestream"]
 csb = ["ps-main-camera/csb"]
 
 [workspace]
