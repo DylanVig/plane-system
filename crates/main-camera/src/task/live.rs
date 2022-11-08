@@ -3,6 +3,7 @@ use std::{sync::Arc, time::Duration};
 use anyhow::Context;
 use async_trait::async_trait;
 use bytes::{Buf, Bytes, BytesMut};
+use chrono::{DateTime, Local};
 use log::*;
 
 use ps_client::Task;
@@ -20,7 +21,14 @@ use super::InterfaceGuard;
 const IMAGE_BUFFER_OBJECT_HANDLE: u32 = 0xFFFFC002;
 
 #[derive(Clone, Debug)]
-pub struct LiveFrame(Bytes);
+pub struct LiveFrame {
+    pub timestamp: DateTime<Local>,
+
+    pub duration: Duration,
+
+    /// Frame data encoded as JPEG
+    pub data: Bytes,
+}
 
 pub struct LiveTask {
     interface: Arc<RwLock<InterfaceGuard>>,
@@ -59,10 +67,11 @@ impl Task for LiveTask {
         } = *self;
 
         let loop_fut = async move {
-            let mut ival = interval(Duration::from_secs_f32(1.0 / 15.0));
+            let frame_duration = Duration::from_secs_f32(1.0 / 15.0);
+            let mut interval = interval(frame_duration);
 
             loop {
-                ival.tick().await;
+                interval.tick().await;
 
                 let mut interface = interface.write().await;
                 let props = interface.query().context("could not get camera state")?;
@@ -106,7 +115,11 @@ impl Task for LiveTask {
                 let size = lv_data.get_u32_le() as usize;
                 let image = lv_data.split_off(offset - 8).split_to(size);
 
-                let _ = frame_tx.try_send(LiveFrame(image.freeze()));
+                let _ = frame_tx.try_send(LiveFrame {
+                    timestamp: Local::now(),
+                    duration: frame_duration,
+                    data: image.freeze(),
+                });
             }
 
             #[allow(unreachable_code)]

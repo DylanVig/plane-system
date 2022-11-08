@@ -6,6 +6,7 @@ edition = "2021"
 
 [dependencies]
 ps-async-util = { path = "../async-util" }
+ps-main-camera = { path = "../main-camera" }
 ps-client = { path = "../client" }
 
 gst = { version = "0.19", package = "gstreamer" }

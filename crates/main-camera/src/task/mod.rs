@@ -13,6 +13,7 @@ use anyhow::Context;
 pub use control::*;
 pub use download::*;
 pub use event::*;
+pub use live::*;
 use log::*;
 
 use ps_telemetry::Telemetry;
@@ -22,8 +23,6 @@ use crate::{
     interface::{self, PropertyCode},
     MainCameraConfig,
 };
-
-use self::live::LiveTask;
 
 pub fn create_tasks(
     config: MainCameraConfig,
