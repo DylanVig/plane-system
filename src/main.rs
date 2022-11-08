@@ -152,38 +152,45 @@ async fn run_tasks(
         None
     };
 
-    let camera_cmd_tx = if let Some(c) = config.main_camera {
+    let (camera_ctrl_cmd_tx, camera_preview_frame_rx) = if let Some(c) = config.main_camera {
         debug!("initializing camera tasks");
-        let (control_task, evt_task, download_task) =
-            ps_main_camera::create_tasks(c, telem_rx).context("failed to initialize camera tasks")?;
+        let (control_task, evt_task, download_task, live_task) =
+            ps_main_camera::create_tasks(c, telem_rx)
+                .context("failed to initialize camera tasks")?;
 
-        let camera_cmd_tx = control_task.cmd();
-        let camera_download_rx = download_task.download();
+        let ctrl_cmd_tx = control_task.cmd();
+        let preview_frame_rx = live_task.frame();
 
         tasks.push(Box::new(control_task));
         tasks.push(Box::new(evt_task));
         tasks.push(Box::new(download_task));
+        tasks.push(Box::new(live_task));
 
-        Some(camera_cmd_tx)
+        (Some(ctrl_cmd_tx), Some(preview_frame_rx))
     } else {
-        None
+        (None, None)
     };
 
     #[cfg(feature = "aux-camera")]
     let aux_camera_save_cmd_tx = if let Some(c) = config.aux_camera {
         debug!("initializing aux camera tasks");
 
-        let (stream_task, save_task, preview_task) = ps_aux_camera::create_tasks(c)?;
+        let (stream_task, save_task, preview_task) =
+            ps_aux_camera::create_tasks(c, camera_preview_frame_rx)?;
 
         let mut aux_camera_save_cmd_tx = None;
 
         if let Some(stream_task) = stream_task {
             tasks.push(Box::new(stream_task));
         }
-        
+
         if let Some(save_task) = save_task {
             aux_camera_save_cmd_tx = Some(save_task.cmd());
             tasks.push(Box::new(save_task));
+        }
+
+        if let Some(preview_task) = preview_task {
+            tasks.push(Box::new(preview_task));
         }
 
         aux_camera_save_cmd_tx
@@ -199,7 +206,7 @@ async fn run_tasks(
     join_set.spawn(run_interactive_cli(
         editor,
         stdout,
-        camera_cmd_tx,
+        camera_ctrl_cmd_tx,
         aux_camera_save_cmd_tx,
         cancellation_token.clone(),
     ));
