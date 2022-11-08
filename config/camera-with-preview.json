@@ -16,7 +16,11 @@
   },
   "livestream": {
     "preview": {
-      "pipelines": []
+      "pipelines": [
+        "jpegdec ! videoconvert ! clockoverlay text=\"R10C\" ! tee name=v", 
+        "v. ! queue ! autovideosink",
+        "v. ! queue ! x264enc speed-preset=superfast bitrate=20000 tune=zerolatency ! matroskamux writing-app=\"CUAir Plane System\" ! filesink location=/tmp/out.mkv"
+      ]
     }
   }
 }

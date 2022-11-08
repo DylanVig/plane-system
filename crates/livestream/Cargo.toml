@@ -28,6 +28,7 @@ serde = { workspace = true }
 # utility
 clap = { version = "3", features = ["derive"] }
 chrono = { workspace = true }
+drop_guard = "0.3.0"
 
 # i/o
 tokio-util = { version = "0.7" }

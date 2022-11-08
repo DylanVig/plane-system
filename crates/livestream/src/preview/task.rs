@@ -1,4 +1,6 @@
-use anyhow::{bail, Context, anyhow};
+use std::time::Duration;
+
+use anyhow::{anyhow, bail, Context};
 use async_trait::async_trait;
 use chrono::Local;
 use futures::StreamExt;
@@ -11,6 +13,7 @@ use gst::{
 use log::*;
 use ps_client::{ChannelCommandSink, ChannelCommandSource, Task};
 use tokio::select;
+use tokio::time::sleep;
 use tokio_util::sync::CancellationToken;
 
 use super::*;
@@ -34,103 +37,116 @@ impl Task for PreviewTask {
     }
 
     async fn run(self: Box<Self>, cancel: CancellationToken) -> anyhow::Result<()> {
-        let Self { frame_rx, .. } = *self;
+        let Self {
+            config, frame_rx, ..
+        } = *self;
 
-        let cmd_loop = async {
-            debug!("initializing live preview");
+        debug!("initializing live preview");
 
-            gst::init().context("failed to init gstreamer")?;
+        gst::init().context("failed to init gstreamer")?;
 
-            let start_time = Local::now();
+        let start_time = Local::now();
 
-            let pipeline = gst::Pipeline::default();
+        let pipeline = gst::Pipeline::default();
 
-            let appsrc = gst_app::AppSrc::builder()
-                .caps(&gst::Caps::builder("image/jpeg").build())
-                .format(gst::Format::Time)
-                .is_live(true)
-                .build();
+        let appsrc = gst_app::AppSrc::builder()
+            .name("r10csrc")
+            .caps(&gst::Caps::builder("image/jpeg").build())
+            .format(gst::Format::Time)
+            .is_live(true)
+            .build();
 
-            let jpegdec = gst::ElementFactory::make("jpegdec").build()?;
-            let videoconvert = gst::ElementFactory::make("videoconvert").build()?;
-            let sink = gst::ElementFactory::make("autovideosink").build()?;
+        let bin_spec = config.pipelines.join("\n");
+        let bin = gst::parse_bin_from_description(&bin_spec, true)
+            .context("failed to parse gstreamer bin from config")?;
 
-            pipeline.add_many(&[appsrc.upcast_ref(), &jpegdec, &videoconvert, &sink])?;
-            gst::Element::link_many(&[appsrc.upcast_ref(), &jpegdec, &videoconvert, &sink])?;
+        pipeline.add_many(&[appsrc.upcast_ref(), bin.upcast_ref::<gst::Element>()])?;
+        gst::Element::link_many(&[appsrc.upcast_ref(), bin.upcast_ref::<gst::Element>()])?;
 
-            let bus = pipeline.bus().context("failed to get element bus")?;
-            let mut bus_stream = bus.stream();
+        pipeline
+            .set_state(gst::State::Ready)
+            .context("could not prepare gstreamer pipeline")?;
 
-            pipeline
-                .set_state(gst::State::Playing)
-                .context("could not play gstreamer pipeline")?;
+        let bus = pipeline.bus().context("failed to get element bus")?;
+        let mut bus_stream = bus.stream();
 
-            loop {
-                select! {
-                    frame = frame_rx.recv_async() => {
-                        if let Ok(frame) = frame {
-                            let mut buf = gst::Buffer::with_size(frame.data.len())
-                                .context("failed to allocate gstreamer framebuffer")?;
+        pipeline
+            .set_state(gst::State::Playing)
+            .context("could not prepare gstreamer pipeline")?;
 
-                            {
-                                let buf = buf
-                                    .get_mut()
-                                    .context("failed to write to gstreamer framebuffer")?;
+        loop {
+            select! {
+                frame = frame_rx.recv_async() => {
+                    if let Ok(frame) = frame {
+                        let mut buf = gst::Buffer::with_size(frame.data.len())
+                            .context("failed to allocate gstreamer framebuffer")?;
 
-                                if let Err(_) = buf.copy_from_slice(0, &frame.data[..]) {
-                                    bail!("failed to fill gstreamer framebuffer");
+                        {
+                            let buf = buf
+                                .get_mut()
+                                .context("failed to write to gstreamer framebuffer")?;
+
+                            if let Err(_) = buf.copy_from_slice(0, &frame.data[..]) {
+                                bail!("failed to fill gstreamer framebuffer");
+                            }
+
+                            let frame_time = frame.timestamp - start_time;
+                            buf.set_dts(gst::ClockTime::from_mseconds(
+                                frame_time.num_milliseconds() as u64
+                            ));
+                        }
+
+                        if let Err(err) = appsrc.push_buffer(buf) {
+                            match err {
+                                // ignore flushing error
+                                // gst::FlowError::Flushing => {
+                                //     trace!("dropping frame b/c app source is flushing");
+                                // }
+                                err => {
+                                    return Err(anyhow!(err)).context("failed to push buffer to appsrc");
                                 }
-
-                                let frame_time = frame.timestamp - start_time;
-                                buf.set_dts(gst::ClockTime::from_mseconds(
-                                    frame_time.num_milliseconds() as u64
-                                ));
                             }
-
-                            appsrc.push_buffer(buf).context("pushing buffer failed")?;
-                            trace!("pushed buffer to appsrc");
-                        } else {
-                            debug!("failed to get preview frame, exiting loop");
-                            break;
-                        }
-                    }
-
-                    msg = bus_stream.next() => {
-                        use gst::MessageView;
-
-                        if msg.is_none() {
-                            debug!("message stream ended");
-                            break;
                         }
 
-                        match msg.unwrap().view() {
-                            MessageView::Eos(..) => {
-                                debug!("received eos from gstreamer");
-                                break
-                            },
-                            MessageView::Error(err) => {
-                                pipeline.set_state(gst::State::Null)?;
-                                return Err(anyhow!(err.error()));
-                            }
-                            _ => (),
-                        }
+
+                        trace!("pushed buffer to appsrc");
+                    } else {
+                        debug!("failed to get preview frame, exiting loop");
+                        break;
                     }
                 }
+
+                msg = bus_stream.next() => {
+                    use gst::MessageView;
+
+                    if msg.is_none() {
+                        debug!("message stream ended");
+                        break;
+                    }
+
+                    match msg.unwrap().view() {
+                        MessageView::Eos(..) => {
+                            debug!("received eos from gstreamer");
+                            break
+                        },
+                        MessageView::Error(err) => {
+                            return Err(anyhow!(err.error()));
+                        }
+                        _ => (),
+                    }
+                }
+
+                _ = cancel.cancelled() => {
+                    break;
+                }
             }
+        }
 
-            appsrc.end_of_stream().context("ending stream failed")?;
-
-            pipeline
-                .set_state(gst::State::Null)
-                .context("could not stop gstreamer pipeline")?;
-
-            Ok::<_, anyhow::Error>(())
-        };
-
-        select! {
-            _ = cancel.cancelled() => {}
-            res = cmd_loop => { res? }
-        };
+        appsrc.end_of_stream().context("ending stream failed")?;
+        pipeline
+            .set_state(gst::State::Null)
+            .context("error while stopping pipeline")?;
+        sleep(Duration::from_millis(500)).await;
 
         Ok(())
     }

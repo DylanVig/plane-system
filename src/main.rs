@@ -70,7 +70,14 @@ async fn main() -> anyhow::Result<()> {
             tracing_subscriber::fmt::layer()
                 .with_ansi(false)
                 .with_writer(writer)
-                .with_filter(Targets::new().with_target("plane_system", LevelFilter::DEBUG)),
+                .with_filter(Targets::new().with_targets(vec![
+                    ("plane_system", LevelFilter::DEBUG),
+                    ("ps_livestream", LevelFilter::DEBUG),
+                    ("ps_main_camera", LevelFilter::DEBUG),
+                    ("ps_telemetry", LevelFilter::DEBUG),
+                    ("ps_gs", LevelFilter::DEBUG),
+                    ("ps_pixhawk", LevelFilter::DEBUG),
+                ])),
         )
         .init();
 
