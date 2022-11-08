@@ -33,7 +33,12 @@ pub fn create_tasks(
 
     let event_task = EventTask::new(interface.clone());
     let control_task = ControlTask::new(interface.clone(), event_task.events());
-    let download_task = DownloadTask::new(config.download, interface.clone(), telem_rx, event_task.events());
+    let download_task = DownloadTask::new(
+        config.download,
+        interface.clone(),
+        telem_rx,
+        event_task.events(),
+    );
     let live_task = LiveTask::new(interface);
 
     Ok((control_task, event_task, download_task, live_task))

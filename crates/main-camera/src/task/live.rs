@@ -1,26 +1,16 @@
-use std::{
-    path::{Path, PathBuf},
-    sync::Arc,
-    time::Duration,
-};
+use std::{sync::Arc, time::Duration};
 
 use anyhow::Context;
 use async_trait::async_trait;
-use bytes::{Buf, BytesMut, Bytes};
+use bytes::{Buf, Bytes, BytesMut};
 use log::*;
 
 use ps_client::Task;
-use ps_telemetry::Telemetry;
-use tokio::{
-    fs::File,
-    io::AsyncWriteExt,
-    select,
-    sync::{watch, RwLock},
-    time::{interval, sleep},
-};
+
+use tokio::{io::AsyncWriteExt, select, sync::RwLock, time::interval};
 use tokio_util::sync::CancellationToken;
 
-use crate::{interface::PropertyCode, task::util::convert_camera_value, DownloadConfig};
+use crate::{interface::PropertyCode, task::util::convert_camera_value};
 
 use super::InterfaceGuard;
 

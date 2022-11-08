@@ -202,10 +202,7 @@ impl Task for DownloadTask {
     }
 }
 
-async fn save(
-    image_save_dir: impl AsRef<Path>,
-    download: Download,
-) -> anyhow::Result<PathBuf> {
+async fn save(image_save_dir: impl AsRef<Path>, download: Download) -> anyhow::Result<PathBuf> {
     let mut image_path = image_save_dir.as_ref().to_owned();
     image_path.push(&download.metadata.filename);
 
