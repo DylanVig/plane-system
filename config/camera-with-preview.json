@@ -9,6 +9,9 @@
   "main_camera": {
     "download": {
       "save_path": "./images/"
+    },
+    "live": {
+      "framerate": 30
     }
   },
   "livestream": {

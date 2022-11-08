@@ -159,14 +159,18 @@ async fn run_tasks(
                 .context("failed to initialize camera tasks")?;
 
         let ctrl_cmd_tx = control_task.cmd();
-        let preview_frame_rx = live_task.frame();
+        let mut preview_frame_rx = None;
 
         tasks.push(Box::new(control_task));
         tasks.push(Box::new(evt_task));
         tasks.push(Box::new(download_task));
-        tasks.push(Box::new(live_task));
 
-        (Some(ctrl_cmd_tx), Some(preview_frame_rx))
+        if let Some(live_task) = live_task {
+            preview_frame_rx = Some(live_task.frame());
+            tasks.push(Box::new(live_task));
+        }
+
+        (Some(ctrl_cmd_tx), preview_frame_rx)
     } else {
         (None, None)
     };

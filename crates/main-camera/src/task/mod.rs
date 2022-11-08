@@ -27,7 +27,7 @@ use crate::{
 pub fn create_tasks(
     config: MainCameraConfig,
     telem_rx: watch::Receiver<Telemetry>,
-) -> anyhow::Result<(ControlTask, EventTask, DownloadTask, LiveTask)> {
+) -> anyhow::Result<(ControlTask, EventTask, DownloadTask, Option<LiveTask>)> {
     let interface = Arc::new(RwLock::new(InterfaceGuard::new()?));
 
     let event_task = EventTask::new(interface.clone());
@@ -38,7 +38,12 @@ pub fn create_tasks(
         telem_rx,
         event_task.events(),
     );
-    let live_task = LiveTask::new(interface);
+
+    let live_task = if let Some(config) = config.live {
+        Some(LiveTask::new(interface, config)?)
+    } else {
+        None
+    };
 
     Ok((control_task, event_task, download_task, live_task))
 }

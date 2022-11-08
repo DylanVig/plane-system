@@ -1,6 +1,6 @@
 use std::{sync::Arc, time::Duration};
 
-use anyhow::Context;
+use anyhow::{Context, bail};
 use async_trait::async_trait;
 use bytes::{Buf, Bytes, BytesMut};
 use chrono::{DateTime, Local};
@@ -11,7 +11,7 @@ use ps_client::Task;
 use tokio::{io::AsyncWriteExt, select, sync::RwLock, time::interval};
 use tokio_util::sync::CancellationToken;
 
-use crate::{interface::PropertyCode, task::util::convert_camera_value};
+use crate::{interface::PropertyCode, task::util::convert_camera_value, LiveConfig};
 
 use super::InterfaceGuard;
 
@@ -32,20 +32,25 @@ pub struct LiveFrame {
 
 pub struct LiveTask {
     interface: Arc<RwLock<InterfaceGuard>>,
-
+    config: LiveConfig,
     frame_tx: flume::Sender<LiveFrame>,
     frame_rx: flume::Receiver<LiveFrame>,
 }
 
 impl LiveTask {
-    pub(super) fn new(interface: Arc<RwLock<InterfaceGuard>>) -> Self {
+    pub(super) fn new(interface: Arc<RwLock<InterfaceGuard>>, config: LiveConfig) -> anyhow::Result<Self> {
         let (frame_tx, frame_rx) = flume::bounded(256);
 
-        Self {
+        if config.framerate <= 0.0 || config.framerate > 30.0 {
+            bail!("camera live preview framerate must be greater than zero and less than or equal to 30");
+        }
+        
+        Ok(Self {
             interface,
+            config,
             frame_rx,
             frame_tx,
-        }
+        })
     }
 
     pub fn frame(&self) -> flume::Receiver<LiveFrame> {
@@ -61,13 +66,14 @@ impl Task for LiveTask {
 
     async fn run(self: Box<Self>, cancel: CancellationToken) -> anyhow::Result<()> {
         let Self {
+            config,
             interface,
             frame_tx,
             ..
         } = *self;
 
         let loop_fut = async move {
-            let frame_duration = Duration::from_secs_f32(1.0 / 15.0);
+            let frame_duration = Duration::from_secs_f32(1.0 / config.framerate);
             let mut interval = interval(frame_duration);
 
             loop {

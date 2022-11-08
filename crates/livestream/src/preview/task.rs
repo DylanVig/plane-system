@@ -1,6 +1,7 @@
-use anyhow::{bail, Context};
+use anyhow::{bail, Context, anyhow};
 use async_trait::async_trait;
 use chrono::Local;
+use futures::StreamExt;
 use gst::Pipeline;
 use gst::{
     glib::value::{FromValue, ValueTypeChecker},
@@ -9,7 +10,6 @@ use gst::{
 };
 use log::*;
 use ps_client::{ChannelCommandSink, ChannelCommandSource, Task};
-use futures::StreamExt;
 use tokio::select;
 use tokio_util::sync::CancellationToken;
 
@@ -56,7 +56,7 @@ impl Task for PreviewTask {
             let sink = gst::ElementFactory::make("autovideosink").build()?;
 
             pipeline.add_many(&[appsrc.upcast_ref(), &jpegdec, &videoconvert, &sink])?;
-            gst::Element::link_many(&[appsrc.upcast_ref(),  &jpegdec, &videoconvert, &sink])?;
+            gst::Element::link_many(&[appsrc.upcast_ref(), &jpegdec, &videoconvert, &sink])?;
 
             let bus = pipeline.bus().context("failed to get element bus")?;
             let mut bus_stream = bus.stream();
@@ -110,11 +110,10 @@ impl Task for PreviewTask {
                             },
                             MessageView::Error(err) => {
                                 pipeline.set_state(gst::State::Null)?;
-                                error!("received error from gstreamer: {err:?}");
-                                break;
+                                return Err(anyhow!(err.error()));
                             }
                             _ => (),
-                        }                
+                        }
                     }
                 }
             }
