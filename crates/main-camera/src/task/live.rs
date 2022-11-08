@@ -98,12 +98,26 @@ impl Task for LiveTask {
 
                 let lv_data = tokio::task::block_in_place(|| {
                     let handle = ptp::ObjectHandle::from(IMAGE_BUFFER_OBJECT_HANDLE);
-                    let data = interface
-                        .object_data(handle, None)
-                        .context("failed to get data for image")?;
+                    let data = match interface.get_object(handle, None) {
+                        Ok(data) => Some(data),
+
+                        // Sony says that this will sometimes fail with
+                        // AccessDenied, but in that case we should just try
+                        // again
+                        Err(ptp::Error::Response(ptp::ResponseCode::Standard(
+                            ptp::StandardResponseCode::AccessDenied,
+                        ))) => None,
+
+                        Err(err) => return Err(err).context("failed to retrieve live view frame"),
+                    };
 
                     Ok::<_, anyhow::Error>(data)
                 })?;
+
+                let lv_data = match lv_data {
+                    Some(lv_data) => lv_data,
+                    None => continue,
+                };
 
                 let mut lv_data = BytesMut::from(&lv_data[..]);
 

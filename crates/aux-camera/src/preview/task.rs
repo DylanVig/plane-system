@@ -1,13 +1,15 @@
 use anyhow::{bail, Context};
 use async_trait::async_trait;
 use chrono::Local;
-use gst::traits::ElementExt;
+use gst::Pipeline;
 use gst::{
     glib::value::{FromValue, ValueTypeChecker},
-    prelude::{ObjectExt, ToValue},
+    prelude::*,
+    traits::ElementExt,
 };
 use log::*;
 use ps_client::{ChannelCommandSink, ChannelCommandSource, Task};
+use futures::StreamExt;
 use tokio::select;
 use tokio_util::sync::CancellationToken;
 
@@ -35,60 +37,91 @@ impl Task for PreviewTask {
         let Self { frame_rx, .. } = *self;
 
         let cmd_loop = async {
-            trace!("initializing live preview");
+            debug!("initializing live preview");
 
             gst::init().context("failed to init gstreamer")?;
 
             let start_time = Local::now();
 
-            let element = gst::parse_launch("appsrc ! jpegdec ! autovideosink")
-                .context("failed to create gstreamer pipeline")?;
+            let pipeline = gst::Pipeline::default();
 
-            element.set_property("caps", gst::Caps::builder("image/jpeg").build());
-            element.set_property("is-live", true);
-            element.set_property("emit-signals", true);
+            let appsrc = gst_app::AppSrc::builder()
+                .caps(&gst::Caps::builder("image/jpeg").build())
+                .format(gst::Format::Time)
+                .is_live(true)
+                .build();
 
-            let bus = element.bus().context("failed to get element bus")?;
+            let jpegdec = gst::ElementFactory::make("jpegdec").build()?;
+            let videoconvert = gst::ElementFactory::make("videoconvert").build()?;
+            let sink = gst::ElementFactory::make("autovideosink").build()?;
 
-            element
+            pipeline.add_many(&[appsrc.upcast_ref(), &jpegdec, &videoconvert, &sink])?;
+            gst::Element::link_many(&[appsrc.upcast_ref(),  &jpegdec, &videoconvert, &sink])?;
+
+            let bus = pipeline.bus().context("failed to get element bus")?;
+            let mut bus_stream = bus.stream();
+
+            pipeline
                 .set_state(gst::State::Playing)
                 .context("could not play gstreamer pipeline")?;
 
-            while let Ok(frame) = frame_rx.recv_async().await {
-                let mut buf = gst::Buffer::with_size(frame.data.len())
-                    .context("failed to allocate gstreamer framebuffer")?;
-                {
-                    let buf = buf
-                        .get_mut()
-                        .context("failed to write to gstreamer framebuffer")?;
+            loop {
+                select! {
+                    frame = frame_rx.recv_async() => {
+                        if let Ok(frame) = frame {
+                            let mut buf = gst::Buffer::with_size(frame.data.len())
+                                .context("failed to allocate gstreamer framebuffer")?;
 
-                    if let Err(_) = buf.copy_from_slice(0, &frame.data[..]) {
-                        bail!("failed to fill gstreamer framebuffer");
+                            {
+                                let buf = buf
+                                    .get_mut()
+                                    .context("failed to write to gstreamer framebuffer")?;
+
+                                if let Err(_) = buf.copy_from_slice(0, &frame.data[..]) {
+                                    bail!("failed to fill gstreamer framebuffer");
+                                }
+
+                                let frame_time = frame.timestamp - start_time;
+                                buf.set_dts(gst::ClockTime::from_mseconds(
+                                    frame_time.num_milliseconds() as u64
+                                ));
+                            }
+
+                            appsrc.push_buffer(buf).context("pushing buffer failed")?;
+                            trace!("pushed buffer to appsrc");
+                        } else {
+                            debug!("failed to get preview frame, exiting loop");
+                            break;
+                        }
                     }
 
-                    let frame_time = frame.timestamp - start_time;
-                    buf.set_dts(gst::ClockTime::from_mseconds(
-                        frame_time.num_milliseconds() as u64
-                    ));
-                }
+                    msg = bus_stream.next() => {
+                        use gst::MessageView;
 
-                let ret = bus
-                    .emit_by_name_with_values("push-buffer", &[buf.to_value()])
-                    .context("pushing buffer returned nothing")?;
+                        if msg.is_none() {
+                            debug!("message stream ended");
+                            break;
+                        }
 
-                <gst::FlowReturn as FromValue>::Checker::check(&ret)
-                    .context("push-buffer return value was not a FlowReturn")?;
-                let ret = unsafe { gst::FlowReturn::from_value(&ret) };
-
-                match ret {
-                    gst::FlowReturn::Ok => {}
-                    other => bail!("pushing buffer returned {other:?}"),
+                        match msg.unwrap().view() {
+                            MessageView::Eos(..) => {
+                                debug!("received eos from gstreamer");
+                                break
+                            },
+                            MessageView::Error(err) => {
+                                pipeline.set_state(gst::State::Null)?;
+                                error!("received error from gstreamer: {err:?}");
+                                break;
+                            }
+                            _ => (),
+                        }                
+                    }
                 }
             }
 
-            bus.emit_by_name_with_values("end-of-stream", &[]);
+            appsrc.end_of_stream().context("ending stream failed")?;
 
-            element
+            pipeline
                 .set_state(gst::State::Null)
                 .context("could not stop gstreamer pipeline")?;
 

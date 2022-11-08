@@ -164,10 +164,10 @@ impl Task for DownloadTask {
                         tokio::task::block_in_place(|| {
                             let handle = ptp::ObjectHandle::from(IMAGE_BUFFER_OBJECT_HANDLE);
                             let info = interface
-                                .object_info(handle, None)
+                                .get_object_info(handle, None)
                                 .context("failed to get info for image")?;
                             let data = interface
-                                .object_data(handle, None)
+                                .get_object(handle, None)
                                 .context("failed to get data for image")?;
                             let data = Bytes::from(data);
 

@@ -10,6 +10,7 @@ ps-main-camera = { path = "../main-camera" }
 ps-client = { path = "../client" }
 
 gst = { version = "0.19", package = "gstreamer" }
+gst-app = { version = "0.19", package = "gstreamer-app" }
 
 # logging + error handling
 anyhow = "1.0"
