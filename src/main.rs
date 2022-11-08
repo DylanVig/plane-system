@@ -173,13 +173,14 @@ async fn run_tasks(
     let aux_camera_save_cmd_tx = if let Some(c) = config.aux_camera {
         debug!("initializing aux camera tasks");
 
-        let (stream_task, save_task) = ps_aux_camera::create_tasks(c)?;
+        let (stream_task, save_task, preview_task) = ps_aux_camera::create_tasks(c)?;
 
         let mut aux_camera_save_cmd_tx = None;
 
         if let Some(stream_task) = stream_task {
             tasks.push(Box::new(stream_task));
         }
+        
         if let Some(save_task) = save_task {
             aux_camera_save_cmd_tx = Some(save_task.cmd());
             tasks.push(Box::new(save_task));
