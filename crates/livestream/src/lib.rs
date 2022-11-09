@@ -3,35 +3,30 @@ use anyhow::bail;
 use serde::Deserialize;
 
 pub mod preview;
-pub mod save;
-pub mod stream;
+pub mod custom;
 
 #[derive(Clone, Debug, Deserialize)]
-pub struct AuxCameraConfig {
-    pub stream: Option<stream::StreamConfig>,
-    pub save: Option<save::SaveConfig>,
+pub struct LivestreamConfig {
+    pub custom: Option<custom::CustomConfig>,
     pub preview: Option<preview::PreviewConfig>,
 }
 
 pub fn create_tasks(
-    config: AuxCameraConfig,
+    config: LivestreamConfig,
     frame_rx: Option<flume::Receiver<ps_main_camera::LiveFrame>>,
 ) -> anyhow::Result<(
-    Option<stream::StreamTask>,
-    Option<save::SaveTask>,
+    Option<custom::CustomTask>,
     Option<preview::PreviewTask>,
 )> {
-    if let AuxCameraConfig {
-        stream: None,
-        save: None,
+    if let LivestreamConfig {
+        custom: None,
         preview: None,
     } = config
     {
         bail!("cannot configure streaming without any endpoints");
     }
 
-    let stream = config.stream.map(stream::create_task).transpose()?;
-    let save = config.save.map(save::create_task).transpose()?;
+    let custom = config.custom.map(custom::create_task).transpose()?;
     let preview = if let Some(config) = config.preview {
         if let Some(frame_rx) = frame_rx {
             Some(preview::create_task(config, frame_rx)?)
@@ -42,5 +37,5 @@ pub fn create_tasks(
         None
     };
 
-    Ok((stream, save, preview))
+    Ok((custom, preview))
 }

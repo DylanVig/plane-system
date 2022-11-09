@@ -15,7 +15,7 @@ enum Commands {
 
     #[clap(subcommand)]
     #[clap(name = "livestream", alias = "ls")]
-    LiveStream(ps_livestream::save::SaveRequest),
+    LiveStream(ps_livestream::custom::LivestreamRequest),
 
     Exit,
 }
@@ -26,8 +26,11 @@ pub async fn run_interactive_cli(
     camera_cmd_tx: Option<
         ChannelCommandSink<ps_main_camera::CameraRequest, ps_main_camera::CameraResponse>,
     >,
-    livestream_save_cmd_tx: Option<
-        ChannelCommandSink<ps_livestream::save::SaveRequest, ps_livestream::save::SaveResponse>,
+    livestream_cmd_tx: Option<
+        ChannelCommandSink<
+            ps_livestream::custom::LivestreamRequest,
+            ps_livestream::custom::LivestreamResponse,
+        >,
     >,
     cancellation_token: CancellationToken,
 ) -> anyhow::Result<()> {
@@ -70,7 +73,7 @@ pub async fn run_interactive_cli(
                             }
 
                             Commands::LiveStream(request) => {
-                                if let Some(livestream_save_cmd_tx) = &livestream_save_cmd_tx {
+                                if let Some(livestream_save_cmd_tx) = &livestream_cmd_tx {
                                     let (ret_tx, ret_rx) = oneshot::channel();
                                     if let Err(err) = livestream_save_cmd_tx.send_async((request, ret_tx)).await {
                                         error!("aux camera task did not accept command: {:#?}", err);
