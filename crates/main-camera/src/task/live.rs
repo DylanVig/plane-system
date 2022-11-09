@@ -24,8 +24,6 @@ const IMAGE_BUFFER_OBJECT_HANDLE: u32 = 0xFFFFC002;
 pub struct LiveFrame {
     pub timestamp: DateTime<Local>,
 
-    pub duration: Duration,
-
     /// Frame data encoded as JPEG
     pub data: Bytes,
 }
@@ -137,7 +135,6 @@ impl Task for LiveTask {
 
                 let _ = frame_tx.try_send(LiveFrame {
                     timestamp: Local::now(),
-                    duration: frame_duration,
                     data: image.freeze(),
                 });
             }
