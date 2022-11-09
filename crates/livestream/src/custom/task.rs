@@ -22,13 +22,25 @@ pub struct CustomTask {
 pub fn create_task(config: CustomConfig) -> anyhow::Result<CustomTask> {
     let (cmd_tx, cmd_rx) = flume::bounded(256);
 
+    let mut save_path = config.save_path;
+    save_path.push(chrono::Local::now().format("%FT%H-%M-%S").to_string());
+
+    let mut fmt_vars = HashMap::new();
+    fmt_vars.insert("save_path".to_owned(), save_path.display().to_string());
+
     Ok(CustomTask {
-        save_path: config.save_path,
+        save_path,
         pipeline_descs: config
             .pipelines
             .into_iter()
-            .map(|(key, val)| (key, val.join("\n")))
-            .collect(),
+            .map(|(key, val)| {
+                let val = val.join("\n");
+                let val = strfmt::strfmt(&val, &fmt_vars)?;
+
+                anyhow::Result::Ok((key, val))
+            })
+            .collect::<anyhow::Result<HashMap<String, String>>>()
+            .context("invalid pipeline format string")?,
         cmd_rx,
         cmd_tx,
     })
@@ -100,6 +112,8 @@ impl Task for CustomTask {
                                             ))
                                         }
                                     };
+
+                                    debug!("initializing pipeline with description {pipeline_desc}");
 
                                     let (pipeline, bus) = match init_pipeline(&pipeline_desc) {
                                         Ok(ret) => ret,
