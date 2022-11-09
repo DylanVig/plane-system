@@ -1,10 +1,10 @@
 {
   "livestream": {
     "custom": {
+      "save_path": "./videos",
       "pipelines": {
         "fack": [
-          // "v4l2src device=\"/dev/video2\" ! videoconvert ! v4l2h264enc extra-controls=\"controls,video_bitrate=20000000,video_bitrate_mode=1\" ! 'video/x-h264,level=(string)4.2' ! h264parse ! matroskamux ! filesink location=\"{save_path}/shitter2.mp4\"",
-          "v4l2src device=\"/dev/video2\" ! videoconvert ! x264enc speed-preset=superfast ! matroskamux ! filesink location=\"{save_path}/shitter2.mp4\""
+          "v4l2src device=\"/dev/video2\" ! video/x-raw,width=1920 ! videoconvert ! x264enc speed-preset=superfast bitrate=20000 ! mp4mux ! filesink location=\"{save_path}/shitter2.mp4\""
         ]
       }
     }

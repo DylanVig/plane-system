@@ -73,17 +73,17 @@ pub async fn run_interactive_cli(
                             }
 
                             Commands::LiveStream(request) => {
-                                if let Some(livestream_save_cmd_tx) = &livestream_cmd_tx {
+                                if let Some(livestream_cmd_tx) = &livestream_cmd_tx {
                                     let (ret_tx, ret_rx) = oneshot::channel();
-                                    if let Err(err) = livestream_save_cmd_tx.send_async((request, ret_tx)).await {
-                                        error!("aux camera task did not accept command: {:#?}", err);
+                                    if let Err(err) = livestream_cmd_tx.send_async((request, ret_tx)).await {
+                                        error!("livestream task did not accept command: {:#?}", err);
                                     }
                                     match ret_rx.await? {
                                         Ok(response) => info!("{:?}", response),
                                         Err(err) => error!("{:?}", err),
                                     };
                                 } else {
-                                    error!("aux camera task is not running");
+                                    error!("livestream task is not running");
                                 }
                             }
 
