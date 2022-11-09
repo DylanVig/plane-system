@@ -56,7 +56,7 @@ impl Task for PreviewTask {
             .is_live(true)
             .build();
 
-        let bin_spec = config.pipelines.join("\n");
+        let bin_spec = config.bin_spec.join("\n");
         let bin = gst::parse_bin_from_description(&bin_spec, true)
             .context("failed to parse gstreamer bin from config")?;
 
