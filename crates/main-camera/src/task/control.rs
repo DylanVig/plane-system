@@ -270,7 +270,7 @@ async fn run_zoom(
             )?;
             //do button press down
             interface.execute(ControlCode::ZoomControlAbsolute, PtpData::UINT16(0x0002))?;
-            sleep(Duration::from_secs(1)).await;
+            sleep(Duration::from_millis(50)).await;
             //do button press up
             interface.execute(ControlCode::ZoomControlAbsolute, PtpData::UINT16(0x0001))?;
         }
