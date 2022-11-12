@@ -49,6 +49,7 @@ impl Task for PreviewTask {
 
         let pipeline = gst::Pipeline::default();
 
+        // create app source to put frames from camera into gstreamer
         let appsrc = gst_app::AppSrc::builder()
             .name("r10csrc")
             .caps(&gst::Caps::builder("image/jpeg").build())
@@ -56,13 +57,16 @@ impl Task for PreviewTask {
             .is_live(true)
             .build();
 
+        // create bin based on spec from config file
         let bin_spec = config.bin_spec.join("\n");
         let bin = gst::parse_bin_from_description(&bin_spec, true)
             .context("failed to parse gstreamer bin from config")?;
 
+        // link the bin to the app source
         pipeline.add_many(&[appsrc.upcast_ref(), bin.upcast_ref::<gst::Element>()])?;
         gst::Element::link_many(&[appsrc.upcast_ref(), bin.upcast_ref::<gst::Element>()])?;
 
+        // prepare the pipeline
         pipeline
             .set_state(gst::State::Ready)
             .context("could not prepare gstreamer pipeline")?;
@@ -70,6 +74,7 @@ impl Task for PreviewTask {
         let bus = pipeline.bus().context("failed to get element bus")?;
         let mut bus_stream = bus.stream();
 
+        // start feeding data into the pipeline
         pipeline
             .set_state(gst::State::Playing)
             .context("could not prepare gstreamer pipeline")?;
@@ -78,6 +83,7 @@ impl Task for PreviewTask {
             select! {
                 frame = frame_rx.recv_async() => {
                     if let Ok(frame) = frame {
+                        // we got a frame, copy the data into gstreamer
                         let mut buf = gst::Buffer::with_size(frame.data.len())
                             .context("failed to allocate gstreamer framebuffer")?;
 
@@ -90,24 +96,15 @@ impl Task for PreviewTask {
                                 bail!("failed to fill gstreamer framebuffer");
                             }
 
+                            // set presentation time of the frame according to
+                            // the frame time
                             let frame_time = frame.timestamp - start_time;
-                            buf.set_dts(gst::ClockTime::from_mseconds(
+                            buf.set_pts(gst::ClockTime::from_mseconds(
                                 frame_time.num_milliseconds() as u64
                             ));
                         }
 
-                        if let Err(err) = appsrc.push_buffer(buf) {
-                            match err {
-                                // ignore flushing error
-                                // gst::FlowError::Flushing => {
-                                //     trace!("dropping frame b/c app source is flushing");
-                                // }
-                                err => {
-                                    return Err(anyhow!(err)).context("failed to push buffer to appsrc");
-                                }
-                            }
-                        }
-
+                        appsrc.push_buffer(buf).context("failed to push buffer to appsrc")?;
 
                         trace!("pushed buffer to appsrc");
                     } else {
@@ -142,6 +139,7 @@ impl Task for PreviewTask {
             }
         }
 
+        // stream has ended
         appsrc.end_of_stream().context("ending stream failed")?;
         pipeline
             .set_state(gst::State::Null)

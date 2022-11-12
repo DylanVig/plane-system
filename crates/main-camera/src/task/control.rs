@@ -112,7 +112,7 @@ impl Task for ControlTask {
                             } => {
                                 run_capture(
                                     interface,
-                                    evt_rx.clone(),
+                                    ptp_evt_rx.clone(),
                                     ctrl_evt_tx.clone(),
                                     burst_duration,
                                     burst_high_speed,
@@ -281,7 +281,7 @@ async fn run_initialize(interface: &RwLock<InterfaceGuard>) -> anyhow::Result<Ca
 
     sleep(Duration::from_secs(1)).await;
 
-    interface.execute(ControlCode::SystemInit, PtpData::UINT16(0x0001))?;
+    interface.execute(ControlCode::SystemInit, Data::UINT16(0x0001))?;
 
     Ok(CameraResponse::Unit)
 }
@@ -294,26 +294,26 @@ async fn run_zoom(
 
     match req {
         CameraZoomRequest::Wide { duration } => {
-            interface.execute(ControlCode::ZoomControlWide, PtpData::UINT16(0x0002))?;
+            interface.execute(ControlCode::ZoomControlWide, Data::UINT16(0x0002))?;
             sleep(Duration::from_millis(duration)).await;
-            interface.execute(ControlCode::ZoomControlWide, PtpData::UINT16(0x0001))?;
+            interface.execute(ControlCode::ZoomControlWide, Data::UINT16(0x0001))?;
         }
         CameraZoomRequest::Tele { duration } => {
-            interface.execute(ControlCode::ZoomControlTele, PtpData::UINT16(0x0002))?;
+            interface.execute(ControlCode::ZoomControlTele, Data::UINT16(0x0002))?;
             sleep(Duration::from_millis(duration)).await;
-            interface.execute(ControlCode::ZoomControlTele, PtpData::UINT16(0x0001))?;
+            interface.execute(ControlCode::ZoomControlTele, Data::UINT16(0x0001))?;
         }
         CameraZoomRequest::Level { level } => {
             //set target zoom level
             interface.set(
                 PropertyCode::ZoomAbsolutePosition,
-                ptp::PtpData::UINT8(level),
+                ptp::Data::UINT8(level),
             )?;
             //do button press down
-            interface.execute(ControlCode::ZoomControlAbsolute, PtpData::UINT16(0x0002))?;
+            interface.execute(ControlCode::ZoomControlAbsolute, Data::UINT16(0x0002))?;
             sleep(Duration::from_millis(50)).await;
             //do button press up
-            interface.execute(ControlCode::ZoomControlAbsolute, PtpData::UINT16(0x0001))?;
+            interface.execute(ControlCode::ZoomControlAbsolute, Data::UINT16(0x0001))?;
         }
     }
 
