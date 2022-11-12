@@ -57,6 +57,27 @@ pub enum CameraRequest {
     /// record videos
     #[clap(subcommand)]
     Record(CameraRecordRequest),
+
+    /// zoom in and out
+    #[clap(subcommand)]
+    Zoom(CameraZoomRequest),
+}
+
+#[derive(Subcommand, Debug, Clone)]
+pub enum CameraZoomRequest {
+    //Zooms out for given milliseconds
+    Wide {
+        duration: u64,
+    },
+    ///Zooms in for given milliseconds
+    Tele {
+        duration: u64,
+    },
+    ///Zooms to level between [0,30] with 0 being fully zoomed out and 30 fully zoomed in.
+    /// Warning: Zoom levels [30,60] do not physically zoom the camera but rather crop the image
+    Level {
+        level: u8,
+    },
 }
 
 #[derive(Subcommand, Debug, Clone)]
@@ -78,7 +99,6 @@ pub enum CameraSetRequest {
     OperatingMode { mode: OperatingMode },
     SaveMode { mode: SaveMedia },
     FocusMode { mode: FocusMode },
-    ZoomLevel { level: u16 },
     CcInterval { interval: f32 },
     ShutterSpeed { speed: ShutterSpeed },
     Aperture { aperture: Aperture },

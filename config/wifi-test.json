@@ -9,10 +9,8 @@
   "scheduler": null,
   "gimbal": null,
   "main_camera": {
-    "main_camera": {
-      "download": {
-        "save_path": "./images/"
-      }
+    "download": {
+      "save_path": "./images/"
     }
   },
   "livestream": null
