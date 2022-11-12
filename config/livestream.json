@@ -1,0 +1,12 @@
+{
+  "livestream": {
+    "custom": {
+      "save_path": "./videos",
+      "pipelines": {
+        "fack": [
+          "v4l2src device=\"/dev/video2\" ! video/x-raw,width=1920 ! videoconvert ! x264enc speed-preset=superfast bitrate=20000 ! mp4mux ! filesink location=\"{save_path}/shitter2.mp4\""
+        ]
+      }
+    }
+  }
+}

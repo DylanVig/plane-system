@@ -16,7 +16,7 @@ pub struct PlaneSystemConfig {
     pub main_camera: Option<ps_main_camera::MainCameraConfig>,
 
     #[cfg(feature = "livestream")]
-    pub livestream: Option<ps_livestream::AuxCameraConfig>,
+    pub livestream: Option<ps_livestream::LivestreamConfig>,
 }
 
 impl PlaneSystemConfig {

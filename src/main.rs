@@ -183,28 +183,24 @@ async fn run_tasks(
     };
 
     #[cfg(feature = "livestream")]
-    let livestream_save_cmd_tx = if let Some(c) = config.livestream {
+    let livestream_cmd_tx = if let Some(c) = config.livestream {
         debug!("initializing aux camera tasks");
 
-        let (stream_task, save_task, preview_task) =
+        let (custom_task, preview_task) =
             ps_livestream::create_tasks(c, camera_preview_frame_rx)?;
 
-        let mut livestream_save_cmd_tx = None;
+        let mut livestream_cmd_tx = None;
 
-        if let Some(stream_task) = stream_task {
-            tasks.push(Box::new(stream_task));
-        }
-
-        if let Some(save_task) = save_task {
-            livestream_save_cmd_tx = Some(save_task.cmd());
-            tasks.push(Box::new(save_task));
+        if let Some(custom_task) = custom_task {
+            livestream_cmd_tx = Some(custom_task.cmd());
+            tasks.push(Box::new(custom_task));
         }
 
         if let Some(preview_task) = preview_task {
             tasks.push(Box::new(preview_task));
         }
 
-        livestream_save_cmd_tx
+        livestream_cmd_tx
     } else {
         None
     };
@@ -218,7 +214,7 @@ async fn run_tasks(
         editor,
         stdout,
         camera_ctrl_cmd_tx,
-        livestream_save_cmd_tx,
+        livestream_cmd_tx,
         cancellation_token.clone(),
     ));
 

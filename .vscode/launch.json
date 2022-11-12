@@ -30,6 +30,29 @@
     {
       "type": "lldb",
       "request": "launch",
+      "name": "run plane-system (livestream)",
+      "cargo": {
+        "args": [
+          "build",
+          "--bin=plane-system",
+          "--package=plane-system"
+        ],
+        "filter": {
+          "name": "plane-system",
+          "kind": "bin"
+        }
+      },
+      "env": {
+        "RUST_LOG": "plane_system=debug,ps_telemetry=debug,ps_livestream=trace,ps_main_camera=debug,ps_pixhawk=debug,ps_gs=debug,ps_download=debug",
+        "RUST_LOG_STYLE": "always",
+        "RUST_BACKTRACE": "1",
+      },
+      "args": ["--config", "config/livestream.json"],
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "type": "lldb",
+      "request": "launch",
       "name": "run plane-system (pixhawk debug)",
       "cargo": {
         "args": [
