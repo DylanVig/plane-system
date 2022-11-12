@@ -95,7 +95,7 @@ impl Task for ControlTask {
 
     async fn run(self: Box<Self>, cancel: CancellationToken) -> anyhow::Result<()> {
         let loop_fut = async move {
-            let evt_rx = self.ptp_evt_rx;
+            let ptp_evt_rx = self.ptp_evt_rx;
             let ctrl_evt_tx = self.ctrl_evt_tx;
 
             loop {
@@ -401,7 +401,7 @@ pub(super) async fn run_set(
 
 pub(super) async fn run_capture(
     interface: &RwLock<InterfaceGuard>,
-    evt_rx: flume::Receiver<Event>,
+    ptp_evt_rx: flume::Receiver<Event>,
     ctrl_evt_tx: flume::Sender<ControlEvent>,
     burst_duration: Option<u8>,
     burst_high_speed: bool,
@@ -500,7 +500,7 @@ pub(super) async fn run_capture(
         loop {
             // TODO: maybe check ShootingFileInfo
 
-            let evt = evt_rx.recv_async().await?;
+            let evt = ptp_evt_rx.recv_async().await?;
 
             match evt.code {
                 ptp::EventCode::Vendor(0xC204) | ptp::EventCode::Vendor(0xC203) => {
