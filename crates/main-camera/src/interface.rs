@@ -318,7 +318,7 @@ impl CameraInterface {
     pub fn execute(&mut self, code: ControlCode, payload: ptp::PtpData) -> anyhow::Result<()> {
         let buf = payload.encode();
 
-        trace!("sending SDIO_ControlDevice");
+        trace!("sending SDIO_ControlDevice {code:?} {payload:?}");
 
         self.camera.command(
             CommandCode::SdioControlDevice.into(),
