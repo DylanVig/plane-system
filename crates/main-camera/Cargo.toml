@@ -7,6 +7,7 @@ edition = "2021"
 [dependencies]
 ps-serde-util = { path = "../serde-util" }
 ps-client = { path = "../client" }
+ps-telemetry = { path = "../telemetry" }
 ps-main-camera-csb = { path = "../main-camera-csb" }
 
 # logging + error handling
@@ -22,7 +23,8 @@ async-trait = "0.1"
 
 # protocols + serialization
 serde = "1.0"
-ptp = { git = "https://github.com/CUAir/rust-ptp" }
+serde_json = { version = "1.0" }
+ptp = { git = "https://github.com/CUAir/rust-ptp", rev = "cf633770" }
 num-traits = "0.2"
 num-derive = "0.3"
 

@@ -4,17 +4,18 @@
 		"address": "[::]:8080"
 	},
 	"ground_server": null,
-	"image": {
-		"save_path": "./images/"
-	},
 	"scheduler": null,
 	"main_camera": {
-    "kind": "R10C",
-    "current_sensing": {
-      "gpio_int": 4,
-      "gpio_ack": 17,
-      "i2c": 1
-    }
-  },
+		"main_camera": {
+			"download": {
+				"save_path": "./images/"
+			}
+		},
+		"current_sensing": {
+			"gpio_int": 4,
+			"gpio_ack": 17,
+			"i2c": 1
+		}
+	},
 	"gimbal": null
 }

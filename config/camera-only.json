@@ -4,11 +4,12 @@
     "address": "[::]:8080"
   },
   "ground_server": null,
-  "download": {
-    "save_path": "./images/"
-  },
   "scheduler": null,
   "gimbal": null,
-  "main_camera": { "kind": "R10C" },
+  "main_camera": {
+    "download": {
+      "save_path": "./images/"
+    }
+  },
   "aux_camera": null
 }

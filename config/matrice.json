@@ -1,14 +1,20 @@
 {
-  "pixhawk": { "address": "127.0.0.1:5760", "mavlink": { "type": "V2" } },
+  "pixhawk": {
+    "address": "127.0.0.1:5760",
+    "mavlink": {
+      "type": "V2"
+    }
+  },
   "plane_server": {
     "address": "[::]:8080"
   },
   "ground_server": null,
-  "download": {
-    "save_path": "./images/"
-  },
   "scheduler": null,
   "gimbal": null,
-  "main_camera": { "kind": "R10C" },
+  "main_camera": {
+    "download": {
+      "save_path": "./images/"
+    }
+  },
   "aux_camera": null
 }

@@ -1,15 +1,19 @@
-use std::{sync::Arc, time::Duration};
+use std::{sync::Arc, time::Duration, path::{PathBuf, Path}};
 
 use anyhow::Context;
 use async_trait::async_trait;
 use log::*;
 
 use ps_client::Task;
-use ptp::PtpEvent;
-use tokio::{select, sync::RwLock};
+use ps_telemetry::Telemetry;
+use tokio::{
+    select,
+    sync::{watch, RwLock},
+    time::sleep, fs::File, io::AsyncWriteExt,
+};
 use tokio_util::sync::CancellationToken;
 
-use crate::{interface::PropertyCode, task::util::convert_camera_value};
+use crate::{interface::PropertyCode, task::util::convert_camera_value, DownloadConfig};
 
 use super::InterfaceGuard;
 
@@ -18,32 +22,42 @@ use super::InterfaceGuard;
 /// retrieve images that are stored temporarily on the camera after capture.
 const IMAGE_BUFFER_OBJECT_HANDLE: u32 = 0xFFFFC001;
 
-pub type Download = Arc<(ptp::PtpObjectInfo, Vec<u8>)>;
+pub struct Download {
+    telemetry: Telemetry,
+    metadata: ptp::ObjectInfo,
+    data: Vec<u8>,
+}
 
 pub struct DownloadTask {
+    config: DownloadConfig,
     interface: Arc<RwLock<InterfaceGuard>>,
 
-    evt_rx: flume::Receiver<PtpEvent>,
-    download_tx: flume::Sender<Download>,
-    download_rx: flume::Receiver<Download>,
+    telem_rx: watch::Receiver<Telemetry>,
+    ptp_evt_rx: flume::Receiver<ptp::Event>,
+    download_tx: flume::Sender<Arc<Download>>,
+    download_rx: flume::Receiver<Arc<Download>>,
 }
 
 impl DownloadTask {
     pub(super) fn new(
+        config: DownloadConfig,
         interface: Arc<RwLock<InterfaceGuard>>,
-        evt_rx: flume::Receiver<PtpEvent>,
+        telem_rx: watch::Receiver<Telemetry>,
+        ptp_evt_rx: flume::Receiver<ptp::Event>,
     ) -> Self {
         let (download_tx, download_rx) = flume::bounded(256);
 
         Self {
+            config,
             interface,
-            evt_rx,
+            telem_rx,
+            ptp_evt_rx,
             download_rx,
             download_tx,
         }
     }
 
-    pub fn download(&self) -> flume::Receiver<Download> {
+    pub fn download(&self) -> flume::Receiver<Arc<Download>> {
         self.download_rx.clone()
     }
 }
@@ -56,17 +70,32 @@ impl Task for DownloadTask {
 
     async fn run(self: Box<Self>, cancel: CancellationToken) -> anyhow::Result<()> {
         let Self {
+            config,
             interface,
-            evt_rx,
+            telem_rx,
+            ptp_evt_rx,
             download_tx,
             ..
         } = *self;
+
+        let mut save_path = config.save_path;
+
+        // save inside of a folder named after the current date and time
+        save_path.push(chrono::Local::now().format("%FT%H-%M-%S").to_string());
+
+        if let Err(err) = tokio::fs::create_dir_all(&save_path).await {
+            anyhow::bail!(
+                "could not create image save directory {}: {}",
+                save_path.display(),
+                err
+            );
+        }
 
         let loop_fut = async move {
             loop {
                 // wait for shutter event from camera
                 loop {
-                    match evt_rx.recv_async().await {
+                    match ptp_evt_rx.recv_async().await {
                         Ok(evt) => {
                             if let ptp::EventCode::Vendor(0xC204) | ptp::EventCode::Vendor(0xC203) =
                                 evt.code
@@ -80,7 +109,7 @@ impl Task for DownloadTask {
                     }
                 }
 
-                let _timestamp = chrono::Local::now();
+                let telem = telem_rx.borrow().clone();
 
                 debug!("received capture event from camera");
 
@@ -88,7 +117,7 @@ impl Task for DownloadTask {
                 // acquired, so wait for it to flip to zero
                 // MAYBE WRONG? ^
                 loop {
-                    tokio::time::sleep(Duration::from_millis(100)).await;
+                    sleep(Duration::from_millis(100)).await;
 
                     let props = interface
                         .write()
@@ -106,7 +135,7 @@ impl Task for DownloadTask {
 
                 // download images until ShootingFileInfo reaches zero
                 loop {
-                    tokio::time::sleep(Duration::from_millis(100)).await;
+                    sleep(Duration::from_millis(100)).await;
 
                     let props = interface
                         .write()
@@ -121,7 +150,7 @@ impl Task for DownloadTask {
                         break;
                     }
 
-                    let (info, data) = {
+                    let (metadata, data) = {
                         let mut interface = interface.write().await;
 
                         tokio::task::block_in_place(|| {
@@ -139,7 +168,15 @@ impl Task for DownloadTask {
 
                     info!("downloaded image information from camera");
 
-                    let _ = download_tx.send_async(Arc::new((info, data))).await;
+                    let download = Arc::new(Download {
+                        telemetry: telem.clone(),
+                        metadata,
+                        data,
+                    });
+
+                    let _ = download_tx.try_send(download.clone());
+
+                    save(&save_path, download).await?;
                 }
             }
 
@@ -154,4 +191,48 @@ impl Task for DownloadTask {
 
         Ok(())
     }
+}
+
+async fn save(
+    image_save_dir: impl AsRef<Path>,
+    download: Arc<Download>,
+) -> anyhow::Result<PathBuf> {
+    let mut image_path = image_save_dir.as_ref().to_owned();
+    image_path.push(&download.metadata.filename);
+
+    debug!("writing image to file '{}'", image_path.to_string_lossy());
+
+    let mut image_file = File::create(&image_path)
+        .await
+        .context("failed to create image file")?;
+
+    image_file
+        .write_all(&download.data[..])
+        .await
+        .context("failed to save image")?;
+
+    info!("wrote image to file '{}'", image_path.to_string_lossy());
+
+    let telem_path = image_path.with_extension("json");
+
+    debug!(
+        "writing telemetry to file '{}'",
+        telem_path.to_string_lossy()
+    );
+
+    let telem_json = serde_json::json!(&download.telemetry);
+
+    let telem_bytes =
+        serde_json::to_vec(&telem_json).context("failed to serialize telemetry to JSON")?;
+
+    let mut telem_file = File::create(telem_path)
+        .await
+        .context("failed to create telemetry file")?;
+
+    telem_file
+        .write_all(&telem_bytes[..])
+        .await
+        .context("failed to write telemetry data to file")?;
+
+    Ok(image_path)
 }

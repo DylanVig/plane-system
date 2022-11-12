@@ -4,7 +4,6 @@ use anyhow::Context;
 use async_trait::async_trait;
 use log::*;
 use ps_client::Task;
-use ptp::PtpEvent;
 use tokio::{select, sync::RwLock};
 use tokio_util::sync::CancellationToken;
 
@@ -12,8 +11,8 @@ use super::InterfaceGuard;
 
 pub struct EventTask {
     interface: Arc<RwLock<InterfaceGuard>>,
-    evt_tx: flume::Sender<PtpEvent>,
-    evt_rx: flume::Receiver<PtpEvent>,
+    evt_tx: flume::Sender<ptp::Event>,
+    evt_rx: flume::Receiver<ptp::Event>,
 }
 
 impl EventTask {
@@ -27,7 +26,7 @@ impl EventTask {
         }
     }
 
-    pub fn events(&self) -> flume::Receiver<PtpEvent> {
+    pub fn events(&self) -> flume::Receiver<ptp::Event> {
         self.evt_rx.clone()
     }
 }

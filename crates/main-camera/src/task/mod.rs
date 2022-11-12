@@ -14,7 +14,8 @@ pub use download::*;
 pub use event::*;
 use log::*;
 
-use tokio::sync::RwLock;
+use ps_telemetry::Telemetry;
+use tokio::sync::{watch, RwLock};
 
 use crate::{
     interface::{self, PropertyCode},
@@ -22,13 +23,14 @@ use crate::{
 };
 
 pub fn create_tasks(
-    _config: MainCameraConfig,
+    config: MainCameraConfig,
+    telem_rx: watch::Receiver<Telemetry>,
 ) -> anyhow::Result<(ControlTask, EventTask, DownloadTask)> {
     let interface = Arc::new(RwLock::new(InterfaceGuard::new()?));
 
     let event_task = EventTask::new(interface.clone());
     let control_task = ControlTask::new(interface.clone(), event_task.events());
-    let download_task = DownloadTask::new(interface, event_task.events());
+    let download_task = DownloadTask::new(config.download, interface, telem_rx, event_task.events());
 
     Ok((control_task, event_task, download_task))
 }
@@ -51,7 +53,7 @@ impl InterfaceGuard {
 
         info!("setting time on camera to '{}'", &time_str);
 
-        if let Err(err) = interface.set(PropertyCode::DateTime, ptp::PtpData::STR(time_str)) {
+        if let Err(err) = interface.set(PropertyCode::DateTime, ptp::Data::STR(time_str)) {
             warn!("could not set time on camera: {:?}", err);
         }
 

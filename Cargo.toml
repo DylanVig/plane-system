@@ -13,7 +13,6 @@ incremental = true
 ps-aux-camera = { path = "crates/aux-camera", optional = true }
 ps-main-camera = { path = "crates/main-camera" }
 ps-gs = { path = "crates/gs" }
-ps-download = { path = "crates/download" }
 ps-pixhawk = { path = "crates/pixhawk" }
 ps-telemetry = { path = "crates/telemetry" }
 ps-types = { path = "crates/types" }

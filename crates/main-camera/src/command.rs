@@ -224,10 +224,10 @@ pub enum CameraResponse {
         name: String,
     },
     StorageInfo {
-        storages: HashMap<ptp::StorageId, ptp::PtpStorageInfo>,
+        storages: HashMap<ptp::StorageId, ptp::StorageInfo>,
     },
     ObjectInfo {
-        objects: HashMap<ptp::ObjectHandle, ptp::PtpObjectInfo>,
+        objects: HashMap<ptp::ObjectHandle, ptp::ObjectInfo>,
     },
     ZoomLevel(u8),
     CcInterval(f32),
