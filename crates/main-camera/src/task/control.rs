@@ -18,8 +18,8 @@ use super::{util::*, InterfaceGuard};
 use crate::{
     interface::{ControlCode, OperatingMode, PropertyCode},
     Aperture, CameraContinuousCaptureRequest, CameraRequest, CameraResponse, CameraSetRequest,
-    CompressionMode, DriveMode, ErrorMode, ExposureMode, FocusIndication, FocusMode, Iso,
-    SaveMedia, ShutterSpeed,
+    CameraZoomRequest, CompressionMode, DriveMode, ErrorMode, ExposureMode, FocusIndication,
+    FocusMode, Iso, SaveMedia, ShutterSpeed,
 };
 
 #[derive(Debug, Clone)]
@@ -176,6 +176,7 @@ impl Task for ControlTask {
                             CameraRequest::Set(req) => run_set(interface, req).await,
                             CameraRequest::ContinuousCapture(req) => run_cc(req, interface).await,
                             CameraRequest::Record(_) => todo!(),
+                            CameraRequest::Zoom(req) => run_zoom(interface, req).await,
                         };
 
                         let _ = ret.send(result);
@@ -280,7 +281,41 @@ async fn run_initialize(interface: &RwLock<InterfaceGuard>) -> anyhow::Result<Ca
 
     sleep(Duration::from_secs(1)).await;
 
-    interface.execute(ControlCode::SystemInit, Data::UINT16(0x0001))?;
+    interface.execute(ControlCode::SystemInit, PtpData::UINT16(0x0001))?;
+
+    Ok(CameraResponse::Unit)
+}
+
+async fn run_zoom(
+    interface: &RwLock<InterfaceGuard>,
+    req: CameraZoomRequest,
+) -> anyhow::Result<CameraResponse> {
+    let mut interface = interface.write().await;
+
+    match req {
+        CameraZoomRequest::Wide { duration } => {
+            interface.execute(ControlCode::ZoomControlWide, PtpData::UINT16(0x0002))?;
+            sleep(Duration::from_millis(duration)).await;
+            interface.execute(ControlCode::ZoomControlWide, PtpData::UINT16(0x0001))?;
+        }
+        CameraZoomRequest::Tele { duration } => {
+            interface.execute(ControlCode::ZoomControlTele, PtpData::UINT16(0x0002))?;
+            sleep(Duration::from_millis(duration)).await;
+            interface.execute(ControlCode::ZoomControlTele, PtpData::UINT16(0x0001))?;
+        }
+        CameraZoomRequest::Level { level } => {
+            //set target zoom level
+            interface.set(
+                PropertyCode::ZoomAbsolutePosition,
+                ptp::PtpData::UINT8(level),
+            )?;
+            //do button press down
+            interface.execute(ControlCode::ZoomControlAbsolute, PtpData::UINT16(0x0002))?;
+            sleep(Duration::from_millis(50)).await;
+            //do button press up
+            interface.execute(ControlCode::ZoomControlAbsolute, PtpData::UINT16(0x0001))?;
+        }
+    }
 
     Ok(CameraResponse::Unit)
 }
@@ -360,10 +395,6 @@ pub(super) async fn run_set(
         CameraSetRequest::FocusMode { mode } => {
             (PropertyCode::FocusMode, ptp::Data::UINT16(mode as u16))
         }
-        CameraSetRequest::ZoomLevel { level } => (
-            PropertyCode::ZoomAbsolutePosition,
-            ptp::Data::UINT16(level as u16),
-        ),
         CameraSetRequest::CcInterval { interval } => {
             let mut interval = (interval * 10.) as u16;
 
