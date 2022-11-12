@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::time::Duration;
 
 use anyhow::{anyhow, bail, Context};
@@ -19,7 +20,8 @@ use tokio_util::sync::CancellationToken;
 use super::*;
 
 pub struct PreviewTask {
-    config: PreviewConfig,
+    save_path: PathBuf,
+    bin_spec: String,
     frame_rx: flume::Receiver<ps_main_camera::LiveFrame>,
 }
 
@@ -27,7 +29,21 @@ pub fn create_task(
     config: PreviewConfig,
     frame_rx: flume::Receiver<ps_main_camera::LiveFrame>,
 ) -> anyhow::Result<PreviewTask> {
-    Ok(PreviewTask { config, frame_rx })
+    let mut save_path = config.save_path;
+    save_path.push(chrono::Local::now().format("%FT%H-%M-%S").to_string());
+
+    let mut fmt_vars = HashMap::new();
+    fmt_vars.insert("save_path".to_owned(), save_path.display().to_string());
+
+    let bin_spec = config.bin_spec.join("\n");
+    let bin_spec =
+        strfmt::strfmt(&bin_spec, &fmt_vars).context("invalid pipeline format string")?;
+
+    Ok(PreviewTask {
+        save_path,
+        bin_spec,
+        frame_rx,
+    })
 }
 
 #[async_trait]
@@ -38,7 +54,10 @@ impl Task for PreviewTask {
 
     async fn run(self: Box<Self>, cancel: CancellationToken) -> anyhow::Result<()> {
         let Self {
-            config, frame_rx, ..
+            bin_spec,
+            save_path,
+            frame_rx,
+            ..
         } = *self;
 
         debug!("initializing live preview");
@@ -58,7 +77,6 @@ impl Task for PreviewTask {
             .build();
 
         // create bin based on spec from config file
-        let bin_spec = config.bin_spec.join("\n");
         let bin = gst::parse_bin_from_description(&bin_spec, true)
             .context("failed to parse gstreamer bin from config")?;
 
