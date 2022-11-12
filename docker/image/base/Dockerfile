@@ -108,6 +108,7 @@ ENV TARGET_DEBIAN=${TARGET_DEBIAN}
 RUN dpkg --add-architecture ${TARGET_DEBIAN}
 RUN apt-get update && apt-get install -y --no-install-recommends \
 	libusb-1.0-0-dev:${TARGET_DEBIAN} libudev-dev:${TARGET_DEBIAN} libgstreamer1.0-dev:${TARGET_DEBIAN} \
+	libgstreamer-plugins-base1.0-dev:${TARGET_DEBIAN} \
 	libglib2.0-dev:${TARGET_DEBIAN} libssl-dev:${TARGET_DEBIAN} \
 	&& rm -rf /var/lib/apt/lists/*
 
@@ -116,7 +117,7 @@ WORKDIR "/home/ccuser"
 
 # install rust toolchain
 ARG TARGET_RUST
-RUN curl https://sh.rustup.rs -sSf | bash -s -- -y --default-toolchain 1.64
+RUN curl https://sh.rustup.rs -sSf | bash -s -- -y --default-toolchain 1.65
 ENV PATH="/home/ccuser/.cargo/bin:${PATH}"
 RUN rustup target add ${TARGET_RUST}
 
