@@ -5,6 +5,7 @@ use ptp::{ObjectFormatCode, ObjectHandle, PtpRead, StandardCommandCode, StorageI
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::io::Cursor;
+use std::ops::Deref;
 use std::{collections::HashSet, fmt::Debug, time::Duration};
 
 /// Sony's USB vendor ID
@@ -133,6 +134,14 @@ struct CameraState {
 
 pub struct CameraInterface {
     camera: ptp::Camera<rusb::GlobalContext>,
+}
+
+impl Deref for CameraInterface {
+    type Target = ptp::Camera<rusb::GlobalContext>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.camera
+    }
 }
 
 impl CameraInterface {
@@ -337,62 +346,5 @@ impl CameraInterface {
             trace!("received event: {:?}", event);
         }
         Ok(event)
-    }
-
-    pub fn device_info(&mut self, timeout: Option<Duration>) -> anyhow::Result<ptp::DeviceInfo> {
-        Ok(self.camera.get_device_info(timeout)?)
-    }
-
-    pub fn storage_ids(&mut self, timeout: Option<Duration>) -> anyhow::Result<Vec<StorageId>> {
-        Ok(self.camera.get_storage_ids(timeout)?)
-    }
-
-    pub fn storage_info(
-        &mut self,
-        storage_id: StorageId,
-        timeout: Option<Duration>,
-    ) -> anyhow::Result<ptp::StorageInfo> {
-        Ok(self.camera.get_storage_info(storage_id, timeout)?)
-    }
-
-    pub fn object_handles(
-        &mut self,
-        storage_id: StorageId,
-        parent_id: Option<ObjectHandle>,
-        timeout: Option<Duration>,
-    ) -> anyhow::Result<Vec<ObjectHandle>> {
-        Ok(self
-            .camera
-            .get_object_handles(storage_id, None, parent_id, timeout)?)
-    }
-
-    pub fn object_info(
-        &mut self,
-        object_id: ObjectHandle,
-        timeout: Option<Duration>,
-    ) -> anyhow::Result<ptp::ObjectInfo> {
-        Ok(self.camera.get_object_info(object_id, timeout)?)
-    }
-
-    pub fn object_data(
-        &mut self,
-        object_id: ObjectHandle,
-        timeout: Option<Duration>,
-    ) -> anyhow::Result<Vec<u8>> {
-        Ok(self.camera.get_object(object_id, timeout)?)
-    }
-
-    pub fn init_capture(
-        &mut self,
-        storage: StorageId,
-        format: ObjectFormatCode,
-        timeout: Option<Duration>,
-    ) -> anyhow::Result<Vec<u8>> {
-        Ok(self.camera.command(
-            StandardCommandCode::InitiateCapture.into(),
-            &[storage.into(), format.to_u32().unwrap()],
-            None,
-            timeout,
-        )?)
     }
 }

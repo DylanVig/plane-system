@@ -1,15 +1,22 @@
-use std::{sync::Arc, time::Duration, path::{PathBuf, Path}};
+use std::{
+    path::{Path, PathBuf},
+    sync::Arc,
+    time::Duration,
+};
 
 use anyhow::Context;
 use async_trait::async_trait;
+use bytes::Bytes;
 use log::*;
 
 use ps_client::Task;
 use ps_telemetry::Telemetry;
 use tokio::{
+    fs::File,
+    io::AsyncWriteExt,
     select,
     sync::{watch, RwLock},
-    time::sleep, fs::File, io::AsyncWriteExt,
+    time::sleep,
 };
 use tokio_util::sync::CancellationToken;
 
@@ -22,10 +29,11 @@ use super::InterfaceGuard;
 /// retrieve images that are stored temporarily on the camera after capture.
 const IMAGE_BUFFER_OBJECT_HANDLE: u32 = 0xFFFFC001;
 
+#[derive(Clone, Debug)]
 pub struct Download {
     telemetry: Telemetry,
     metadata: ptp::ObjectInfo,
-    data: Vec<u8>,
+    data: Bytes,
 }
 
 pub struct DownloadTask {
@@ -34,8 +42,8 @@ pub struct DownloadTask {
 
     telem_rx: watch::Receiver<Telemetry>,
     ptp_evt_rx: flume::Receiver<ptp::Event>,
-    download_tx: flume::Sender<Arc<Download>>,
-    download_rx: flume::Receiver<Arc<Download>>,
+    download_tx: flume::Sender<Download>,
+    download_rx: flume::Receiver<Download>,
 }
 
 impl DownloadTask {
@@ -57,7 +65,7 @@ impl DownloadTask {
         }
     }
 
-    pub fn download(&self) -> flume::Receiver<Arc<Download>> {
+    pub fn download(&self) -> flume::Receiver<Download> {
         self.download_rx.clone()
     }
 }
@@ -156,11 +164,12 @@ impl Task for DownloadTask {
                         tokio::task::block_in_place(|| {
                             let handle = ptp::ObjectHandle::from(IMAGE_BUFFER_OBJECT_HANDLE);
                             let info = interface
-                                .object_info(handle, None)
+                                .get_object_info(handle, None)
                                 .context("failed to get info for image")?;
                             let data = interface
-                                .object_data(handle, None)
+                                .get_object(handle, None)
                                 .context("failed to get data for image")?;
+                            let data = Bytes::from(data);
 
                             Ok::<_, anyhow::Error>((info, data))
                         })?
@@ -168,11 +177,11 @@ impl Task for DownloadTask {
 
                     info!("downloaded image information from camera");
 
-                    let download = Arc::new(Download {
+                    let download = Download {
                         telemetry: telem.clone(),
                         metadata,
                         data,
-                    });
+                    };
 
                     let _ = download_tx.try_send(download.clone());
 
@@ -193,10 +202,7 @@ impl Task for DownloadTask {
     }
 }
 
-async fn save(
-    image_save_dir: impl AsRef<Path>,
-    download: Arc<Download>,
-) -> anyhow::Result<PathBuf> {
+async fn save(image_save_dir: impl AsRef<Path>, download: Download) -> anyhow::Result<PathBuf> {
     let mut image_path = image_save_dir.as_ref().to_owned();
     image_path.push(&download.metadata.filename);
 

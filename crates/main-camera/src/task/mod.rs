@@ -1,6 +1,7 @@
 mod control;
 mod download;
 mod event;
+mod live;
 mod util;
 
 use std::{
@@ -12,6 +13,7 @@ use anyhow::Context;
 pub use control::*;
 pub use download::*;
 pub use event::*;
+pub use live::*;
 use log::*;
 
 use ps_telemetry::Telemetry;
@@ -25,14 +27,25 @@ use crate::{
 pub fn create_tasks(
     config: MainCameraConfig,
     telem_rx: watch::Receiver<Telemetry>,
-) -> anyhow::Result<(ControlTask, EventTask, DownloadTask)> {
+) -> anyhow::Result<(ControlTask, EventTask, DownloadTask, Option<LiveTask>)> {
     let interface = Arc::new(RwLock::new(InterfaceGuard::new()?));
 
     let event_task = EventTask::new(interface.clone());
     let control_task = ControlTask::new(interface.clone(), event_task.events());
-    let download_task = DownloadTask::new(config.download, interface, telem_rx, event_task.events());
+    let download_task = DownloadTask::new(
+        config.download,
+        interface.clone(),
+        telem_rx,
+        event_task.events(),
+    );
 
-    Ok((control_task, event_task, download_task))
+    let live_task = if let Some(config) = config.live {
+        Some(LiveTask::new(interface, config)?)
+    } else {
+        None
+    };
+
+    Ok((control_task, event_task, download_task, live_task))
 }
 
 /// A structure that initializes the camera interface when it is created, and

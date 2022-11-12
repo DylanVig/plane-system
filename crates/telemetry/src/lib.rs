@@ -8,20 +8,20 @@ use serde::{Deserialize, Serialize};
 use tokio::{select, sync::watch};
 use tokio_util::sync::CancellationToken;
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct Telemetry {
     pub pixhawk: Option<PixhawkTelemetry>,
     pub csb: Option<CsbTelemetry>,
 }
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct PixhawkTelemetry {
     pub position: (Point3D, DateTime<Local>),
     pub velocity: (Velocity3D, DateTime<Local>),
     pub attitude: (Euler, DateTime<Local>),
 }
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct CsbTelemetry {
     pub position: Point3D,
     pub attitude: Euler,

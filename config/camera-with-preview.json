@@ -1,0 +1,26 @@
+{
+  "pixhawk": null,
+  "plane_server": {
+    "address": "[::]:8080"
+  },
+  "ground_server": null,
+  "scheduler": null,
+  "gimbal": null,
+  "main_camera": {
+    "download": {
+      "save_path": "./images/"
+    },
+    "live": {
+      "framerate": 30
+    }
+  },
+  "livestream": {
+    "preview": {
+      "bin_spec": [
+        "jpegdec ! videoconvert ! clockoverlay text=\"R10C\" ! tee name=v", 
+        "v. ! queue ! autovideosink",
+        "v. ! queue ! x264enc speed-preset=superfast bitrate=20000 tune=zerolatency ! matroskamux writing-app=\"CUAir Plane System\" ! filesink location=/tmp/out.mkv"
+      ]
+    }
+  }
+}

@@ -70,14 +70,21 @@ async fn main() -> anyhow::Result<()> {
             tracing_subscriber::fmt::layer()
                 .with_ansi(false)
                 .with_writer(writer)
-                .with_filter(Targets::new().with_target("plane_system", LevelFilter::DEBUG)),
+                .with_filter(Targets::new().with_targets(vec![
+                    ("plane_system", LevelFilter::DEBUG),
+                    ("ps_livestream", LevelFilter::DEBUG),
+                    ("ps_main_camera", LevelFilter::DEBUG),
+                    ("ps_telemetry", LevelFilter::DEBUG),
+                    ("ps_gs", LevelFilter::DEBUG),
+                    ("ps_pixhawk", LevelFilter::DEBUG),
+                ])),
         )
         .init();
 
     let mut features = vec![];
 
-    #[cfg(feature = "aux-camera")]
-    features.push("aux-camera");
+    #[cfg(feature = "livestream")]
+    features.push("livestream");
 
     #[cfg(feature = "csb")]
     features.push("csb");
@@ -152,54 +159,66 @@ async fn run_tasks(
         None
     };
 
-    let camera_cmd_tx = if let Some(c) = config.main_camera {
+    let (camera_ctrl_cmd_tx, camera_preview_frame_rx) = if let Some(c) = config.main_camera {
         debug!("initializing camera tasks");
-        let (control_task, evt_task, download_task) =
-            ps_main_camera::create_tasks(c, telem_rx).context("failed to initialize camera tasks")?;
+        let (control_task, evt_task, download_task, live_task) =
+            ps_main_camera::create_tasks(c, telem_rx)
+                .context("failed to initialize camera tasks")?;
 
-        let camera_cmd_tx = control_task.cmd();
-        let camera_download_rx = download_task.download();
+        let ctrl_cmd_tx = control_task.cmd();
+        let mut preview_frame_rx = None;
 
         tasks.push(Box::new(control_task));
         tasks.push(Box::new(evt_task));
         tasks.push(Box::new(download_task));
 
-        Some(camera_cmd_tx)
+        if let Some(live_task) = live_task {
+            preview_frame_rx = Some(live_task.frame());
+            tasks.push(Box::new(live_task));
+        }
+
+        (Some(ctrl_cmd_tx), preview_frame_rx)
     } else {
-        None
+        (None, None)
     };
 
-    #[cfg(feature = "aux-camera")]
-    let aux_camera_save_cmd_tx = if let Some(c) = config.aux_camera {
+    #[cfg(feature = "livestream")]
+    let livestream_save_cmd_tx = if let Some(c) = config.livestream {
         debug!("initializing aux camera tasks");
 
-        let (stream_task, save_task) = ps_aux_camera::create_tasks(c)?;
+        let (stream_task, save_task, preview_task) =
+            ps_livestream::create_tasks(c, camera_preview_frame_rx)?;
 
-        let mut aux_camera_save_cmd_tx = None;
+        let mut livestream_save_cmd_tx = None;
 
         if let Some(stream_task) = stream_task {
             tasks.push(Box::new(stream_task));
         }
+
         if let Some(save_task) = save_task {
-            aux_camera_save_cmd_tx = Some(save_task.cmd());
+            livestream_save_cmd_tx = Some(save_task.cmd());
             tasks.push(Box::new(save_task));
         }
 
-        aux_camera_save_cmd_tx
+        if let Some(preview_task) = preview_task {
+            tasks.push(Box::new(preview_task));
+        }
+
+        livestream_save_cmd_tx
     } else {
         None
     };
 
-    #[cfg(not(feature = "aux-camera"))]
-    let aux_camera_save_cmd_tx = None;
+    #[cfg(not(feature = "livestream"))]
+    let livestream_save_cmd_tx = None;
 
     let mut join_set = JoinSet::new();
 
     join_set.spawn(run_interactive_cli(
         editor,
         stdout,
-        camera_cmd_tx,
-        aux_camera_save_cmd_tx,
+        camera_ctrl_cmd_tx,
+        livestream_save_cmd_tx,
         cancellation_token.clone(),
     ));
 

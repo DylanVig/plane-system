@@ -10,5 +10,5 @@
   "scheduler": null,
   "gimbal": null,
   "main_camera": null,
-  "aux_camera": null
+  "livestream": null
 }

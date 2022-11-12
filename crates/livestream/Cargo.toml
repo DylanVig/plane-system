@@ -1,14 +1,16 @@
 [package]
-name = "ps-aux-camera"
-version = "1.0.0"
+name = "ps-livestream"
+version = "0.10.0"
 authors = ["Ibiyemi Abiodun <ibiyemi@intulon.com>"]
 edition = "2021"
 
 [dependencies]
 ps-async-util = { path = "../async-util" }
+ps-main-camera = { path = "../main-camera" }
 ps-client = { path = "../client" }
 
 gst = { version = "0.19", package = "gstreamer" }
+gst-app = { version = "0.19", package = "gstreamer-app" }
 
 # logging + error handling
 anyhow = "1.0"
@@ -26,6 +28,7 @@ serde = { workspace = true }
 # utility
 clap = { version = "3", features = ["derive"] }
 chrono = { workspace = true }
+drop_guard = "0.3.0"
 
 # i/o
 tokio-util = { version = "0.7" }
