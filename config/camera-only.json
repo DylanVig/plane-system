@@ -7,9 +7,12 @@
   "scheduler": null,
   "gimbal": null,
   "main_camera": {
-    "download": {
+   "live": {
+        "framerate": 30
+   },
+   "download": {
       "save_path": "./images/"
-    }
-  },
+   }
+   },
   "livestream": null
 }

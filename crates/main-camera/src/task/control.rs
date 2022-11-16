@@ -221,6 +221,9 @@ async fn run_status(interface: &RwLock<InterfaceGuard>) -> anyhow::Result<Camera
     let shutter_speed = shutter_speed.map_or_else(|| "Unknown".to_owned(), |s| s.to_string());
     let iso = iso.map_or_else(|| "Unknown".to_owned(), |s| s.to_string());
     let aperture = aperture.map_or_else(|| "Unknown".to_owned(), |s| s.to_string());
+    let zoom_info = props
+        .get(&PropertyCode::ZoomMagnificationInfo)
+        .map(|prop| prop.current.clone());
 
     info!(
         "
@@ -236,6 +239,7 @@ async fn run_status(interface: &RwLock<InterfaceGuard>) -> anyhow::Result<Camera
         iso: {iso}
         aperture: {aperture}
         save destination: {save_media:?}
+        zoom status: {zoom_info:?}
     "
     );
 
@@ -305,10 +309,7 @@ async fn run_zoom(
         }
         CameraZoomRequest::Level { level } => {
             //set target zoom level
-            interface.set(
-                PropertyCode::ZoomAbsolutePosition,
-                ptp::Data::UINT8(level),
-            )?;
+            interface.set(PropertyCode::ZoomAbsolutePosition, ptp::Data::UINT8(level))?;
             //do button press down
             interface.execute(ControlCode::ZoomControlAbsolute, Data::UINT16(0x0002))?;
             sleep(Duration::from_millis(50)).await;
