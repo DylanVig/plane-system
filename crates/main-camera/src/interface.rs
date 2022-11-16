@@ -35,7 +35,7 @@ impl Into<ptp::CommandCode> for CommandCode {
 }
 
 #[repr(u16)]
-#[derive(ToPrimitive, FromPrimitive, Debug, Copy, Clone, Eq, PartialEq, Hash)]
+#[derive(ToPrimitive, FromPrimitive, Debug, Copy, Clone, Eq, PartialEq, PartialOrd, Ord, Hash)]
 pub enum PropertyCode {
     AELock = 0xD6E8,
     AspectRatio = 0xD6B3,
@@ -149,7 +149,7 @@ impl CameraInterface {
         Some(Duration::from_secs(5))
     }
 
-    #[instrument(level = "trace")]
+    #[instrument(level = "info")]
     pub fn new() -> anyhow::Result<Self> {
         let handle = rusb::open_device_with_vid_pid(SONY_USB_VID, SONY_USB_R10C_PID)
             .or_else(|| rusb::open_device_with_vid_pid(SONY_USB_VID, SONY_USB_R10C_PID_CHARGING))
@@ -160,7 +160,7 @@ impl CameraInterface {
         })
     }
 
-    #[instrument(level = "trace", skip(self))]
+    #[instrument(level = "info", skip(self))]
     pub fn connect(&mut self) -> anyhow::Result<()> {
         self.camera.open_session(self.timeout())?;
 
@@ -253,13 +253,13 @@ impl CameraInterface {
         Ok(())
     }
 
-    #[instrument(level = "trace", skip(self))]
+    #[instrument(level = "info", skip(self))]
     pub fn disconnect(&mut self) -> anyhow::Result<()> {
         self.camera.close_session(self.timeout())?;
         Ok(())
     }
 
-    #[instrument(level = "trace", skip(self))]
+    #[instrument(level = "debug", skip(self))]
     pub fn reset(&mut self) -> anyhow::Result<()> {
         self.camera.reset()?;
 
@@ -293,11 +293,11 @@ impl CameraInterface {
             let current_prop_code = match PropertyCode::from_u16(current_prop.property_code) {
                 Some(code) => code,
                 None => {
-                    trace!(
-                        "ignoring invalid property with code {:#0x}: {:?}",
-                        current_prop.property_code,
-                        current_prop
-                    );
+                    // trace!(
+                    //     "ignoring invalid property with code {:#0x}: {:?}",
+                    //     current_prop.property_code,
+                    //     current_prop
+                    // );
                     continue;
                 }
             };

@@ -39,7 +39,10 @@ pub enum CameraRequest {
 
     Initialize,
 
-    Status,
+    Status {
+        #[clap(short, long, action)]
+        verbose: bool
+    },
 
     /// get a property of the camera's state
     #[clap(subcommand)]

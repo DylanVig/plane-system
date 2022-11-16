@@ -18,6 +18,7 @@ use log::*;
 
 use ps_telemetry::Telemetry;
 use tokio::sync::{watch, RwLock};
+use tracing::{debug_span, info_span};
 
 use crate::{
     interface::{self, PropertyCode},
@@ -38,6 +39,9 @@ pub fn create_tasks(
         telem_rx,
         event_task.events(),
     );
+
+    let interface_refcount = Arc::strong_count(&interface);
+    debug!("interface ref count = {interface_refcount}");
 
     let live_task = if let Some(config) = config.live {
         Some(LiveTask::new(interface, config)?)
@@ -90,8 +94,10 @@ impl DerefMut for InterfaceGuard {
 
 impl Drop for InterfaceGuard {
     fn drop(&mut self) {
+        let _span = info_span!("refcount zero, disconnecting from camera").entered();
+
         if let Err(err) = self.0.disconnect() {
-            error!("failed to disconnect safely from camera: {err:?}");
+            error!("failed to disconnect from camera: {err:?}");
         }
     }
 }

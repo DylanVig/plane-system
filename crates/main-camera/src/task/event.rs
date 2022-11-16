@@ -4,30 +4,29 @@ use anyhow::Context;
 use async_trait::async_trait;
 use log::*;
 use ps_client::Task;
-use tokio::{select, sync::RwLock};
+use tokio::{select, sync::{RwLock, broadcast}};
 use tokio_util::sync::CancellationToken;
+use tracing::trace_span;
 
 use super::InterfaceGuard;
 
 pub struct EventTask {
     interface: Arc<RwLock<InterfaceGuard>>,
-    evt_tx: flume::Sender<ptp::Event>,
-    evt_rx: flume::Receiver<ptp::Event>,
+    evt_tx: broadcast::Sender<ptp::Event>,
 }
 
 impl EventTask {
     pub(super) fn new(interface: Arc<RwLock<InterfaceGuard>>) -> Self {
-        let (evt_tx, evt_rx) = flume::bounded(256);
+        let (evt_tx, _) = broadcast::channel(256);
 
         Self {
             interface,
-            evt_rx,
             evt_tx,
         }
     }
 
-    pub fn events(&self) -> flume::Receiver<ptp::Event> {
-        self.evt_rx.clone()
+    pub fn events(&self) -> broadcast::Receiver<ptp::Event> {
+        self.evt_tx.subscribe()
     }
 }
 
@@ -41,11 +40,10 @@ impl Task for EventTask {
         let loop_fut = async move {
             loop {
                 let event = {
-                    trace!("acquiring lock on interface");
 
                     let mut interface = self.interface.write().await;
 
-                    trace!("checking for events on interface");
+                    let _enter = trace_span!("checking for events on interface").entered();
 
                     tokio::task::block_in_place(|| {
                         interface
@@ -57,7 +55,7 @@ impl Task for EventTask {
                 if let Some(event) = event {
                     debug!("recv event {:?}", event);
 
-                    if let Err(_) = self.evt_tx.send_async(event).await {
+                    if let Err(_) = self.evt_tx.send(event) {
                         warn!("failed to publish event, exiting");
                         break;
                     }

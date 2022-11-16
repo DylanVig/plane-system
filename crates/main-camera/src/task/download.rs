@@ -15,7 +15,7 @@ use tokio::{
     fs::File,
     io::AsyncWriteExt,
     select,
-    sync::{watch, RwLock},
+    sync::{watch, RwLock, broadcast},
     time::sleep,
 };
 use tokio_util::sync::CancellationToken;
@@ -41,7 +41,7 @@ pub struct DownloadTask {
     interface: Arc<RwLock<InterfaceGuard>>,
 
     telem_rx: watch::Receiver<Telemetry>,
-    ptp_evt_rx: flume::Receiver<ptp::Event>,
+    ptp_evt_rx: broadcast::Receiver<ptp::Event>,
     download_tx: flume::Sender<Download>,
     download_rx: flume::Receiver<Download>,
 }
@@ -51,7 +51,7 @@ impl DownloadTask {
         config: DownloadConfig,
         interface: Arc<RwLock<InterfaceGuard>>,
         telem_rx: watch::Receiver<Telemetry>,
-        ptp_evt_rx: flume::Receiver<ptp::Event>,
+        ptp_evt_rx: broadcast::Receiver<ptp::Event>,
     ) -> Self {
         let (download_tx, download_rx) = flume::bounded(256);
 
@@ -81,7 +81,7 @@ impl Task for DownloadTask {
             config,
             interface,
             telem_rx,
-            ptp_evt_rx,
+            mut ptp_evt_rx,
             download_tx,
             ..
         } = *self;
@@ -103,9 +103,9 @@ impl Task for DownloadTask {
             loop {
                 // wait for shutter event from camera
                 loop {
-                    match ptp_evt_rx.recv_async().await {
+                    match ptp_evt_rx.recv().await {
                         Ok(evt) => {
-                            if let ptp::EventCode::Vendor(0xC201) = evt.code {
+                            if let ptp::EventCode::Vendor(0xC204) = evt.code {
                                 break;
                             }
                         }

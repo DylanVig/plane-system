@@ -3,16 +3,17 @@ use std::{sync::Arc, time::Duration};
 use anyhow::{bail, Context};
 use async_trait::async_trait;
 use chrono::{DateTime, Local};
-use log::{debug, error, info, warn};
+use futures::StreamExt;
 use num_traits::ToPrimitive;
 use ps_client::{ChannelCommandSink, ChannelCommandSource, Task};
 use ptp::{Data, Event};
 use tokio::{
     select,
-    sync::{oneshot, RwLock},
+    sync::{oneshot, RwLock, broadcast},
     time::{sleep, timeout, MissedTickBehavior},
 };
 use tokio_util::sync::CancellationToken;
+use tracing::{debug, debug_span, error, info, info_span, trace, warn};
 
 use super::{util::*, InterfaceGuard};
 use crate::{
@@ -53,7 +54,7 @@ pub enum CaptureFailure {
 
 pub struct ControlTask {
     interface: Arc<RwLock<InterfaceGuard>>,
-    ptp_evt_rx: flume::Receiver<Event>,
+    ptp_evt_rx: broadcast::Receiver<Event>,
     ctrl_evt_rx: flume::Receiver<ControlEvent>,
     ctrl_evt_tx: flume::Sender<ControlEvent>,
     cmd_rx: ChannelCommandSource<CameraRequest, CameraResponse>,
@@ -63,7 +64,7 @@ pub struct ControlTask {
 impl ControlTask {
     pub(super) fn new(
         interface: Arc<RwLock<InterfaceGuard>>,
-        ptp_evt_rx: flume::Receiver<Event>,
+        ptp_evt_rx: broadcast::Receiver<Event>,
     ) -> Self {
         let (cmd_tx, cmd_rx) = flume::bounded(256);
         let (ctrl_evt_tx, ctrl_evt_rx) = flume::bounded(256);
@@ -94,98 +95,109 @@ impl Task for ControlTask {
     }
 
     async fn run(self: Box<Self>, cancel: CancellationToken) -> anyhow::Result<()> {
-        let loop_fut = async move {
-            let ptp_evt_rx = self.ptp_evt_rx;
+        let loop_fut = {
+            let interface = self.interface.clone();
+            let mut ptp_evt_rx = self.ptp_evt_rx;
             let ctrl_evt_tx = self.ctrl_evt_tx;
+            let cmd_rx = self.cmd_rx;
+            let cmd_tx = self.cmd_tx;
 
-            loop {
-                match self.cmd_rx.recv_async().await {
-                    Ok((req, ret)) => {
-                        let interface = &*self.interface;
+            async move {
+                loop {
+                    match cmd_rx.recv_async().await {
+                        Ok((req, ret)) => {
+                            let interface = &*interface;
 
-                        let result = match req {
-                            CameraRequest::Storage(_) => todo!(),
-                            CameraRequest::File(_) => todo!(),
-                            CameraRequest::Capture {
-                                burst_duration,
-                                burst_high_speed,
-                            } => {
-                                run_capture(
-                                    interface,
-                                    ptp_evt_rx.clone(),
-                                    ctrl_evt_tx.clone(),
+                            let result = match req {
+                                CameraRequest::Storage(_) => todo!(),
+                                CameraRequest::File(_) => todo!(),
+                                CameraRequest::Capture {
                                     burst_duration,
                                     burst_high_speed,
-                                )
-                                .await
-                            }
-                            CameraRequest::CCHack { interval, count } => {
-                                let _interface = self.interface.clone();
-                                let cmd_tx = self.cmd_tx.clone();
+                                } => {
+                                    run_capture(
+                                        interface,
+                                        &mut ptp_evt_rx,
+                                        ctrl_evt_tx.clone(),
+                                        burst_duration,
+                                        burst_high_speed,
+                                    )
+                                    .await
+                                }
+                                CameraRequest::CCHack { interval, count } => {
+                                    let _interface = interface.clone();
+                                    let cmd_tx = cmd_tx.clone();
 
-                                tokio::task::spawn(async move {
-                                    let counter = 0;
-                                    let mut interval =
-                                        tokio::time::interval(Duration::from_secs(interval as u64));
+                                    tokio::task::spawn(async move {
+                                        let counter = 0;
+                                        let mut interval = tokio::time::interval(
+                                            Duration::from_secs(interval as u64),
+                                        );
 
-                                    interval.set_missed_tick_behavior(MissedTickBehavior::Delay);
+                                        interval
+                                            .set_missed_tick_behavior(MissedTickBehavior::Delay);
 
-                                    loop {
-                                        interval.tick().await;
-                                        info!("triggering capture from cc hack");
+                                        loop {
+                                            interval.tick().await;
+                                            info!("triggering capture from cc hack");
 
-                                        let (tx, rx) = oneshot::channel();
+                                            let (tx, rx) = oneshot::channel();
 
-                                        let res = cmd_tx
-                                            .send_async((
-                                                CameraRequest::Capture {
-                                                    burst_duration: None,
-                                                    burst_high_speed: false,
-                                                },
-                                                tx,
-                                            ))
-                                            .await;
+                                            let res = cmd_tx
+                                                .send_async((
+                                                    CameraRequest::Capture {
+                                                        burst_duration: None,
+                                                        burst_high_speed: false,
+                                                    },
+                                                    tx,
+                                                ))
+                                                .await;
 
-                                        if res.is_err() {
-                                            warn!("sending command from cc hack failed, exiting cc hack");
-                                            break;
-                                        }
-
-                                        let res = rx.await;
-
-                                        if let Err(err) = res {
-                                            error!("error in capture: {err:?}");
-                                        }
-
-                                        if let Some(count) = count {
-                                            if counter >= count {
+                                            if res.is_err() {
+                                                warn!("sending command from cc hack failed, exiting cc hack");
                                                 break;
                                             }
+
+                                            let res = rx.await;
+
+                                            if let Err(err) = res {
+                                                error!("error in capture: {err:?}");
+                                            }
+
+                                            if let Some(count) = count {
+                                                if counter >= count {
+                                                    break;
+                                                }
+                                            }
                                         }
-                                    }
 
-                                    info!("cc hack capture series done");
-                                });
+                                        info!("cc hack capture series done");
+                                    });
 
-                                Ok(CameraResponse::Unit)
-                            }
-                            CameraRequest::Reset => run_reset(interface).await,
-                            CameraRequest::Initialize => run_initialize(interface).await,
-                            CameraRequest::Status => run_status(interface).await,
-                            CameraRequest::Get(_) => todo!(),
-                            CameraRequest::Set(req) => run_set(interface, req).await,
-                            CameraRequest::ContinuousCapture(req) => run_cc(req, interface).await,
-                            CameraRequest::Record(_) => todo!(),
-                            CameraRequest::Zoom(req) => run_zoom(interface, req).await,
-                        };
+                                    Ok(CameraResponse::Unit)
+                                }
+                                CameraRequest::Reset => run_reset(interface).await,
+                                CameraRequest::Initialize => run_initialize(interface).await,
+                                CameraRequest::Status { verbose } => {
+                                    run_status(interface, verbose).await
+                                }
+                                CameraRequest::Get(_) => todo!(),
+                                CameraRequest::Set(req) => run_set(interface, req).await,
+                                CameraRequest::ContinuousCapture(req) => {
+                                    run_cc(req, interface).await
+                                }
+                                CameraRequest::Record(_) => todo!(),
+                                CameraRequest::Zoom(req) => run_zoom(interface, req).await,
+                            };
 
-                        let _ = ret.send(result);
+                            let _ = ret.send(result);
+                        }
+                        Err(_) => break,
                     }
-                    Err(_) => break,
                 }
-            }
 
-            Ok::<_, anyhow::Error>(())
+                Ok::<_, anyhow::Error>(())
+            }
         };
 
         select! {
@@ -193,12 +205,30 @@ impl Task for ControlTask {
           res = loop_fut => { res? }
         }
 
+        {
+            let mut interface = self.interface.write().await;
+            let _span = info_span!("task ending, disconnecting from camera").entered();
+            if let Err(err) = interface.disconnect() {
+                error!("failed to disconnect from camera: {err:?}");
+            }
+        }
+
         Ok(())
     }
 }
 
-async fn run_status(interface: &RwLock<InterfaceGuard>) -> anyhow::Result<CameraResponse> {
+async fn run_status(
+    interface: &RwLock<InterfaceGuard>,
+    verbose: bool,
+) -> anyhow::Result<CameraResponse> {
     let props = interface.write().await.query()?;
+
+    if verbose {
+        let mut props: Vec<_> = props.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
+        props.sort_by_key(|(prop_code, _)| *prop_code);
+        info!("{props:#?}");
+        return Ok(CameraResponse::Unit);
+    }
 
     let sfi: u16 = convert_camera_value(&props, PropertyCode::ShootingFileInfo)?;
     let op_mode: OperatingMode = convert_camera_value(&props, PropertyCode::OperatingMode)?;
@@ -207,6 +237,7 @@ async fn run_status(interface: &RwLock<InterfaceGuard>) -> anyhow::Result<Camera
     let foc_mode: FocusMode = convert_camera_value(&props, PropertyCode::FocusMode)?;
     let save_media: SaveMedia = convert_camera_value(&props, PropertyCode::SaveMedia)?;
     let err_mode: ErrorMode = convert_camera_value(&props, PropertyCode::Caution)?;
+    let drive_mode: DriveMode = convert_camera_value(&props, PropertyCode::DriveMode)?;
 
     let interval_time: Option<u16> = convert_camera_value(&props, PropertyCode::IntervalTime).ok();
     let interval_state: Option<u8> =
@@ -226,6 +257,7 @@ async fn run_status(interface: &RwLock<InterfaceGuard>) -> anyhow::Result<Camera
         "
         shooting file info: {sfi:#06x}
         operating mode: {op_mode:?}
+        drive mode: {drive_mode:?}
         compression mode: {cmp_mode:?}
         exposure mode: {ex_mode:?}
         focus mode: {foc_mode:?}
@@ -313,10 +345,7 @@ async fn run_zoom(
         }
         CameraZoomRequest::Level { level } => {
             //set target zoom level
-            interface.set(
-                PropertyCode::ZoomAbsolutePosition,
-                ptp::Data::UINT8(level),
-            )?;
+            interface.set(PropertyCode::ZoomAbsolutePosition, ptp::Data::UINT8(level))?;
             //do button press down
             interface.execute(ControlCode::ZoomControlAbsolute, Data::UINT16(0x0002))?;
             sleep(Duration::from_millis(50)).await;
@@ -440,7 +469,7 @@ pub(super) async fn run_set(
 
 pub(super) async fn run_capture(
     interface: &RwLock<InterfaceGuard>,
-    ptp_evt_rx: flume::Receiver<Event>,
+    ptp_evt_rx: &mut broadcast::Receiver<Event>,
     ctrl_evt_tx: flume::Sender<ControlEvent>,
     burst_duration: Option<u8>,
     burst_high_speed: bool,
@@ -496,7 +525,7 @@ pub(super) async fn run_capture(
 
                 match focus_ind {
                     FocusIndication::AFUnlock | FocusIndication::Focusing => {
-                        debug!("focusing ({focus_ind})")
+                        trace!("focusing ({focus_ind})")
                     }
                     FocusIndication::AFLock | FocusIndication::FocusedContinuous => {
                         debug!("focused ({focus_ind})");
@@ -535,11 +564,9 @@ pub(super) async fn run_capture(
 
     info!("waiting for image confirmation");
 
-    timeout(Duration::from_millis(1000), async {
-        loop {
+    timeout(Duration::from_millis(3000), async {
+        while let Ok(evt) = ptp_evt_rx.recv().await {
             // TODO: maybe check ShootingFileInfo
-
-            let evt = ptp_evt_rx.recv_async().await?;
 
             match evt.code {
                 ptp::EventCode::Vendor(0xC204) | ptp::EventCode::Vendor(0xC203) => {
@@ -568,7 +595,6 @@ pub(super) async fn run_capture(
                             warn!("unexpected status from camera: {other:?}");
                         }
                     }
-
                     break;
                 }
                 _ => {}
