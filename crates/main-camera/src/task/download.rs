@@ -105,7 +105,7 @@ impl Task for DownloadTask {
                 loop {
                     match ptp_evt_rx.recv_async().await {
                         Ok(evt) => {
-                            if let ptp::EventCode::Vendor(0xC204) | ptp::EventCode::Vendor(0xC203) =
+                            if let ptp::EventCode::Vendor(0xC201) =
                                 evt.code
                             {
                                 break;
@@ -121,42 +121,19 @@ impl Task for DownloadTask {
 
                 debug!("received capture event from camera");
 
-                // most significant bit indicates that the image is still being
-                // acquired, so wait for it to flip to zero
-                // MAYBE WRONG? ^
-                loop {
-                    sleep(Duration::from_millis(100)).await;
+                let props = interface
+                    .write()
+                    .await
+                    .query()
+                    .context("could not get camera state")?;
 
-                    let props = interface
-                        .write()
-                        .await
-                        .query()
-                        .context("could not get camera state")?;
-                    let shooting_file_info: u16 =
-                        convert_camera_value(&props, PropertyCode::ShootingFileInfo)
-                            .context("could not get shooting file info")?;
-
-                    if shooting_file_info & 0x8000 != 0 {
-                        break;
-                    }
-                }
+                let mut shooting_file_info: u16 =
+                    convert_camera_value(&props, PropertyCode::ShootingFileInfo)
+                        .context("could not get shooting file info")?;
 
                 // download images until ShootingFileInfo reaches zero
-                loop {
-                    sleep(Duration::from_millis(100)).await;
-
-                    let props = interface
-                        .write()
-                        .await
-                        .query()
-                        .context("could not get camera state")?;
-                    let shooting_file_info: u16 =
-                        convert_camera_value(&props, PropertyCode::ShootingFileInfo)
-                            .context("could not get shooting file info")?;
-
-                    if shooting_file_info == 0 {
-                        break;
-                    }
+                while shooting_file_info & 0x8000 != 0 {
+                    debug!("shooting file info = 0x{shooting_file_info:04x}, downloading image");
 
                     let (metadata, data) = {
                         let mut interface = interface.write().await;
@@ -186,6 +163,18 @@ impl Task for DownloadTask {
                     let _ = download_tx.try_send(download.clone());
 
                     save(&save_path, download).await?;
+
+                    let props = interface
+                        .write()
+                        .await
+                        .query()
+                        .context("could not get camera state")?;
+
+                    shooting_file_info =
+                        convert_camera_value(&props, PropertyCode::ShootingFileInfo)
+                            .context("could not get shooting file info")?;
+
+                    sleep(Duration::from_millis(100)).await;
                 }
             }
 
