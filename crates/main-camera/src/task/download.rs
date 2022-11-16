@@ -15,7 +15,7 @@ use tokio::{
     fs::File,
     io::AsyncWriteExt,
     select,
-    sync::{watch, RwLock, broadcast},
+    sync::{broadcast, watch, RwLock},
     time::sleep,
 };
 use tokio_util::sync::CancellationToken;
@@ -134,7 +134,7 @@ impl Task for DownloadTask {
                     let (metadata, data) = {
                         loop {
                             let result = tokio::task::block_in_place(|| {
-                                let span = trace_span!(
+                                let _span = trace_span!(
                                     "attempting image download from {IMAGE_BUFFER_OBJECT_HANDLE:?}"
                                 )
                                 .entered();

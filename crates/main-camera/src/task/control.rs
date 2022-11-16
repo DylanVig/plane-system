@@ -9,11 +9,11 @@ use ps_client::{ChannelCommandSink, ChannelCommandSource, Task};
 use ptp::{Data, Event};
 use tokio::{
     select,
-    sync::{oneshot, RwLock, broadcast},
+    sync::{broadcast, oneshot, RwLock},
     time::{sleep, timeout, MissedTickBehavior},
 };
 use tokio_util::sync::CancellationToken;
-use tracing::{debug, debug_span, error, info, info_span, trace, warn};
+use tracing::{debug, error, info, info_span, trace, warn};
 
 use super::{util::*, InterfaceGuard};
 use crate::{

@@ -153,7 +153,7 @@ async fn run_tasks(
     let telem_rx = telem_task.telemetry();
     tasks.push(Box::new(telem_task));
 
-    let gs_cmd_tx = if let Some(c) = config.ground_server {
+    let _gs_cmd_tx = if let Some(c) = config.ground_server {
         debug!("initializing ground server tasks");
 
         let upload_task = ps_gs::create_task(c)?;
@@ -194,8 +194,7 @@ async fn run_tasks(
     let livestream_cmd_tx = if let Some(c) = config.livestream {
         debug!("initializing aux camera tasks");
 
-        let (custom_task, preview_task) =
-            ps_livestream::create_tasks(c, camera_preview_frame_rx)?;
+        let (custom_task, preview_task) = ps_livestream::create_tasks(c, camera_preview_frame_rx)?;
 
         let mut livestream_cmd_tx = None;
 
@@ -240,8 +239,12 @@ async fn run_tasks(
         };
 
         #[cfg(tokio_unstable)]
-        join_set.build_task().name(task_name).spawn(fut).context("failed to spawn future")?;
-        
+        join_set
+            .build_task()
+            .name(task_name)
+            .spawn(fut)
+            .context("failed to spawn future")?;
+
         #[cfg(not(tokio_unstable))]
         join_set.spawn(fut);
     }

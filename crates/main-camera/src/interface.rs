@@ -1,12 +1,12 @@
 use anyhow::Context;
 use num_traits::{FromPrimitive, ToPrimitive};
-use ptp::{ObjectFormatCode, ObjectHandle, PtpRead, StandardCommandCode, StorageId};
+use ptp::PtpRead;
 use serde::{Deserialize, Serialize};
-use tracing::*;
 use std::collections::HashMap;
 use std::io::Cursor;
 use std::ops::Deref;
 use std::{collections::HashSet, fmt::Debug, time::Duration};
+use tracing::*;
 
 /// Sony's USB vendor ID
 const SONY_USB_VID: u16 = 0x054C;

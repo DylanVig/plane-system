@@ -5,14 +5,10 @@ use anyhow::{anyhow, bail, Context};
 use async_trait::async_trait;
 use chrono::Local;
 use futures::StreamExt;
-use gst::Pipeline;
-use gst::{
-    glib::value::{FromValue, ValueTypeChecker},
-    prelude::*,
-    traits::ElementExt,
-};
+
+use gst::{prelude::*, traits::ElementExt};
 use log::*;
-use ps_client::{ChannelCommandSink, ChannelCommandSource, Task};
+use ps_client::Task;
 use tokio::select;
 use tokio::time::sleep;
 use tokio_util::sync::CancellationToken;
@@ -54,10 +50,7 @@ impl Task for PreviewTask {
 
     async fn run(self: Box<Self>, cancel: CancellationToken) -> anyhow::Result<()> {
         let Self {
-            bin_spec,
-            save_path,
-            frame_rx,
-            ..
+            bin_spec, frame_rx, ..
         } = *self;
 
         debug!("initializing live preview");

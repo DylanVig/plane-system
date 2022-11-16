@@ -1,7 +1,7 @@
 pub mod command;
 pub mod task;
 
-use std::{path::PathBuf, collections::HashMap};
+use std::{collections::HashMap, path::PathBuf};
 
 pub use command::*;
 use serde::Deserialize;

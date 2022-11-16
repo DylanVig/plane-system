@@ -2,8 +2,8 @@ use anyhow::bail;
 
 use serde::Deserialize;
 
-pub mod preview;
 pub mod custom;
+pub mod preview;
 
 #[derive(Clone, Debug, Deserialize)]
 pub struct LivestreamConfig {
@@ -14,10 +14,7 @@ pub struct LivestreamConfig {
 pub fn create_tasks(
     config: LivestreamConfig,
     frame_rx: Option<flume::Receiver<ps_main_camera::LiveFrame>>,
-) -> anyhow::Result<(
-    Option<custom::CustomTask>,
-    Option<preview::PreviewTask>,
-)> {
+) -> anyhow::Result<(Option<custom::CustomTask>, Option<preview::PreviewTask>)> {
     if let LivestreamConfig {
         custom: None,
         preview: None,

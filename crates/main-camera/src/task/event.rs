@@ -4,7 +4,10 @@ use anyhow::Context;
 use async_trait::async_trait;
 use log::*;
 use ps_client::Task;
-use tokio::{select, sync::{RwLock, broadcast}};
+use tokio::{
+    select,
+    sync::{broadcast, RwLock},
+};
 use tokio_util::sync::CancellationToken;
 use tracing::trace_span;
 
@@ -19,10 +22,7 @@ impl EventTask {
     pub(super) fn new(interface: Arc<RwLock<InterfaceGuard>>) -> Self {
         let (evt_tx, _) = broadcast::channel(256);
 
-        Self {
-            interface,
-            evt_tx,
-        }
+        Self { interface, evt_tx }
     }
 
     pub fn events(&self) -> broadcast::Receiver<ptp::Event> {
@@ -40,7 +40,6 @@ impl Task for EventTask {
         let loop_fut = async move {
             loop {
                 let event = {
-
                     let mut interface = self.interface.write().await;
 
                     let _enter = trace_span!("checking for events on interface").entered();

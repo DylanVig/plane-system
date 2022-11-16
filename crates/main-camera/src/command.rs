@@ -41,7 +41,7 @@ pub enum CameraRequest {
 
     Status {
         #[clap(short, long, action)]
-        verbose: bool
+        verbose: bool,
     },
 
     /// get a property of the camera's state
