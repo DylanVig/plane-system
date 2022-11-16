@@ -7,7 +7,7 @@ use std::{
 use anyhow::Context;
 use async_trait::async_trait;
 use bytes::Bytes;
-use log::*;
+use tracing::*;
 
 use ps_client::Task;
 use ps_telemetry::Telemetry;
@@ -105,9 +105,7 @@ impl Task for DownloadTask {
                 loop {
                     match ptp_evt_rx.recv_async().await {
                         Ok(evt) => {
-                            if let ptp::EventCode::Vendor(0xC201) =
-                                evt.code
-                            {
+                            if let ptp::EventCode::Vendor(0xC201) = evt.code {
                                 break;
                             }
                         }
@@ -121,11 +119,9 @@ impl Task for DownloadTask {
 
                 debug!("received capture event from camera");
 
-                let props = interface
-                    .write()
-                    .await
-                    .query()
-                    .context("could not get camera state")?;
+                let mut interface = interface.write().await;
+
+                let props = interface.query().context("could not get camera state")?;
 
                 let mut shooting_file_info: u16 =
                     convert_camera_value(&props, PropertyCode::ShootingFileInfo)
@@ -136,20 +132,33 @@ impl Task for DownloadTask {
                     debug!("shooting file info = 0x{shooting_file_info:04x}, downloading image");
 
                     let (metadata, data) = {
-                        let mut interface = interface.write().await;
+                        loop {
+                            let result = tokio::task::block_in_place(|| {
+                                let span = trace_span!(
+                                    "attempting image download from {IMAGE_BUFFER_OBJECT_HANDLE:?}"
+                                )
+                                .entered();
 
-                        tokio::task::block_in_place(|| {
-                            let handle = ptp::ObjectHandle::from(IMAGE_BUFFER_OBJECT_HANDLE);
-                            let info = interface
-                                .get_object_info(handle, None)
-                                .context("failed to get info for image")?;
-                            let data = interface
-                                .get_object(handle, None)
-                                .context("failed to get data for image")?;
-                            let data = Bytes::from(data);
+                                let handle = ptp::ObjectHandle::from(IMAGE_BUFFER_OBJECT_HANDLE);
+                                let info = interface
+                                    .get_object_info(handle, None)
+                                    .context("failed to get info for image")?;
+                                let data = interface
+                                    .get_object(handle, None)
+                                    .context("failed to get data for image")?;
+                                let data = Bytes::from(data);
 
-                            Ok::<_, anyhow::Error>((info, data))
-                        })?
+                                Ok::<_, anyhow::Error>((info, data))
+                            });
+
+                            match result {
+                                Ok(ret) => break ret,
+                                Err(err) => {
+                                    warn!("unable to retrieve image data from camera: {err:?}");
+                                    sleep(Duration::from_millis(1000)).await;
+                                }
+                            }
+                        }
                     };
 
                     info!("downloaded image information from camera");
@@ -164,17 +173,13 @@ impl Task for DownloadTask {
 
                     save(&save_path, download).await?;
 
-                    let props = interface
-                        .write()
-                        .await
-                        .query()
-                        .context("could not get camera state")?;
+                    let props = interface.query().context("could not get camera state")?;
 
                     shooting_file_info =
                         convert_camera_value(&props, PropertyCode::ShootingFileInfo)
                             .context("could not get shooting file info")?;
 
-                    sleep(Duration::from_millis(100)).await;
+                    sleep(Duration::from_millis(1000)).await;
                 }
             }
 

@@ -11,11 +11,12 @@ ps-telemetry = { path = "../telemetry" }
 ps-main-camera-csb = { path = "../main-camera-csb" }
 
 # logging + error handling
-anyhow = "1.0"
-log = "0.4"
+anyhow = { workspace = true }
+log = { workspace = true }
+tracing = { workspace = true }
 
 # async 
-tokio = { version = "1.16", features = ["full"] }
+tokio = { workspace = true }
 tokio-stream = { version = "0.1", features = ["sync"] }
 futures = "0.3"
 flume = "0.10"

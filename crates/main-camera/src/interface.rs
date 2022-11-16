@@ -1,8 +1,8 @@
 use anyhow::Context;
-use log::*;
 use num_traits::{FromPrimitive, ToPrimitive};
 use ptp::{ObjectFormatCode, ObjectHandle, PtpRead, StandardCommandCode, StorageId};
 use serde::{Deserialize, Serialize};
+use tracing::*;
 use std::collections::HashMap;
 use std::io::Cursor;
 use std::ops::Deref;
@@ -149,6 +149,7 @@ impl CameraInterface {
         Some(Duration::from_secs(5))
     }
 
+    #[instrument(level = "trace")]
     pub fn new() -> anyhow::Result<Self> {
         let handle = rusb::open_device_with_vid_pid(SONY_USB_VID, SONY_USB_R10C_PID)
             .or_else(|| rusb::open_device_with_vid_pid(SONY_USB_VID, SONY_USB_R10C_PID_CHARGING))
@@ -159,6 +160,7 @@ impl CameraInterface {
         })
     }
 
+    #[instrument(level = "trace", skip(self))]
     pub fn connect(&mut self) -> anyhow::Result<()> {
         self.camera.open_session(self.timeout())?;
 
@@ -251,18 +253,20 @@ impl CameraInterface {
         Ok(())
     }
 
+    #[instrument(level = "trace", skip(self))]
     pub fn disconnect(&mut self) -> anyhow::Result<()> {
         self.camera.close_session(self.timeout())?;
-
         Ok(())
     }
 
+    #[instrument(level = "trace", skip(self))]
     pub fn reset(&mut self) -> anyhow::Result<()> {
         self.camera.reset()?;
 
         Ok(())
     }
 
+    #[instrument(level = "trace", skip(self))]
     pub fn query(&mut self) -> anyhow::Result<HashMap<PropertyCode, ptp::PropInfo>> {
         let timeout = self.timeout();
 
@@ -307,6 +311,7 @@ impl CameraInterface {
     /// Sets the value of a camera property. This should be followed by a call
     /// to update() and a check to make sure that the intended result was
     /// achieved.
+    #[instrument(level = "trace", skip(self))]
     pub fn set(&mut self, code: PropertyCode, new_value: ptp::Data) -> anyhow::Result<()> {
         let buf = new_value.encode();
 
@@ -324,6 +329,7 @@ impl CameraInterface {
 
     /// Executes a command on the camera. This should be followed by a call to
     /// update() and a check to make sure that the intended result was achieved.
+    #[instrument(level = "trace", skip(self))]
     pub fn execute(&mut self, code: ControlCode, payload: ptp::Data) -> anyhow::Result<()> {
         let buf = payload.encode();
 
@@ -340,6 +346,7 @@ impl CameraInterface {
     }
 
     /// Receives an event from the camera.
+    #[instrument(level = "trace", skip(self))]
     pub fn recv(&mut self, timeout: Option<Duration>) -> anyhow::Result<Option<ptp::Event>> {
         let event = self.camera.event(timeout)?;
         if let Some(event) = &event {

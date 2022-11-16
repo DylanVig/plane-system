@@ -279,9 +279,17 @@ async fn run_initialize(interface: &RwLock<InterfaceGuard>) -> anyhow::Result<Ca
 
     interface.execute(ControlCode::SystemInit, Data::UINT16(0x0002))?;
 
-    sleep(Duration::from_secs(1)).await;
+    info!("waiting 15 seconds for camera to initialize");
 
-    interface.execute(ControlCode::SystemInit, Data::UINT16(0x0001))?;
+    sleep(Duration::from_secs(15)).await;
+
+    let mut new_interface = InterfaceGuard::new().context("error reconnecting to camera")?;
+
+    std::mem::swap(&mut *interface, &mut new_interface);
+
+    // new_interface is now old interface, and we don't want drop() called on
+    // this because then it would attempt to close the session
+    std::mem::forget(new_interface);
 
     Ok(CameraResponse::Unit)
 }

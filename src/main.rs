@@ -73,7 +73,7 @@ async fn main() -> anyhow::Result<()> {
                 .with_filter(Targets::new().with_targets(vec![
                     ("plane_system", LevelFilter::DEBUG),
                     ("ps_livestream", LevelFilter::DEBUG),
-                    ("ps_main_camera", LevelFilter::DEBUG),
+                    ("ps_main_camera", LevelFilter::TRACE),
                     ("ps_telemetry", LevelFilter::DEBUG),
                     ("ps_gs", LevelFilter::DEBUG),
                     ("ps_pixhawk", LevelFilter::DEBUG),
