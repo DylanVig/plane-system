@@ -255,7 +255,7 @@ impl CameraInterface {
 
     #[instrument(level = "info", skip(self))]
     pub fn disconnect(&mut self) -> anyhow::Result<()> {
-        self.camera.close_session(self.timeout())?;
+        self.camera.disconnect(self.timeout())?;
         Ok(())
     }
 

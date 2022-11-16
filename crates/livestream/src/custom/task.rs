@@ -3,7 +3,6 @@ use std::collections::HashMap;
 use anyhow::{anyhow, Context};
 use async_trait::async_trait;
 use futures::stream::StreamExt;
-use futures::FutureExt;
 
 use gst::prelude::*;
 use log::*;

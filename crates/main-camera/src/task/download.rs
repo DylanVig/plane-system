@@ -132,31 +132,29 @@ impl Task for DownloadTask {
                     debug!("shooting file info = 0x{shooting_file_info:04x}, downloading image");
 
                     let (metadata, data) = {
-                        loop {
-                            let result = tokio::task::block_in_place(|| {
-                                let _span = trace_span!(
-                                    "attempting image download from {IMAGE_BUFFER_OBJECT_HANDLE:?}"
-                                )
-                                .entered();
+                        let result = tokio::task::block_in_place(|| {
+                            let _span = trace_span!(
+                                "attempting image download from {IMAGE_BUFFER_OBJECT_HANDLE:?}"
+                            )
+                            .entered();
 
-                                let handle = ptp::ObjectHandle::from(IMAGE_BUFFER_OBJECT_HANDLE);
-                                let info = interface
-                                    .get_object_info(handle, None)
-                                    .context("failed to get info for image")?;
-                                let data = interface
-                                    .get_object(handle, None)
-                                    .context("failed to get data for image")?;
-                                let data = Bytes::from(data);
+                            let handle = ptp::ObjectHandle::from(IMAGE_BUFFER_OBJECT_HANDLE);
+                            let info = interface
+                                .get_object_info(handle, None)
+                                .context("failed to get info for image")?;
+                            let data = interface
+                                .get_object(handle, None)
+                                .context("failed to get data for image")?;
+                            let data = Bytes::from(data);
 
-                                Ok::<_, anyhow::Error>((info, data))
-                            });
+                            Ok::<_, anyhow::Error>((info, data))
+                        });
 
-                            match result {
-                                Ok(ret) => break ret,
-                                Err(err) => {
-                                    warn!("unable to retrieve image data from camera: {err:?}");
-                                    sleep(Duration::from_millis(1000)).await;
-                                }
+                        match result {
+                            Ok(ret) => ret,
+                            Err(err) => {
+                                warn!("unable to retrieve image data from camera: {err}");
+                                break;
                             }
                         }
                     };
