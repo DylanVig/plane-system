@@ -13,7 +13,7 @@ use tokio::{
     time::{sleep, timeout, MissedTickBehavior},
 };
 use tokio_util::sync::CancellationToken;
-use tracing::{debug, error, info, info_span, trace, warn};
+use tracing::{debug, error, info, trace, warn};
 
 use super::{util::*, InterfaceGuard};
 use crate::{

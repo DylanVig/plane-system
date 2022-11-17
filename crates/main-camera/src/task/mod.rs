@@ -18,7 +18,7 @@ use log::*;
 
 use ps_telemetry::Telemetry;
 use tokio::sync::{watch, RwLock};
-use tracing::info_span;
+
 
 use crate::{
     interface::{self, PropertyCode},
