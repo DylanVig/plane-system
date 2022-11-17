@@ -5,6 +5,9 @@ use serde::Deserialize;
 pub mod custom;
 pub mod preview;
 
+
+/// Controls the plane system's interface with GStreamer, which can be used to
+/// save video to files and livestream video to the ground.
 #[derive(Clone, Debug, Deserialize)]
 pub struct LivestreamConfig {
     pub custom: Option<custom::CustomConfig>,

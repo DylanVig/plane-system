@@ -30,7 +30,7 @@ pub fn create_task(
     let mut fmt_vars = HashMap::new();
     fmt_vars.insert("save_path".to_owned(), save_path.display().to_string());
 
-    let bin_spec = config.bin_spec.join("\n");
+    let bin_spec = config.bin.join("\n");
     let bin_spec =
         strfmt::strfmt(&bin_spec, &fmt_vars).context("invalid pipeline format string")?;
 
