@@ -1,4 +1,4 @@
-use anyhow::Context;
+use anyhow::{bail, Context};
 use num_traits::{FromPrimitive, ToPrimitive};
 use ptp::PtpRead;
 use serde::{Deserialize, Serialize};
@@ -166,78 +166,104 @@ impl CameraInterface {
 
         let key_code = 0x0000DA01;
 
-        // send SDIO_CONNECT twice, once with phase code 1, and then again with
-        // phase code 2
+        let mut protocol_version = 100;
 
-        trace!("sending SDIO_Connect phase 1");
+        // we need to find out the camera's protocol version by trying starting
+        // from versin 1 and incrementing until we get a match
+        'protocol: loop {
+            // send SDIO_CONNECT twice, once with phase code 1, and then again with
+            // phase code 2
 
-        self.camera.command(
-            CommandCode::SdioConnect.into(),
-            &[1, key_code, key_code],
-            None,
-            self.timeout(),
-        )?;
+            trace!("sending SDIO_Connect phase 1");
 
-        trace!("sending SDIO_Connect phase 2");
-
-        self.camera.command(
-            CommandCode::SdioConnect.into(),
-            &[2, key_code, key_code],
-            None,
-            self.timeout(),
-        )?;
-
-        trace!("sending SDIO_GetExtDeviceInfo until success");
-
-        let mut retries = 0;
-
-        let state = loop {
-            // call getextdeviceinfo with initiatorversion = 0x00C8
-
-            let initiation_result = self.camera.command(
-                CommandCode::SdioGetExtDeviceInfo.into(),
-                &[0x00C8],
+            self.camera.command(
+                CommandCode::SdioConnect.into(),
+                &[1, key_code, key_code],
                 None,
                 self.timeout(),
-            );
+            )?;
 
-            match initiation_result {
-                Ok(ext_device_info) => {
-                    // Vec<u8> is not Read, but Cursor is
-                    let mut ext_device_info = Cursor::new(ext_device_info);
+            trace!("sending SDIO_Connect phase 2");
 
-                    let sdi_ext_version = PtpRead::read_ptp_u16(&mut ext_device_info)?;
-                    let sdi_device_props = PtpRead::read_ptp_u16_vec(&mut ext_device_info)?;
-                    let sdi_device_props = sdi_device_props
-                        .into_iter()
-                        .filter_map(<PropertyCode as FromPrimitive>::from_u16)
-                        .collect::<HashSet<_>>();
+            self.camera.command(
+                CommandCode::SdioConnect.into(),
+                &[2, key_code, key_code],
+                None,
+                self.timeout(),
+            )?;
 
-                    let sdi_device_controls = PtpRead::read_ptp_u16_vec(&mut ext_device_info)?;
-                    let sdi_device_controls = sdi_device_controls
-                        .into_iter()
-                        .filter_map(<ControlCode as FromPrimitive>::from_u16)
-                        .collect::<HashSet<_>>();
+            trace!("sending SDIO_GetExtDeviceInfo until success");
 
-                    trace!("got device props: {:?}", sdi_device_props);
-                    trace!("got device controls: {:?}", sdi_device_controls);
+            let mut retries = 0;
 
-                    break Ok(CameraState {
-                        version: sdi_ext_version,
-                    });
-                }
-                Err(err) => {
-                    if retries < 1000 {
-                        retries += 1;
-                        continue;
-                    } else {
-                        break Err(err);
+            // need to loop repeatedly until the camera is ready to give device info
+            'handshake: loop {
+                trace!("initiating authentication with protocol version {protocol_version}");
+
+                let initiation_result = self.camera.command(
+                    CommandCode::SdioGetExtDeviceInfo.into(),
+                    &[protocol_version],
+                    None,
+                    self.timeout(),
+                );
+
+                match initiation_result {
+                    Ok(ext_device_info) => {
+                        // Vec<u8> is not Read, but Cursor is
+                        let mut ext_device_info = Cursor::new(ext_device_info);
+
+                        let sdi_ext_version = PtpRead::read_ptp_u16(&mut ext_device_info)?;
+                        let sdi_device_props = PtpRead::read_ptp_u16_vec(&mut ext_device_info)?;
+                        let sdi_device_props = sdi_device_props
+                            .into_iter()
+                            .filter_map(<PropertyCode as FromPrimitive>::from_u16)
+                            .collect::<HashSet<_>>();
+
+                        let sdi_device_controls = PtpRead::read_ptp_u16_vec(&mut ext_device_info)?;
+                        let sdi_device_controls = sdi_device_controls
+                            .into_iter()
+                            .filter_map(<ControlCode as FromPrimitive>::from_u16)
+                            .collect::<HashSet<_>>();
+
+                        let sdi_ext_version_major = sdi_ext_version / 100;
+                        let sdi_ext_version_minor = sdi_ext_version % 100;
+
+                        info!("camera firmware version: {sdi_ext_version_major}.{sdi_ext_version_minor:02}");
+                        info!("camera supported properties: {:?}", sdi_device_props);
+                        info!("camera supported controls: {:?}", sdi_device_controls);
+
+                        // old cameras still seem to report firmware version 2??
+                        if !sdi_device_props.contains(&PropertyCode::IntervalTime) {
+                            warn!("this camera does not support continuous capture; its firmware may be old! expect unreliable behaviour");
+                        }
+
+                        break 'protocol;
+                    }
+                    // 0xA101 = authentication failed based on experimentation
+
+                    // means that protocol major version we gave is lower than the
+                    // camera's firmware version so increase protocol version and
+                    // try again
+                    Err(ptp::Error::Response(ptp::ResponseCode::Other(0xA101))) => {
+                        // 2.00 is highest version we support
+                        if protocol_version < 200 {
+                            trace!("received authentication failed, increasing protocol version and retrying");
+                            protocol_version += 100;
+                            continue 'protocol;
+                        } else {
+                            bail!("camera firmware is newer than version 2.00, not supported");
+                        }
+                    }
+                    Err(err) => {
+                        if retries < 1000 {
+                            retries += 1;
+                        } else {
+                            return Err(err.into());
+                        }
                     }
                 }
             }
-        }?;
-
-        trace!("got extension version 0x{:04X}", state.version);
+        }
 
         trace!("sending SDIO_Connect phase 3");
 

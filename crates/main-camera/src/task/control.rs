@@ -205,14 +205,6 @@ impl Task for ControlTask {
           res = loop_fut => { res? }
         }
 
-        {
-            let mut interface = self.interface.write().await;
-            let _span = info_span!("task ending, disconnecting from camera").entered();
-            if let Err(err) = interface.disconnect() {
-                error!("failed to disconnect from camera: {err:?}");
-            }
-        }
-
         Ok(())
     }
 }

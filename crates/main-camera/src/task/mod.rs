@@ -40,9 +40,6 @@ pub fn create_tasks(
         event_task.events(),
     );
 
-    let interface_refcount = Arc::strong_count(&interface);
-    debug!("interface ref count = {interface_refcount}");
-
     let live_task = if let Some(config) = config.live {
         Some(LiveTask::new(interface, config)?)
     } else {
@@ -94,7 +91,7 @@ impl DerefMut for InterfaceGuard {
 
 impl Drop for InterfaceGuard {
     fn drop(&mut self) {
-        let _span = info_span!("refcount zero, disconnecting from camera").entered();
+        info!("disconnecting from camera");
 
         if let Err(err) = self.0.disconnect() {
             error!("failed to disconnect from camera: {err:?}");

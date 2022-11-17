@@ -16,7 +16,6 @@ use tokio_util::sync::CancellationToken;
 use super::*;
 
 pub struct PreviewTask {
-    save_path: PathBuf,
     bin_spec: String,
     frame_rx: flume::Receiver<ps_main_camera::LiveFrame>,
 }
@@ -36,7 +35,6 @@ pub fn create_task(
         strfmt::strfmt(&bin_spec, &fmt_vars).context("invalid pipeline format string")?;
 
     Ok(PreviewTask {
-        save_path,
         bin_spec,
         frame_rx,
     })
