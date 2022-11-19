@@ -8,7 +8,7 @@ use log::*;
 
 use ps_client::Task;
 
-use tokio::{io::AsyncWriteExt, select, sync::RwLock, time::interval};
+use tokio::{select, sync::RwLock, time::interval};
 use tokio_util::sync::CancellationToken;
 
 use crate::{interface::PropertyCode, task::util::convert_camera_value, LiveConfig};

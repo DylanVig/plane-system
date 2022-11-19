@@ -128,10 +128,6 @@ pub enum OperatingMode {
     ContentsTransfer,
 }
 
-struct CameraState {
-    version: u16,
-}
-
 pub struct CameraInterface {
     camera: ptp::Camera<rusb::GlobalContext>,
 }
@@ -197,7 +193,7 @@ impl CameraInterface {
             let mut retries = 0;
 
             // need to loop repeatedly until the camera is ready to give device info
-            'handshake: loop {
+            loop {
                 trace!("initiating authentication with protocol version {protocol_version}");
 
                 let initiation_result = self.camera.command(

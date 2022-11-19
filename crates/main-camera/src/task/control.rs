@@ -3,7 +3,6 @@ use std::{sync::Arc, time::Duration};
 use anyhow::{bail, Context};
 use async_trait::async_trait;
 use chrono::{DateTime, Local};
-use futures::StreamExt;
 use num_traits::ToPrimitive;
 use ps_client::{ChannelCommandSink, ChannelCommandSource, Task};
 use ptp::{Data, Event};
