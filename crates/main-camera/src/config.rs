@@ -23,4 +23,12 @@ pub struct MainCameraConfig {
     pub download: DownloadConfig,
 
     pub live: Option<LiveConfig>,
+
+    /// Minimium focal length of power zoom
+    pub min_focal_length: Option<f32>,
+
+    /// Maximium focal length of power zoom
+    pub max_focal_length: Option<f32>,
 }
+
+pub struct PowerZoomConfig {}

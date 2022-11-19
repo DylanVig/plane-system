@@ -31,7 +31,18 @@ pub fn create_tasks(
     let interface = Arc::new(RwLock::new(InterfaceGuard::new()?));
 
     let event_task = EventTask::new(interface.clone());
-    let control_task = ControlTask::new(interface.clone(), event_task.events());
+    let control_task = ControlTask::new(
+        interface.clone(),
+        event_task.events(),
+        match config.min_focal_length {
+            None => 0.,
+            Some(x) => x,
+        },
+        match config.max_focal_length {
+            None => 0.,
+            Some(x) => x,
+        },
+    );
     let download_task = DownloadTask::new(
         config.download,
         interface.clone(),

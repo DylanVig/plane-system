@@ -58,12 +58,16 @@ pub struct ControlTask {
     ctrl_evt_tx: flume::Sender<ControlEvent>,
     cmd_rx: ChannelCommandSource<CameraRequest, CameraResponse>,
     cmd_tx: ChannelCommandSink<CameraRequest, CameraResponse>,
+    min_focal_length: f32,
+    max_focal_length: f32,
 }
 
 impl ControlTask {
     pub(super) fn new(
         interface: Arc<RwLock<InterfaceGuard>>,
         ptp_evt_rx: flume::Receiver<Event>,
+        min_focal_length: f32,
+        max_focal_length: f32,
     ) -> Self {
         let (cmd_tx, cmd_rx) = flume::bounded(256);
         let (ctrl_evt_tx, ctrl_evt_rx) = flume::bounded(256);
@@ -75,6 +79,8 @@ impl ControlTask {
             ctrl_evt_tx,
             cmd_rx,
             cmd_tx,
+            min_focal_length,
+            max_focal_length,
         }
     }
 
@@ -176,7 +182,15 @@ impl Task for ControlTask {
                             CameraRequest::Set(req) => run_set(interface, req).await,
                             CameraRequest::ContinuousCapture(req) => run_cc(req, interface).await,
                             CameraRequest::Record(_) => todo!(),
-                            CameraRequest::Zoom(req) => run_zoom(interface, req).await,
+                            CameraRequest::Zoom(req) => {
+                                run_zoom(
+                                    interface,
+                                    req,
+                                    self.min_focal_length,
+                                    self.max_focal_length,
+                                )
+                                .await
+                            }
                         };
 
                         let _ = ret.send(result);
@@ -293,6 +307,8 @@ async fn run_initialize(interface: &RwLock<InterfaceGuard>) -> anyhow::Result<Ca
 async fn run_zoom(
     interface: &RwLock<InterfaceGuard>,
     req: CameraZoomRequest,
+    min_focal_length: f32,
+    max_focal_length: f32,
 ) -> anyhow::Result<CameraResponse> {
     let mut interface = interface.write().await;
 
@@ -308,6 +324,19 @@ async fn run_zoom(
             interface.execute(ControlCode::ZoomControlTele, Data::UINT16(0x0001))?;
         }
         CameraZoomRequest::Level { level } => {
+            //set target zoom level
+            interface.set(PropertyCode::ZoomAbsolutePosition, ptp::Data::UINT8(level))?;
+            //do button press down
+            interface.execute(ControlCode::ZoomControlAbsolute, Data::UINT16(0x0002))?;
+            sleep(Duration::from_millis(50)).await;
+            //do button press up
+            interface.execute(ControlCode::ZoomControlAbsolute, Data::UINT16(0x0001))?;
+        }
+        CameraZoomRequest::FocalLength { focal_length } => {
+            //find level associoated with the
+            let level = (((focal_length - min_focal_length)
+                / (max_focal_length - min_focal_length))
+                * 30.) as u8;
             //set target zoom level
             interface.set(PropertyCode::ZoomAbsolutePosition, ptp::Data::UINT8(level))?;
             //do button press down

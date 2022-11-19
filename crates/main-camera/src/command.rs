@@ -78,6 +78,9 @@ pub enum CameraZoomRequest {
     Level {
         level: u8,
     },
+    FocalLength {
+        focal_length: f32,
+    },
 }
 
 #[derive(Subcommand, Debug, Clone)]
