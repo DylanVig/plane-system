@@ -319,11 +319,6 @@ impl CameraInterface {
             let current_prop_code = match PropertyCode::from_u16(current_prop.property_code) {
                 Some(code) => code,
                 None => {
-                    // trace!(
-                    //     "ignoring invalid property with code {:#0x}: {:?}",
-                    //     current_prop.property_code,
-                    //     current_prop
-                    // );
                     continue;
                 }
             };
