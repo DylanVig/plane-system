@@ -17,6 +17,10 @@ enum Commands {
     #[clap(name = "livestream", alias = "ls")]
     LiveStream(ps_livestream::custom::LivestreamRequest),
 
+    #[clap(subcommand)]
+    #[clap(name = "gimbal", alias = "ls")]
+    Gimbal(ps_gimbal::GimbalRequest),
+
     Exit,
 }
 
@@ -32,6 +36,7 @@ pub async fn run_interactive_cli(
             ps_livestream::custom::LivestreamResponse,
         >,
     >,
+    gimbal_cmd_tx: Option<ChannelCommandSink<ps_gimbal::GimbalRequest, ps_gimbal::GimbalResponse>>,
     cancellation_token: CancellationToken,
 ) -> anyhow::Result<()> {
     loop {
@@ -87,6 +92,20 @@ pub async fn run_interactive_cli(
                                 }
                             }
 
+                            Commands::Gimbal(request) => {
+                                if let Some(gimbal_cmd_tx) = &gimbal_cmd_tx {
+                                    let (ret_tx, ret_rx) = oneshot::channel();
+                                    if let Err(err) = gimbal_cmd_tx.send_async((request, ret_tx)).await {
+                                        error!("gimbal task did not accept command: {:#?}", err);
+                                    }
+                                    match ret_rx.await? {
+                                        Ok(response) => info!("{:?}", response),
+                                        Err(err) => error!("{:?}", err),
+                                    };
+                                } else {
+                                    error!("gimbal task is not running");
+                                }
+                            }
 
                             Commands::Exit => {
                                 info!("exiting");

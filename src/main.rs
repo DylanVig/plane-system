@@ -74,6 +74,7 @@ async fn main() -> anyhow::Result<()> {
                     ("plane_system", LevelFilter::DEBUG),
                     ("ps_livestream", LevelFilter::DEBUG),
                     ("ps_main_camera", LevelFilter::DEBUG),
+                    ("ps_gimbal", LevelFilter::DEBUG),
                     ("ps_telemetry", LevelFilter::DEBUG),
                     ("ps_gs", LevelFilter::DEBUG),
                     ("ps_pixhawk", LevelFilter::DEBUG),
@@ -215,6 +216,18 @@ async fn run_tasks(
     #[cfg(not(feature = "livestream"))]
     let livestream_save_cmd_tx = None;
 
+    let gimbal_cmd_tx = if let Some(c) = config.gimbal {
+        debug!("initializing gimbal tasks");
+
+        let gimbal_task = ps_gimbal::create_task(c)?;
+        let cmd_tx = gimbal_task.cmd();
+        tasks.push(Box::new(gimbal_task));
+
+        Some(cmd_tx)
+    } else {
+        None
+    };
+
     let mut join_set = JoinSet::new();
 
     join_set.spawn(run_interactive_cli(
@@ -222,6 +235,7 @@ async fn run_tasks(
         stdout,
         camera_ctrl_cmd_tx,
         livestream_cmd_tx,
+        gimbal_cmd_tx,
         cancellation_token.clone(),
     ));
 
