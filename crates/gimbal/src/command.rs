@@ -4,7 +4,7 @@ use clap::{AppSettings, Subcommand};
 #[clap(setting(AppSettings::NoBinaryName))]
 #[clap(rename_all = "kebab-case")]
 pub enum GimbalRequest {
-    Debug { angle: f32 },
+    Debug { roll: f32, pitch: f32 },
 }
 
 pub type GimbalResponse = ();

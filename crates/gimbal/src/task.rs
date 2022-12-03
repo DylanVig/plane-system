@@ -1,3 +1,5 @@
+use std::fmt::LowerHex;
+
 use anyhow::Context;
 use log::{debug, info, warn};
 
@@ -42,9 +44,8 @@ impl Task for GimbalTask {
             while let Ok((cmd, ret_tx)) = cmd_rx.recv_async().await {
                 let result = 'cmd: {
                     match cmd {
-                        GimbalRequest::Debug { angle } => {
-                            let factor: f32 = (2 ^ 14) as f32 / 360.0;
-                            let angle = (angle * factor) as i16;
+                        GimbalRequest::Debug { roll, pitch } => {
+                            let factor: f32 = (1 << 14) as f32 / 360.0;
 
                             let cmd = OutgoingCommand::Control(ControlData {
                                 mode: ControlFormat::Extended(RollPitchYaw {
@@ -53,7 +54,7 @@ impl Task for GimbalTask {
                                         flags: AxisControlFlags::empty(),
                                     },
                                     pitch: AxisControlState {
-                                        mode: AxisControlMode::NoControl,
+                                        mode: AxisControlMode::Angle,
                                         flags: AxisControlFlags::empty(),
                                     },
                                     yaw: AxisControlState {
@@ -62,16 +63,25 @@ impl Task for GimbalTask {
                                     },
                                 }),
                                 axes: RollPitchYaw {
-                                    roll: AxisControlParams { angle, speed: 1200 },
-                                    pitch: AxisControlParams { angle: 0, speed: 0 },
+                                    roll: AxisControlParams { angle: (roll * factor) as i16, speed: 0 },
+                                    pitch: AxisControlParams { angle: (pitch * factor) as i16, speed: 0 },
                                     yaw: AxisControlParams { angle: 0, speed: 0 },
                                 },
                             });
 
+                            info!("angle: {roll} {pitch}");
+
                             let cmd_bytes = cmd.to_v2_bytes();
+                            let mut cmd_bytes_hex = String::new();
+
+                            for b in cmd_bytes {
+                                use std::fmt::Write;
+                                write!(cmd_bytes_hex, "{:02x}", b);
+                            }
 
                             info!("{}", cmd.command_id());
-                            info!("{cmd_bytes:?}");
+                            info!("{} {}", &cmd_bytes_hex[..], &cmd_bytes_hex[8..cmd_bytes_hex.len() - 4]);
+
 
                             Ok(())
                         }
