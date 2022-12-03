@@ -1,0 +1,15 @@
+{
+  "pixhawk": null,
+  "plane_server": {
+    "address": "[::]:8080"
+  },
+  "ground_server": null,
+  "scheduler": null,
+  "gimbal": null,
+  "main_camera": {
+    "download": {
+      "save_path": "./images/"
+    }
+  },
+  "livestream": null
+}

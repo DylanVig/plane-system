@@ -74,27 +74,6 @@ impl PixhawkInterface {
         .context("waiting for heartbeat")?;
 
         info!("received heartbeat");
-        info!("setting parameters");
-
-        self.set_param_f32("CAM_DURATION", 10.0).await?;
-        self.set_param_u8("CAM_FEEDBACK_PIN", 54).await?;
-        self.set_param_u8("CAM_FEEDBACK_POL", 1).await?;
-        self.send_command(
-            common::MavCmd::MAV_CMD_DO_DIGICAM_CONTROL,
-            [0., 0., 0., 0., 1., 0., 0.],
-        )
-        .await?;
-        self.send_command(
-            common::MavCmd::MAV_CMD_SET_MESSAGE_INTERVAL,
-            [33., 1000., 0., 0., 0., 0., 0.],
-        )
-        .await?;
-        self.send_command(
-            common::MavCmd::MAV_CMD_SET_MESSAGE_INTERVAL,
-            [30., 1000., 0., 0., 0., 0., 0.],
-        )
-        .await?;
-
         info!("finished initialization");
 
         Ok(())
@@ -254,6 +233,7 @@ impl PixhawkInterface {
         }
     }
 
+    #[allow(dead_code)]
     pub async fn ping(&mut self) -> anyhow::Result<()> {
         debug!("pinging pixhawk");
 
@@ -286,11 +266,11 @@ impl PixhawkInterface {
 
     /// Sets a parameter on the Pixhawk and waits for acknowledgement. The
     /// default timeout is 10 seconds.
-    pub async fn set_param<T: num_traits::NumCast + std::fmt::Debug>(
+    #[allow(dead_code)]
+    pub async fn set_param<T: MavParam>(
         &mut self,
         id: &str,
         param_value: T,
-        param_type: common::MavParamType,
     ) -> anyhow::Result<T> {
         debug!("setting param {:?} to {:?}", id, param_value);
 
@@ -302,7 +282,7 @@ impl PixhawkInterface {
         let message =
             apm::MavMessage::common(common::MavMessage::PARAM_SET(common::PARAM_SET_DATA {
                 param_id,
-                param_type,
+                param_type: T::MAV_PARAM_TYPE,
                 param_value: num_traits::cast(param_value).unwrap(),
                 target_system: 0,
                 target_component: 0,
@@ -339,6 +319,7 @@ impl PixhawkInterface {
 
     /// Sets a parameter on the Pixhawk and waits for acknowledgement. The
     /// default timeout is 10 seconds.
+    #[allow(dead_code)]
     pub async fn send_command(
         &mut self,
         command: common::MavCmd,
@@ -395,49 +376,48 @@ impl PixhawkInterface {
             _ => unreachable!(),
         }
     }
+}
 
-    pub async fn set_param_f32(&mut self, id: &str, value: f32) -> anyhow::Result<f32> {
-        self.set_param(id, value, common::MavParamType::MAV_PARAM_TYPE_REAL32)
-            .await
-    }
+pub trait MavParam: num_traits::NumCast + std::fmt::Debug {
+    const MAV_PARAM_TYPE: common::MavParamType;
+}
 
-    pub async fn set_param_u8(&mut self, id: &str, value: u8) -> anyhow::Result<u8> {
-        self.set_param(id, value, common::MavParamType::MAV_PARAM_TYPE_UINT8)
-            .await
-    }
+impl MavParam for f32 {
+    const MAV_PARAM_TYPE: common::MavParamType = common::MavParamType::MAV_PARAM_TYPE_REAL32;
+}
 
-    pub async fn set_param_i8(&mut self, id: &str, value: i8) -> anyhow::Result<i8> {
-        self.set_param(id, value, common::MavParamType::MAV_PARAM_TYPE_INT8)
-            .await
-    }
+impl MavParam for f64 {
+    const MAV_PARAM_TYPE: common::MavParamType = common::MavParamType::MAV_PARAM_TYPE_REAL64;
+}
 
-    pub async fn set_param_u16(&mut self, id: &str, value: u16) -> anyhow::Result<u16> {
-        self.set_param(id, value, common::MavParamType::MAV_PARAM_TYPE_UINT16)
-            .await
-    }
+impl MavParam for u8 {
+    const MAV_PARAM_TYPE: common::MavParamType = common::MavParamType::MAV_PARAM_TYPE_UINT8;
+}
 
-    pub async fn set_param_i16(&mut self, id: &str, value: i16) -> anyhow::Result<i16> {
-        self.set_param(id, value, common::MavParamType::MAV_PARAM_TYPE_INT16)
-            .await
-    }
+impl MavParam for u16 {
+    const MAV_PARAM_TYPE: common::MavParamType = common::MavParamType::MAV_PARAM_TYPE_UINT16;
+}
 
-    pub async fn set_param_u32(&mut self, id: &str, value: u32) -> anyhow::Result<u32> {
-        self.set_param(id, value, common::MavParamType::MAV_PARAM_TYPE_UINT32)
-            .await
-    }
+impl MavParam for u32 {
+    const MAV_PARAM_TYPE: common::MavParamType = common::MavParamType::MAV_PARAM_TYPE_UINT32;
+}
 
-    pub async fn set_param_i32(&mut self, id: &str, value: i32) -> anyhow::Result<i32> {
-        self.set_param(id, value, common::MavParamType::MAV_PARAM_TYPE_INT32)
-            .await
-    }
+impl MavParam for u64 {
+    const MAV_PARAM_TYPE: common::MavParamType = common::MavParamType::MAV_PARAM_TYPE_UINT64;
+}
 
-    pub async fn set_param_u64(&mut self, id: &str, value: u64) -> anyhow::Result<u64> {
-        self.set_param(id, value, common::MavParamType::MAV_PARAM_TYPE_UINT64)
-            .await
-    }
+impl MavParam for i8 {
+    const MAV_PARAM_TYPE: common::MavParamType = common::MavParamType::MAV_PARAM_TYPE_INT8;
+}
 
-    pub async fn set_param_i64(&mut self, id: &str, value: i64) -> anyhow::Result<i64> {
-        self.set_param(id, value, common::MavParamType::MAV_PARAM_TYPE_INT64)
-            .await
-    }
+impl MavParam for i16 {
+    const MAV_PARAM_TYPE: common::MavParamType = common::MavParamType::MAV_PARAM_TYPE_INT16;
+}
+
+impl MavParam for i32 {
+    const MAV_PARAM_TYPE: common::MavParamType = common::MavParamType::MAV_PARAM_TYPE_INT32;
+}
+
+impl MavParam for i64 {
+    const MAV_PARAM_TYPE: common::MavParamType = common::MavParamType::MAV_PARAM_TYPE_INT64;
 }

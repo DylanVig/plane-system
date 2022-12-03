@@ -5,14 +5,10 @@ use anyhow::{anyhow, bail, Context};
 use async_trait::async_trait;
 use chrono::Local;
 use futures::StreamExt;
-use gst::Pipeline;
-use gst::{
-    glib::value::{FromValue, ValueTypeChecker},
-    prelude::*,
-    traits::ElementExt,
-};
+
+use gst::{prelude::*, traits::ElementExt};
 use log::*;
-use ps_client::{ChannelCommandSink, ChannelCommandSource, Task};
+use ps_client::Task;
 use tokio::select;
 use tokio::time::sleep;
 use tokio_util::sync::CancellationToken;
@@ -20,7 +16,6 @@ use tokio_util::sync::CancellationToken;
 use super::*;
 
 pub struct PreviewTask {
-    save_path: PathBuf,
     bin_spec: String,
     frame_rx: flume::Receiver<ps_main_camera::LiveFrame>,
 }
@@ -35,12 +30,11 @@ pub fn create_task(
     let mut fmt_vars = HashMap::new();
     fmt_vars.insert("save_path".to_owned(), save_path.display().to_string());
 
-    let bin_spec = config.bin_spec.join("\n");
+    let bin_spec = config.bin.join("\n");
     let bin_spec =
         strfmt::strfmt(&bin_spec, &fmt_vars).context("invalid pipeline format string")?;
 
     Ok(PreviewTask {
-        save_path,
         bin_spec,
         frame_rx,
     })
@@ -54,10 +48,7 @@ impl Task for PreviewTask {
 
     async fn run(self: Box<Self>, cancel: CancellationToken) -> anyhow::Result<()> {
         let Self {
-            bin_spec,
-            save_path,
-            frame_rx,
-            ..
+            bin_spec, frame_rx, ..
         } = *self;
 
         debug!("initializing live preview");

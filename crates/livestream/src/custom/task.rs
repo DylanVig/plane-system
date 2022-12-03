@@ -2,14 +2,13 @@ use std::collections::HashMap;
 
 use anyhow::{anyhow, Context};
 use async_trait::async_trait;
-use futures::stream::{SelectAll, StreamExt};
-use futures::FutureExt;
-use gst::glib::clone::Downgrade;
+use futures::stream::StreamExt;
+
 use gst::prelude::*;
 use log::*;
 use ps_client::{ChannelCommandSink, ChannelCommandSource, Task};
 use tokio::select;
-use tokio_stream::StreamMap;
+
 use tokio_util::sync::CancellationToken;
 
 use super::*;
@@ -110,7 +109,6 @@ impl Task for CustomTask {
                         }
                         LivestreamRequest::Stop { name } => {
                             if let Some(pipeline) = active_pipelines.remove(&name) {
-
                                 debug!("sending eos to pipeline {name}");
                                 let bus: gst::Bus =
                                     pipeline.bus().context("pipeline has no bus")?;

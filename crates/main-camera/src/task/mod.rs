@@ -19,6 +19,7 @@ use log::*;
 use ps_telemetry::Telemetry;
 use tokio::sync::{watch, RwLock};
 
+
 use crate::{
     interface::{self, PropertyCode},
     MainCameraConfig,
@@ -90,8 +91,10 @@ impl DerefMut for InterfaceGuard {
 
 impl Drop for InterfaceGuard {
     fn drop(&mut self) {
+        info!("disconnecting from camera");
+
         if let Err(err) = self.0.disconnect() {
-            error!("failed to disconnect safely from camera: {err:?}");
+            error!("failed to disconnect from camera: {err:?}");
         }
     }
 }

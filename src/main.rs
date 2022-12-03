@@ -47,7 +47,7 @@ async fn main() -> anyhow::Result<()> {
         logging_unset_warning = true;
     }
 
-    let (writer, _guard) =
+    let (writer, writer_guard) =
         tracing_appender::non_blocking(tracing_appender::rolling::hourly("logs", "plane-system"));
 
     let reg = tracing_subscriber::registry();
@@ -106,7 +106,15 @@ async fn main() -> anyhow::Result<()> {
         .context("failed to read config file")?;
     let config = config;
 
-    run_tasks(config, editor, stdout).await
+    let result = run_tasks(config, editor, stdout).await;
+
+    if let Err(err) = &result {
+        error!("program exited with error: {err:?}");
+    }
+
+    std::mem::drop(writer_guard);
+
+    result
 }
 
 async fn run_tasks(
@@ -145,7 +153,7 @@ async fn run_tasks(
     let telem_rx = telem_task.telemetry();
     tasks.push(Box::new(telem_task));
 
-    let gs_cmd_tx = if let Some(c) = config.ground_server {
+    let _gs_cmd_tx = if let Some(c) = config.ground_server {
         debug!("initializing ground server tasks");
 
         let upload_task = ps_gs::create_task(c)?;
@@ -186,8 +194,7 @@ async fn run_tasks(
     let livestream_cmd_tx = if let Some(c) = config.livestream {
         debug!("initializing aux camera tasks");
 
-        let (custom_task, preview_task) =
-            ps_livestream::create_tasks(c, camera_preview_frame_rx)?;
+        let (custom_task, preview_task) = ps_livestream::create_tasks(c, camera_preview_frame_rx)?;
 
         let mut livestream_cmd_tx = None;
 
@@ -223,13 +230,23 @@ async fn run_tasks(
         debug!("starting {} task", task_name);
         let ct = cancellation_token.clone();
 
-        join_set.spawn(async move {
+        let fut = async move {
             // drop guard is there to print a log message when the future is
             // dropped, which happens when the task terminates for any reason
             let _dg = drop_guard::guard((), |_| debug!("exiting {} task", task_name));
 
             task.run(ct).await
-        });
+        };
+
+        #[cfg(tokio_unstable)]
+        join_set
+            .build_task()
+            .name(task_name)
+            .spawn(fut)
+            .context("failed to spawn future")?;
+
+        #[cfg(not(tokio_unstable))]
+        join_set.spawn(fut);
     }
 
     while let Some(res) = join_set.join_next().await {

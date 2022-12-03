@@ -4,7 +4,9 @@ use std::path::PathBuf;
 
 #[derive(Clone, Debug, Deserialize)]
 pub struct DownloadConfig {
-    /// The folder in which to save downloaded images
+    /// The path where images captured by the R10C will be saved once they are
+    /// downloaded. The plane system will automatically create a folder named
+    /// after the current time inside of this path and save videos here. 
     pub save_path: PathBuf,
 }
 

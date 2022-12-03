@@ -7,7 +7,7 @@ use std::{
 use anyhow::Context;
 use async_trait::async_trait;
 use bytes::Bytes;
-use log::*;
+use tracing::*;
 
 use ps_client::Task;
 use ps_telemetry::Telemetry;
@@ -15,7 +15,7 @@ use tokio::{
     fs::File,
     io::AsyncWriteExt,
     select,
-    sync::{watch, RwLock},
+    sync::{broadcast, watch, RwLock},
     time::sleep,
 };
 use tokio_util::sync::CancellationToken;
@@ -41,7 +41,7 @@ pub struct DownloadTask {
     interface: Arc<RwLock<InterfaceGuard>>,
 
     telem_rx: watch::Receiver<Telemetry>,
-    ptp_evt_rx: flume::Receiver<ptp::Event>,
+    ptp_evt_rx: broadcast::Receiver<ptp::Event>,
     download_tx: flume::Sender<Download>,
     download_rx: flume::Receiver<Download>,
 }
@@ -51,7 +51,7 @@ impl DownloadTask {
         config: DownloadConfig,
         interface: Arc<RwLock<InterfaceGuard>>,
         telem_rx: watch::Receiver<Telemetry>,
-        ptp_evt_rx: flume::Receiver<ptp::Event>,
+        ptp_evt_rx: broadcast::Receiver<ptp::Event>,
     ) -> Self {
         let (download_tx, download_rx) = flume::bounded(256);
 
@@ -81,7 +81,7 @@ impl Task for DownloadTask {
             config,
             interface,
             telem_rx,
-            ptp_evt_rx,
+            mut ptp_evt_rx,
             download_tx,
             ..
         } = *self;
@@ -103,11 +103,9 @@ impl Task for DownloadTask {
             loop {
                 // wait for shutter event from camera
                 loop {
-                    match ptp_evt_rx.recv_async().await {
+                    match ptp_evt_rx.recv().await {
                         Ok(evt) => {
-                            if let ptp::EventCode::Vendor(0xC204) | ptp::EventCode::Vendor(0xC203) =
-                                evt.code
-                            {
+                            if let ptp::EventCode::Vendor(0xC204) = evt.code {
                                 break;
                             }
                         }
@@ -121,47 +119,25 @@ impl Task for DownloadTask {
 
                 debug!("received capture event from camera");
 
-                // most significant bit indicates that the image is still being
-                // acquired, so wait for it to flip to zero
-                // MAYBE WRONG? ^
-                loop {
-                    sleep(Duration::from_millis(100)).await;
+                let mut interface = interface.write().await;
 
-                    let props = interface
-                        .write()
-                        .await
-                        .query()
-                        .context("could not get camera state")?;
-                    let shooting_file_info: u16 =
-                        convert_camera_value(&props, PropertyCode::ShootingFileInfo)
-                            .context("could not get shooting file info")?;
+                let props = interface.query().context("could not get camera state")?;
 
-                    if shooting_file_info & 0x8000 != 0 {
-                        break;
-                    }
-                }
+                let mut shooting_file_info: u16 =
+                    convert_camera_value(&props, PropertyCode::ShootingFileInfo)
+                        .context("could not get shooting file info")?;
 
                 // download images until ShootingFileInfo reaches zero
-                loop {
-                    sleep(Duration::from_millis(100)).await;
-
-                    let props = interface
-                        .write()
-                        .await
-                        .query()
-                        .context("could not get camera state")?;
-                    let shooting_file_info: u16 =
-                        convert_camera_value(&props, PropertyCode::ShootingFileInfo)
-                            .context("could not get shooting file info")?;
-
-                    if shooting_file_info == 0 {
-                        break;
-                    }
+                while shooting_file_info & 0x8000 != 0 {
+                    debug!("shooting file info = 0x{shooting_file_info:04x}, downloading image");
 
                     let (metadata, data) = {
-                        let mut interface = interface.write().await;
+                        let result = tokio::task::block_in_place(|| {
+                            let _span = trace_span!(
+                                "attempting image download from {IMAGE_BUFFER_OBJECT_HANDLE:?}"
+                            )
+                            .entered();
 
-                        tokio::task::block_in_place(|| {
                             let handle = ptp::ObjectHandle::from(IMAGE_BUFFER_OBJECT_HANDLE);
                             let info = interface
                                 .get_object_info(handle, None)
@@ -172,7 +148,15 @@ impl Task for DownloadTask {
                             let data = Bytes::from(data);
 
                             Ok::<_, anyhow::Error>((info, data))
-                        })?
+                        });
+
+                        match result {
+                            Ok(ret) => ret,
+                            Err(err) => {
+                                warn!("unable to retrieve image data from camera: {err}");
+                                break;
+                            }
+                        }
                     };
 
                     info!("downloaded image information from camera");
@@ -186,6 +170,14 @@ impl Task for DownloadTask {
                     let _ = download_tx.try_send(download.clone());
 
                     save(&save_path, download).await?;
+
+                    let props = interface.query().context("could not get camera state")?;
+
+                    shooting_file_info =
+                        convert_camera_value(&props, PropertyCode::ShootingFileInfo)
+                            .context("could not get shooting file info")?;
+
+                    sleep(Duration::from_millis(1000)).await;
                 }
             }
 
