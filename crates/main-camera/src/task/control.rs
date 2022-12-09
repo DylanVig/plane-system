@@ -3,6 +3,7 @@ use std::{sync::Arc, time::Duration};
 use anyhow::{bail, Context};
 use async_trait::async_trait;
 use chrono::{DateTime, Local};
+use futures::sink::With;
 use log::{debug, error, info, warn};
 use num_traits::ToPrimitive;
 use ps_client::{ChannelCommandSink, ChannelCommandSource, Task};
@@ -93,6 +94,44 @@ impl ControlTask {
     }
 }
 
+///[get_magnification_levels interface min_foca] returns a vector of tuples of level * focal giving the corresponding focal lenghts for each zoom level]
+async fn get_magnification_levels(
+    interface: &RwLock<InterfaceGuard>,
+    min_focal: f32,
+) -> anyhow::Result<Vec<(i32, f32)>> {
+    let mut v: Vec<(i32, f32)> = Vec::new();
+    let mut interface = interface.write().await;
+    sleep(Duration::from_millis(5000)).await;
+    for level in 0..32 {
+        //sleep to prevent
+        sleep(Duration::from_millis(1000)).await;
+        //set target zoom level
+        interface.set(PropertyCode::ZoomAbsolutePosition, ptp::Data::UINT8(level))?;
+        //do button press down
+        interface.execute(ControlCode::ZoomControlAbsolute, Data::UINT16(0x0002))?;
+        sleep(Duration::from_millis(100)).await;
+        //do button press up
+        interface.execute(ControlCode::ZoomControlAbsolute, Data::UINT16(0x0001))?;
+
+        let props = interface.query()?;
+        //Get zoom magnification info
+        let zoom_info = props
+            .get(&PropertyCode::ZoomMagnificationInfo)
+            .map(|prop| prop.current.clone())
+            .context("Cannot query magnification values")?;
+        //extract magnification percentage from magnification info array
+        let magnification = match &zoom_info {
+            Data::AUINT16(v) => v[1],
+            _ => bail!("Error with Data Handling, expected Array of AUINT16"),
+        };
+
+        //focal length can computed as magnification percentage of starting (min) focal length
+        let focal = (min_focal) * (magnification as f32) / 100.;
+        v.push((level as i32, focal));
+    }
+    Ok(v)
+}
+
 #[async_trait]
 impl Task for ControlTask {
     fn name(&self) -> &'static str {
@@ -103,7 +142,11 @@ impl Task for ControlTask {
         let loop_fut = async move {
             let ptp_evt_rx = self.ptp_evt_rx;
             let ctrl_evt_tx = self.ctrl_evt_tx;
-
+            let interface = &*self.interface;
+            info!("getting focal lengths depending on levels");
+            let magnification_vector =
+                get_magnification_levels(interface, self.min_focal_length).await?;
+            info!("magnification vector is {:?}", &magnification_vector);
             loop {
                 match self.cmd_rx.recv_async().await {
                     Ok((req, ret)) => {
@@ -188,6 +231,7 @@ impl Task for ControlTask {
                                     req,
                                     self.min_focal_length,
                                     self.max_focal_length,
+                                    &magnification_vector,
                                 )
                                 .await
                             }
@@ -304,11 +348,13 @@ async fn run_initialize(interface: &RwLock<InterfaceGuard>) -> anyhow::Result<Ca
     Ok(CameraResponse::Unit)
 }
 
+///[run_zoom interface camera_request min_focal max_focal magnification_vector] executes zoom level commands given a request
 async fn run_zoom(
     interface: &RwLock<InterfaceGuard>,
     req: CameraZoomRequest,
     min_focal_length: f32,
     max_focal_length: f32,
+    magnification_vector: &Vec<(i32, f32)>,
 ) -> anyhow::Result<CameraResponse> {
     let mut interface = interface.write().await;
 
@@ -333,10 +379,20 @@ async fn run_zoom(
             interface.execute(ControlCode::ZoomControlAbsolute, Data::UINT16(0x0001))?;
         }
         CameraZoomRequest::FocalLength { focal_length } => {
-            //find level associoated with the
-            let level = (((focal_length - min_focal_length)
-                / (max_focal_length - min_focal_length))
-                * 30.) as u8;
+            //find closest focal_length associated to a level through iterating through vector
+            //set the camera to that associated level
+            let mut level: u8 = 0;
+            let mut min_distance = focal_length;
+            for i in 0..32 {
+                let (pair_level, pair_focal_length) = magnification_vector[i];
+                let distance = (focal_length - pair_focal_length).abs();
+                if distance < min_distance {
+                    info!("found new closest focal length");
+                    min_distance = distance;
+                    level = pair_level as u8;
+                }
+            }
+
             //set target zoom level
             interface.set(PropertyCode::ZoomAbsolutePosition, ptp::Data::UINT8(level))?;
             //do button press down

@@ -65,22 +65,15 @@ pub enum CameraRequest {
 
 #[derive(Subcommand, Debug, Clone)]
 pub enum CameraZoomRequest {
-    //Zooms out for given milliseconds
-    Wide {
-        duration: u64,
-    },
+    ///Zooms out for given milliseconds
+    Wide { duration: u64 },
     ///Zooms in for given milliseconds
-    Tele {
-        duration: u64,
-    },
+    Tele { duration: u64 },
     ///Zooms to level between [0,30] with 0 being fully zoomed out and 30 fully zoomed in.
-    /// Warning: Zoom levels [30,60] do not physically zoom the camera but rather crop the image
-    Level {
-        level: u8,
-    },
-    FocalLength {
-        focal_length: f32,
-    },
+    ///Warning: Zoom levels [30,60] do not physically zoom the camera but rather crop the image
+    Level { level: u8 },
+    ///Zooms to the closest focal length avaliable by the camera
+    FocalLength { focal_length: f32 },
 }
 
 #[derive(Subcommand, Debug, Clone)]
