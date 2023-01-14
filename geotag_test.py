@@ -36,15 +36,15 @@ parser.add_argument(
 )
 parser.add_argument(
   "-y", "--pixely",
-  help="y pixel from left of image", 
+  help="y pixel from top of image", 
   default=str(image_height / 2)
 )
 args = parser.parse_args()
 
 IMAGE_NAME = args.image
-FOCAL_LENGTH = args.focallength
-PIXEL_X = args.pixelx
-PIXEL_Y = args.pixely
+FOCAL_LENGTH = int(args.focallength)
+PIXEL_X = int(args.pixelx)
+PIXEL_Y = int(args.pixely)
 
 
 # FOV in radians
@@ -55,16 +55,16 @@ json_filename = os.path.join('images', IMAGE_NAME + ".json")
 jpg_filename = os.path.join('images', IMAGE_NAME + ".JPG")
 
 with open(json_filename, "rb") as json_file:
-  request_data = json.load(json_file)
+  telem = json.load(json_file)
 
-  image_lat = request_data['pixhawk']['position']['point']['y']
-  image_long = request_data['pixhawk']['position']['point']['x']
-  image_altitude = request_data['pixhawk_telemetry']['position']['altitude_rel']
-  image_alt_msl = request_data['pixhawk_telemetry']['position']['altitude_msl']
+  image_lat = telem['pixhawk']['position'][0]['point']['lat']
+  image_long = telem['pixhawk']['position'][0]['point']['lon']
+  image_alt_msl = telem['pixhawk']['position'][0]['altitude_msl']
+  image_altitude = telem['pixhawk']['position'][0]['altitude_rel']
 
-  image_roll = request_data['pixhawk']['attitude']['roll']
-  image_pitch = request_data['pixhawk']['attitude']['pitch']
-  image_yaw = request_data['pixhawk']['attitude']['yaw']
+  image_roll = telem['pixhawk']['attitude'][0]['roll']
+  image_pitch = telem['pixhawk']['attitude'][0]['pitch']
+  image_yaw = telem['pixhawk']['attitude'][0]['yaw']
 
 
 
@@ -72,6 +72,8 @@ with open(json_filename, "rb") as json_file:
 # pixels (x, y) from origin being center, and positive being in (right, up) direction
 delta_pixel_x = PIXEL_X - image_width / 2
 delta_pixel_y = image_height / 2 - PIXEL_Y
+
+print(delta_pixel_x, delta_pixel_y)
 
 
 """ GEOTAGGING CALCULATIONS: do not change unless you want to edit the model """
@@ -94,6 +96,8 @@ target_dy = image_altitude * (
 distance_to_target = sqrt(target_dx ** 2 + target_dy ** 2) # meters
 direction_to_target = pi / 2.0 - atan2(target_dy, target_dx) # radians
 
+print(distance_to_target)
+
 # Returns new latitude and longitude in DEGREES
 def inverse_haversine(ilat, ilong, dist, dir):
 	r = 6371000.0 # approximate radius of Earth in meters
@@ -104,7 +108,7 @@ def inverse_haversine(ilat, ilong, dist, dir):
 	return new_lat, new_long
 
 # new gps in radians
-new_lat, new_long = inverse_haversine(image_lat, image_long, distance_to_target, direction_to_target)
+new_lat, new_long = inverse_haversine(image_lat * pi / 180, image_long * pi / 180, distance_to_target, direction_to_target)
 
 # Prints the predicted lat/long of the image
 print(new_lat)
