@@ -9,6 +9,7 @@ import os
 import json
 import argparse
 from math import cos, sin, tan, asin, atan, atan2, sqrt, pi
+import numpy as np
 
 # in pixels, constant for the R10C
 image_width = 5456
@@ -60,11 +61,11 @@ with open(json_filename, "rb") as json_file:
   image_lat = telem['pixhawk']['position'][0]['point']['lat']
   image_long = telem['pixhawk']['position'][0]['point']['lon']
   image_alt_msl = telem['pixhawk']['position'][0]['altitude_msl']
-  image_altitude = telem['pixhawk']['position'][0]['altitude_rel']
+  image_altitude = image_alt_msl - 316.6499938964844 # telem['pixhawk']['position'][0]['altitude_rel']
 
-  image_roll = telem['pixhawk']['attitude'][0]['roll']
-  image_pitch = telem['pixhawk']['attitude'][0]['pitch']
-  image_yaw = telem['pixhawk']['attitude'][0]['yaw']
+  image_roll = 0 #telem['pixhawk']['attitude'][0]['roll']
+  image_pitch = 0 #telem['pixhawk']['attitude'][0]['pitch']
+  image_yaw = 3.14 #telem['pixhawk']['attitude'][0]['yaw']
 
 
 
@@ -73,30 +74,47 @@ with open(json_filename, "rb") as json_file:
 delta_pixel_x = PIXEL_X - image_width / 2
 delta_pixel_y = image_height / 2 - PIXEL_Y
 
-print(delta_pixel_x, delta_pixel_y)
-
 
 """ GEOTAGGING CALCULATIONS: do not change unless you want to edit the model """
 
 hdi = image_altitude * sensor_width / FOCAL_LENGTH
 vdi = image_altitude * sensor_height / FOCAL_LENGTH
 
+f_pixels = FOCAL_LENGTH * image_width / sensor_width
+r_unit_target_rel_plane_P = 1 / sqrt(f_pixels ** 2 + delta_pixel_x ** 2 + delta_pixel_y ** 2) * np.array([-delta_pixel_x, -delta_pixel_y, -f_pixels])
+
+# DCM - Note that pitch and yaw are negated because of reference frame definition
+C_2_roll = np.matrix([[cos(image_roll), 0, -sin(image_roll)], [0, 1, 0], [sin(image_roll), 0, cos(image_roll)]])
+C_1_pitch = np.matrix([[1, 0, 0], [0, cos(-image_pitch), sin(-image_pitch)], [0, -sin(-image_pitch), cos(-image_pitch)]])
+C_3_yaw = np.matrix([[cos(-image_yaw), sin(-image_yaw), 0], [-sin(-image_yaw), cos(-image_yaw), 0], [0, 0, 1]])
+P_C_I = C_2_roll @ C_1_pitch @ C_3_yaw
+I_C_P = np.transpose(P_C_I)
+
+r_unit_target_rel_plane_I = np.transpose(I_C_P @ r_unit_target_rel_plane_P)
+r_target_plane_I = image_altitude / r_unit_target_rel_plane_I[2, 0] * r_unit_target_rel_plane_I
+target_dx = r_target_plane_I[0, 0]
+target_dy = r_target_plane_I[1, 0]
+
 # meters between target and plane on ground in longitude/x direction 
-target_dx = image_altitude * (
+target_dx_old = image_altitude * (
 							tan(-image_roll + fov_x * delta_pixel_x / image_width) * cos(image_yaw)
         			  	  + tan(image_pitch + fov_y * delta_pixel_y / image_height) * sin(image_yaw)
         			   )
 
 # meters between target and plane on ground in latitude/y direction 
-target_dy = image_altitude * (
+target_dy_old = image_altitude * (
 							tan(-image_roll + fov_x * delta_pixel_x / image_width) * sin(-image_yaw)
         			  	  + tan(image_pitch + fov_y * delta_pixel_y / image_height) * cos(image_yaw)
         			   )
 
+print(image_roll, image_pitch, image_yaw)
+print(target_dx, target_dx_old)
+print(target_dy, target_dy_old)
+
 distance_to_target = sqrt(target_dx ** 2 + target_dy ** 2) # meters
 direction_to_target = pi / 2.0 - atan2(target_dy, target_dx) # radians
 
-print(distance_to_target)
+#print(distance_to_target)
 
 # Returns new latitude and longitude in DEGREES
 def inverse_haversine(ilat, ilong, dist, dir):
