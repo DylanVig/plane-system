@@ -1,8 +1,8 @@
 #!/bin/python
 
 """
-This script will calculate the geotag of the ROI at PIXEL_X and PIXEL_Y in image
-with IMAGE_NAME.
+This script will calculate the geotag of the ROI for a given image name, focal
+length, pixel x, and pixel y.
 """
 
 import os
