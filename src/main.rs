@@ -153,7 +153,7 @@ async fn run_tasks(
     let telem_rx = telem_task.telemetry();
     tasks.push(Box::new(telem_task));
 
-    let _gs_cmd_tx = if let Some(c) = config.ground_server {
+    let gs_cmd_tx = if let Some(c) = config.ground_server {
         debug!("initializing ground server tasks");
 
         let upload_task = ps_gs::create_task(c)?;
@@ -170,7 +170,7 @@ async fn run_tasks(
     let (camera_ctrl_cmd_tx, camera_preview_frame_rx) = if let Some(c) = config.main_camera {
         debug!("initializing camera tasks");
         let (control_task, evt_task, download_task, live_task) =
-            ps_main_camera::create_tasks(c, telem_rx)
+            ps_main_camera::create_tasks(c, telem_rx, gs_cmd_tx)
                 .context("failed to initialize camera tasks")?;
 
         let ctrl_cmd_tx = control_task.cmd();

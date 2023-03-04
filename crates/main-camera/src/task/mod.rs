@@ -13,6 +13,7 @@ use anyhow::Context;
 pub use control::*;
 pub use download::*;
 pub use event::*;
+use flume::Sender;
 pub use live::*;
 use log::*;
 
@@ -28,6 +29,7 @@ use crate::{
 pub fn create_tasks(
     config: MainCameraConfig,
     telem_rx: watch::Receiver<Telemetry>,
+    gs_cmd_tx: Option<Sender<ps_gs::GsCommand>>,
 ) -> anyhow::Result<(ControlTask, EventTask, DownloadTask, Option<LiveTask>)> {
     let interface = Arc::new(RwLock::new(InterfaceGuard::new()?));
 
@@ -38,6 +40,7 @@ pub fn create_tasks(
         interface.clone(),
         telem_rx,
         event_task.events(),
+        gs_cmd_tx,
     );
 
     let live_task = if let Some(config) = config.live {

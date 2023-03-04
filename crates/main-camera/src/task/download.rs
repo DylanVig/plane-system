@@ -7,6 +7,7 @@ use std::{
 use anyhow::Context;
 use async_trait::async_trait;
 use bytes::Bytes;
+use flume::Sender;
 use tracing::*;
 
 use ps_client::Task;
@@ -44,6 +45,7 @@ pub struct DownloadTask {
     ptp_evt_rx: broadcast::Receiver<ptp::Event>,
     download_tx: flume::Sender<Download>,
     download_rx: flume::Receiver<Download>,
+    gs_cmd_tx: Option<flume::Sender<ps_gs::GsCommand>>,
 }
 
 impl DownloadTask {
@@ -52,6 +54,7 @@ impl DownloadTask {
         interface: Arc<RwLock<InterfaceGuard>>,
         telem_rx: watch::Receiver<Telemetry>,
         ptp_evt_rx: broadcast::Receiver<ptp::Event>,
+        gs_cmd_tx: Option<Sender<ps_gs::GsCommand>>,
     ) -> Self {
         let (download_tx, download_rx) = flume::bounded(256);
 
@@ -62,6 +65,7 @@ impl DownloadTask {
             ptp_evt_rx,
             download_rx,
             download_tx,
+            gs_cmd_tx,
         }
     }
 
@@ -83,6 +87,7 @@ impl Task for DownloadTask {
             telem_rx,
             mut ptp_evt_rx,
             download_tx,
+            gs_cmd_tx,
             ..
         } = *self;
 
@@ -160,6 +165,16 @@ impl Task for DownloadTask {
                     };
 
                     info!("downloaded image information from camera");
+
+                    // if the ground server task is active, upload the image we
+                    // just saved to ground server
+                    if let Some(gs_cmd_tx) = &gs_cmd_tx {
+                        let _ = gs_cmd_tx.send(ps_gs::GsCommand::UploadImage {
+                            data: Arc::new(data.to_vec()),
+                            file: save_path.clone(),
+                            telemetry: None,
+                        });
+                    }
 
                     let download = Download {
                         telemetry: telem.clone(),
