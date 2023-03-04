@@ -169,6 +169,7 @@ impl Task for DownloadTask {
                     // if the ground server task is active, upload the image we
                     // just saved to ground server
                     if let Some(gs_cmd_tx) = &gs_cmd_tx {
+                        trace!("uploading image to gs");
                         let _ = gs_cmd_tx.send(ps_gs::GsCommand::UploadImage {
                             data: Arc::new(data.to_vec()),
                             file: save_path.clone(),
