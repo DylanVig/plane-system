@@ -4,7 +4,7 @@ use serde::Deserialize;
 
 #[derive(Debug, Deserialize)]
 
-//Use URL type later
 pub struct GsConfig {
     pub address: String,
+    pub proxy: Option<String>,
 }
