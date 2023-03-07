@@ -20,7 +20,7 @@ pub struct LiveConfig {
 #[derive(Debug, Deserialize)]
 pub struct MainCameraConfig {
     #[cfg(feature = "csb")]
-    pub current_sensing: Option<ps_main_camera_csb::CurrentSensingConfig>,
+    pub current_sensing: Option<ps_main_camera_csb::CsbConfig>,
 
     pub download: DownloadConfig,
 
