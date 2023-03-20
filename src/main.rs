@@ -74,6 +74,7 @@ async fn main() -> anyhow::Result<()> {
                     ("plane_system", LevelFilter::DEBUG),
                     ("ps_livestream", LevelFilter::DEBUG),
                     ("ps_main_camera", LevelFilter::DEBUG),
+                    ("ps_main_camera_csb", LevelFilter::DEBUG),
                     ("ps_telemetry", LevelFilter::DEBUG),
                     ("ps_gs", LevelFilter::DEBUG),
                     ("ps_pixhawk", LevelFilter::DEBUG),
@@ -147,8 +148,26 @@ async fn run_tasks(
         None => None,
     };
 
+    #[cfg(feature = "csb")]
+    let csb_evt_rx = if let Some(camera_config) = &config.main_camera {
+        if let Some(c) = &camera_config.current_sensing{
+            debug!("initializing csb task");
+
+            let (evt_task, csb_rx) = ps_main_camera::csb::create_task(c.clone()).context("failed to initialize csb task")?;
+    
+            tasks.push(Box::new(evt_task));
+    
+            Some(csb_rx)
+        } else {
+            None
+        }
+        
+    } else {
+        None
+    };
+
     debug!("initializing telemetry task");
-    let telem_task = ps_telemetry::create_task(pixhawk_evt_rx, None)
+    let telem_task = ps_telemetry::create_task(pixhawk_evt_rx, csb_evt_rx)
         .context("failed to initialize telemetry task")?;
     let telem_rx = telem_task.telemetry();
     tasks.push(Box::new(telem_task));

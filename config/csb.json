@@ -6,14 +6,12 @@
 	"ground_server": null,
 	"scheduler": null,
 	"main_camera": {
-		"main_camera": {
-			"download": {
-				"save_path": "./images/"
-			}
+		"download": {
+			"save_path": "./images/"
 		},
 		"current_sensing": {
-			"gpio_int": 4,
-			"gpio_ack": 17,
+			"gpio_int": 23,
+			"gpio_ack": 24,
 			"i2c": 1
 		}
 	},

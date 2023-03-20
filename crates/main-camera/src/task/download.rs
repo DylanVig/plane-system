@@ -150,7 +150,6 @@ impl Task for DownloadTask {
                             let data = interface
                                 .get_object(handle, None)
                                 .context("failed to get data for image")?;
-                            let data = Bytes::from(data);
 
                             Ok::<_, anyhow::Error>((info, data))
                         });
@@ -164,28 +163,30 @@ impl Task for DownloadTask {
                         }
                     };
 
-                    info!("downloaded image information from camera");
-
-                    // if the ground server task is active, upload the image we
-                    // just saved to ground server
-                    if let Some(gs_cmd_tx) = &gs_cmd_tx {
-                        trace!("uploading image to gs");
-                        let _ = gs_cmd_tx.send(ps_gs::GsCommand::UploadImage {
-                            data: Arc::new(data.to_vec()),
-                            file: save_path.clone(),
-                            telemetry: None,
-                        });
-                    }
+                    info!("downloaded image information from camera"); 
 
                     let download = Download {
                         telemetry: telem.clone(),
                         metadata,
-                        data,
+                        data: Bytes::from(data.clone()),
                     };
 
                     let _ = download_tx.try_send(download.clone());
 
-                    save(&save_path, download).await?;
+                    let image_path = save(&save_path, download).await?;
+
+                    // if the ground server task is active, upload the image we
+                    // just saved to ground server
+                    if let Some(gs_cmd_tx) = &gs_cmd_tx {
+                        info!("uploading image to gs");
+                        let _ = gs_cmd_tx.send(ps_gs::GsCommand::UploadImage {
+                            data: Arc::new(data),
+                            file: image_path,
+                            telemetry: None,
+                        });
+                    } else {
+                        info!("not uploading image to gs");
+                    }
 
                     let props = interface.query().context("could not get camera state")?;
 
