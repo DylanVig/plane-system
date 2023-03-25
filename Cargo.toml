@@ -17,6 +17,7 @@ ps-pixhawk = { path = "crates/pixhawk" }
 ps-telemetry = { path = "crates/telemetry" }
 ps-types = { path = "crates/types" }
 ps-client = { path = "crates/client" }
+ps-gimbal = { path = "crates/gimbal" }
 
 # logging + error handling
 tracing = "0.1"
