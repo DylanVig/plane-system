@@ -1,5 +1,7 @@
 //file to control processing commands and then calling plane system modes and itneracting between them
 
+use ps_main_camera::CameraRequest;
+
 pub enum Modes {
     Search,
     Standby,
@@ -35,11 +37,25 @@ impl ControlTask {
     }
 }
 
-async fn timedSearch(active: u16, u16 inactive) {
-    
+async fn timedSearch(active: u16, inactive: u16) {
+    sleep(active);
+    startCC();
+    sleep(inactive);
+    endCC();
 }
 
+//assume  we have main_camera_tx
+async fn start_cc(main_camera_tx: flume::Sender<CameraRequest>) {
+    main_camera_rx.send(CameraRequest::ContinuousCapture(
+        ps_main_camera::CameraContinuousCaptureRequest::Start,
+    ));
+}
 
+async fn end_cc() {
+    main_camera_rx.send(CameraRequest::ContinuousCapture(
+        ps_main_camera::CameraContinuousCaptureRequest::Stop,
+    ));
+}
 
 #[async_trait]
 impl Task for ControlTask {
@@ -58,29 +74,29 @@ impl Task for ControlTask {
                             ModeRequest::ZoomControl(req) => todo!(),
                             ModeRequest::Search(req) => match req {
                                 //Use .select with within distance to cancel search when out of range
-                                SearchRequest::Time(active, inactive) => 
+                                SearchRequest::Time(active, inactive) =>
                                 //standby mode
 
                                 //wait for sometime
 
                                 //searchmode
 
-                                //figure out how to call cc 
+                                //figure out how to call cc
 
-                                //time 
+                                //time
 
                                 //ad nauseaum
-                                
-                                
-                                todo!(),
+                                {
+                                    todo!()
+                                }
                                 SearchRequest::Distance(distance, waypoint) => todo!(),
-                                SearchRequest::Manual() => 
+                                SearchRequest::Manual() =>
                                 //wait for buttonpress
-                                
+
                                 //run until the buttonpress works
-                                
-                                
-                                todo!(),
+                                {
+                                    todo!()
+                                }
                             },
                         };
 
@@ -100,6 +116,4 @@ impl Task for ControlTask {
 
         Ok(())
     }
-
-
 }
