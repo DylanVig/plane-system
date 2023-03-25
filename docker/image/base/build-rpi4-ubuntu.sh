@@ -1,9 +1,11 @@
 #!/bin/bash
 
+docker="${DOCKER:-docker}"
+
 # This script does NOT build the plane system. Instead, it builds a Docker image
 # which can be used to build the plane system for a Raspberry Pi 4.
 
-docker build \
+$docker build \
 	--build-arg GLIBC_VERSION=2.32 \
 	--build-arg BINUTILS_VERSION=2.37 \
 	--build-arg LINUX_SERIES=5.x \

@@ -1,4 +1,4 @@
-FROM debian:buster AS cc
+FROM docker.io/debian:buster AS cc
 
 RUN useradd -m ccuser
 RUN mkdir -p /opt/cross
