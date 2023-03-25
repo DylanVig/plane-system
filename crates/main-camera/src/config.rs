@@ -30,5 +30,3 @@ pub struct MainCameraConfig {
     /// Maximium focal length of power zoom
     pub max_focal_length: Option<f32>,
 }
-
-pub struct PowerZoomConfig {}

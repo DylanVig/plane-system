@@ -1,4 +1,4 @@
-use std::{sync::Arc, time::Duration};
+use std::{fs, sync::Arc, time::Duration};
 
 use anyhow::{bail, Context};
 use async_trait::async_trait;
@@ -19,8 +19,8 @@ use super::{util::*, InterfaceGuard};
 use crate::{
     interface::{ControlCode, OperatingMode, PropertyCode},
     Aperture, CameraContinuousCaptureRequest, CameraRequest, CameraResponse, CameraSetRequest,
-    CameraZoomRequest, CompressionMode, DriveMode, ErrorMode, ExposureMode, FocusIndication,
-    FocusMode, Iso, SaveMedia, ShutterSpeed,
+    CameraZoomInitializeRequest, CameraZoomRequest, CompressionMode, DriveMode, ErrorMode,
+    ExposureMode, FocusIndication, FocusMode, Iso, SaveMedia, ShutterSpeed,
 };
 
 #[derive(Debug, Clone)]
@@ -143,10 +143,7 @@ impl Task for ControlTask {
             let ptp_evt_rx = self.ptp_evt_rx;
             let ctrl_evt_tx = self.ctrl_evt_tx;
             let interface = &*self.interface;
-            info!("getting focal lengths depending on levels");
-            let magnification_vector =
-                get_magnification_levels(interface, self.min_focal_length).await?;
-            info!("magnification vector is {:?}", &magnification_vector);
+            let mut magnification_vector: Vec<(i32, f32)> = Vec::new();
             loop {
                 match self.cmd_rx.recv_async().await {
                     Ok((req, ret)) => {
@@ -225,6 +222,38 @@ impl Task for ControlTask {
                             CameraRequest::Set(req) => run_set(interface, req).await,
                             CameraRequest::ContinuousCapture(req) => run_cc(req, interface).await,
                             CameraRequest::Record(_) => todo!(),
+                            CameraRequest::ZoomInitialize(req) => {
+                                match req {
+                                    CameraZoomInitializeRequest::Load { path } => {
+                                        info!("loading focal lengths depending on levels");
+                                        let magnification_vector_string =
+                                            tokio::fs::read_to_string(path).await?;
+                                        magnification_vector =
+                                            serde_json::from_str(&magnification_vector_string)?;
+                                    }
+                                    CameraZoomInitializeRequest::Initialize { path } => {
+                                        info!("getting focal lengths depending on levels");
+                                        magnification_vector = get_magnification_levels(
+                                            interface,
+                                            self.min_focal_length,
+                                        )
+                                        .await?;
+                                        info!(
+                                            "magnification vector is {:?}",
+                                            &magnification_vector
+                                        );
+                                        // Serialize it to a JSON string.
+                                        let magnification_vector_json =
+                                            serde_json::to_string(&magnification_vector)?;
+
+                                        // Write to a file
+                                        tokio::fs::write(&path, magnification_vector_json).await?;
+
+                                        info!("printing to json {:?}", &path);
+                                    }
+                                };
+                                Ok(CameraResponse::Unit)
+                            }
                             CameraRequest::Zoom(req) => {
                                 run_zoom(
                                     interface,
@@ -387,11 +416,11 @@ async fn run_zoom(
                 let (pair_level, pair_focal_length) = magnification_vector[i];
                 let distance = (focal_length - pair_focal_length).abs();
                 if distance < min_distance {
-                    info!("found new closest focal length");
                     min_distance = distance;
                     level = pair_level as u8;
                 }
             }
+            info!("found closest focal length {:?}", &level);
 
             //set target zoom level
             interface.set(PropertyCode::ZoomAbsolutePosition, ptp::Data::UINT8(level))?;

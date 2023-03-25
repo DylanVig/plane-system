@@ -1,0 +1,44 @@
+[package]
+name = "ps-modes"
+version = "1.0.0"
+authors = ["Amin Benalla <mohamedabenalla@gmail.com>"]
+edition = "2021"
+
+[dependencies]
+ps-serde-util = { path = "../serde-util" }
+ps-client = { path = "../client" }
+ps-main-camera = { path = "../main-camera"}
+ps-livestream = { path = "../livestream"}
+ps-telemetry = { path = "../telemetry"}
+
+# logging + error handling
+anyhow = "1.0"
+log = "0.4"
+
+# async 
+tokio = { version = "1.16", features = ["full"] }
+tokio-stream = { version = "0.1", features = ["sync"] }
+futures = "0.3"
+async-trait = "0.1"
+flume = "0.10"
+
+# protocols + serialization
+serde = "1.0"
+num-traits = "0.2"
+num-derive = "0.3"
+
+# utility
+bytes = "1.1"
+defer = "0.1"
+clap = { version = "3", features = ["derive"] }
+
+chrono = { workspace = true }
+geo = { workspace = true }
+
+# i/o
+tokio-serial = { git = "https://github.com/CUAir/tokio-serial.git", default-features = false }
+rppal = { version = "0.13.1", optional = true }
+tokio-util = { version = "0.7", features = ["codec"] }
+
+[features]
+csb = ["rppal"]

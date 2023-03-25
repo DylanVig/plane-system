@@ -1,4 +1,8 @@
-use std::{collections::HashMap, str::FromStr};
+use std::{
+    collections::HashMap,
+    path::{Path, PathBuf},
+    str::FromStr,
+};
 
 use anyhow::bail;
 use clap::Subcommand;
@@ -40,7 +44,9 @@ pub enum CameraRequest {
     Initialize,
 
     Status,
-
+    ///initialize zoom to be able to set it using fov
+    #[clap(subcommand)]
+    ZoomInitialize(CameraZoomInitializeRequest),
     /// get a property of the camera's state
     #[clap(subcommand)]
     Get(CameraGetRequest),
@@ -102,6 +108,13 @@ pub enum CameraSetRequest {
     // Other(Vec<String>),
 }
 
+#[derive(Subcommand, Debug, Clone)]
+pub enum CameraZoomInitializeRequest {
+    ///JSON to load magnification information from
+    Load { path: PathBuf },
+    ///Initialize magnification information (pairing zoom levels to fov) and save to file
+    Initialize { path: PathBuf },
+}
 #[derive(Subcommand, Debug, Clone)]
 pub enum CameraStorageRequest {
     /// list the storage volumes available on the camera
