@@ -57,5 +57,7 @@ pub enum SearchRequest {
         waypoint: Vec<geo::Point>, //coordinates in [lat,lon]
     },
     //Switches between active and inactive cature are handled by the user
-    Manual,
+    Manual {
+        start: bool, //whether to start or end continous capture (cc)
+    }
 }
