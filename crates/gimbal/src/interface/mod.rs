@@ -12,6 +12,7 @@ pub use hardware::*;
 pub use software::*;
 
 use simplebgc::*;
+use tracing::log::debug;
 
 #[derive(Copy, Clone, Eq, PartialEq, Debug, Deserialize)]
 pub enum GimbalProtocol {
@@ -59,6 +60,7 @@ impl<T: SimpleBgcGimbalInterface> GimbalInterface for T {
             },
         });
 
+        debug!("Sending command: {}", command.to_v2_bytes());
         self.send_command(command).await?;
 
         Ok(())

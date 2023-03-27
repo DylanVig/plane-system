@@ -6,3 +6,5 @@ pub mod task;
 pub use command::*;
 pub use interface::GimbalKind;
 pub use task::*;
+
+pub use config::*;

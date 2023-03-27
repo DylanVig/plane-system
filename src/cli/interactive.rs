@@ -5,9 +5,13 @@ use rustyline_async::{Readline, SharedWriter};
 use tokio::{select, sync::oneshot};
 use tokio_util::sync::CancellationToken;
 
+use ps_gimbal as gimbal;
+use ps_livestream::custom as ls;
+use ps_main_camera as mc;
+
 #[derive(Parser, Debug)]
 #[command(no_binary_name = true, rename_all = "kebab-case")]
-enum Commands {
+enum Command {
     #[command(subcommand)]
     #[command(name = "camera")]
     MainCamera(ps_main_camera::CameraRequest),
@@ -16,21 +20,21 @@ enum Commands {
     #[command(name = "livestream", alias = "ls")]
     LiveStream(ps_livestream::custom::LivestreamRequest),
 
+    #[command(subcommand)]
+    Gimbal(ps_gimbal::GimbalRequest),
+
     Exit,
+}
+pub struct CliChannels {
+    camera_cmd_tx: Option<ChannelCommandSink<mc::CameraRequest, mc::CameraResponse>>,
+    livestream_cmd_tx: Option<ChannelCommandSink<ls::LivestreamRequest, ls::LivestreamResponse>>,
+    gimbal_cmd_tx: Option<ChannelCommandSink<gimbal::GimbalRequest, gimbal::GimbalResponse>>,
 }
 
 pub async fn run_interactive_cli(
     mut editor: Readline,
     mut stdout: SharedWriter,
-    camera_cmd_tx: Option<
-        ChannelCommandSink<ps_main_camera::CameraRequest, ps_main_camera::CameraResponse>,
-    >,
-    livestream_cmd_tx: Option<
-        ChannelCommandSink<
-            ps_livestream::custom::LivestreamRequest,
-            ps_livestream::custom::LivestreamResponse,
-        >,
-    >,
+    channels: CliChannels,
     cancellation_token: CancellationToken,
 ) -> anyhow::Result<()> {
     loop {
@@ -43,7 +47,7 @@ pub async fn run_interactive_cli(
                     Ok(line) => {
                         stdout.write_all(format!("ps> {}\n", line).as_bytes()).await?;
 
-                        let request: Result<Commands, _> = Parser::try_parse_from(line.split_ascii_whitespace());
+                        let request: Result<Command, _> = Parser::try_parse_from(line.split_ascii_whitespace());
 
                         let request = match request {
                             Ok(request) => request,
@@ -55,44 +59,9 @@ pub async fn run_interactive_cli(
 
                         editor.add_history_entry(line);
 
-                        match request {
-                            Commands::MainCamera(request) => {
-                                if let Some(camera_cmd_tx) = &camera_cmd_tx {
-                                    let (ret_tx, ret_rx) = oneshot::channel();
-                                    if let Err(err) = camera_cmd_tx.send_async((request, ret_tx)).await {
-                                        error!("camera task did not accept command: {:#?}", err);
-                                    }
-                                    match ret_rx.await? {
-                                        Ok(response) => info!("{:?}", response),
-                                        Err(err) => error!("{:?}", err),
-                                    };
-                                } else {
-                                    error!("camera task is not running");
-                                }
-                            }
-
-                            Commands::LiveStream(request) => {
-                                if let Some(livestream_cmd_tx) = &livestream_cmd_tx {
-                                    let (ret_tx, ret_rx) = oneshot::channel();
-                                    if let Err(err) = livestream_cmd_tx.send_async((request, ret_tx)).await {
-                                        error!("livestream task did not accept command: {:#?}", err);
-                                    }
-                                    match ret_rx.await? {
-                                        Ok(response) => info!("{:?}", response),
-                                        Err(err) => error!("{:?}", err),
-                                    };
-                                } else {
-                                    error!("livestream task is not running");
-                                }
-                            }
-
-
-                            Commands::Exit => {
-                                info!("exiting");
-                                cancellation_token.cancel();
-                            }
-                        };
+                        run_interactive_cmd(request, &channels, &cancellation_token).await?;
                     }
+
                     Err(err) => {
                         error!("interactive error: {:#?}", err);
                         break;
@@ -103,6 +72,78 @@ pub async fn run_interactive_cli(
     }
 
     cancellation_token.cancel();
+
+    Ok(())
+}
+
+async fn run_interactive_cmd(
+    cmd: Command,
+    channels: &CliChannels,
+    cancellation_token: &CancellationToken,
+) -> anyhow::Result<()> {
+    let CliChannels {
+        camera_cmd_tx,
+        livestream_cmd_tx,
+        gimbal_cmd_tx,
+    } = channels;
+
+    match cmd {
+        Command::MainCamera(request) => {
+            if let Some(camera_cmd_tx) = &camera_cmd_tx {
+                let (ret_tx, ret_rx) = oneshot::channel();
+
+                if let Err(err) = camera_cmd_tx.send_async((request, ret_tx)).await {
+                    error!("camera task did not accept command: {:#?}", err);
+                }
+
+                match ret_rx.await? {
+                    Ok(response) => info!("{:?}", response),
+                    Err(err) => error!("{:?}", err),
+                };
+            } else {
+                error!("camera task is not running");
+            }
+        }
+
+        Command::LiveStream(request) => {
+            if let Some(livestream_cmd_tx) = &livestream_cmd_tx {
+                let (ret_tx, ret_rx) = oneshot::channel();
+
+                if let Err(err) = livestream_cmd_tx.send_async((request, ret_tx)).await {
+                    error!("livestream task did not accept command: {:#?}", err);
+                }
+
+                match ret_rx.await? {
+                    Ok(response) => info!("{:?}", response),
+                    Err(err) => error!("{:?}", err),
+                };
+            } else {
+                error!("livestream task is not running");
+            }
+        }
+
+        Command::Gimbal(request) => {
+            if let Some(gimbal_cmd_tx) = &gimbal_cmd_tx {
+                let (ret_tx, ret_rx) = oneshot::channel();
+
+                if let Err(err) = gimbal_cmd_tx.send_async((request, ret_tx)).await {
+                    error!("gimbal task did not accept command: {:#?}", err);
+                }
+
+                match ret_rx.await? {
+                    Ok(response) => info!("{:?}", response),
+                    Err(err) => error!("{:?}", err),
+                };
+            } else {
+                error!("gimbal task is not running");
+            }
+        }
+
+        Command::Exit => {
+            info!("exiting");
+            cancellation_token.cancel();
+        }
+    };
 
     Ok(())
 }

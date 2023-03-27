@@ -10,7 +10,7 @@ use tracing::log::*;
 use super::SimpleBgcGimbalInterface;
 
 pub struct HardwareGimbalInterface {
-    inner: Framed<SerialStream, V1Codec>,
+    inner: Framed<SerialStream, V2Codec>,
 }
 
 impl HardwareGimbalInterface {
@@ -18,7 +18,7 @@ impl HardwareGimbalInterface {
         let port = SerialStream::open(&tokio_serial::new(device_path.as_ref(), 115_200))?;
 
         return Ok(Self {
-            inner: V1Codec.framed(port),
+            inner: V2Codec.framed(port),
         });
     }
 
@@ -66,6 +66,7 @@ impl HardwareGimbalInterface {
 #[async_trait]
 impl SimpleBgcGimbalInterface for HardwareGimbalInterface {
     async fn send_command(&mut self, cmd: OutgoingCommand) -> anyhow::Result<()> {
+        
         self.inner.send(cmd).await?;
         Ok(())
     }
