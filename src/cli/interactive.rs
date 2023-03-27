@@ -6,15 +6,14 @@ use tokio::{select, sync::oneshot};
 use tokio_util::sync::CancellationToken;
 
 #[derive(Parser, Debug)]
-#[clap(setting(clap::AppSettings::NoBinaryName))]
-#[clap(rename_all = "kebab-case")]
+#[command(no_binary_name = true, rename_all = "kebab-case")]
 enum Commands {
-    #[clap(subcommand)]
-    #[clap(name = "camera")]
+    #[command(subcommand)]
+    #[command(name = "camera")]
     MainCamera(ps_main_camera::CameraRequest),
 
-    #[clap(subcommand)]
-    #[clap(name = "livestream", alias = "ls")]
+    #[command(subcommand)]
+    #[command(name = "livestream", alias = "ls")]
     LiveStream(ps_livestream::custom::LivestreamRequest),
 
     Exit,

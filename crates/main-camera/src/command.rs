@@ -9,29 +9,29 @@ use super::{interface::OperatingMode, state::*};
 #[derive(Subcommand, Debug, Clone)]
 pub enum CameraRequest {
     /// view information about the storage media inside of the camera
-    #[clap(subcommand)]
+    #[command(subcommand)]
     Storage(CameraStorageRequest),
 
     /// view information about the files stored on the camera; download files
-    #[clap(subcommand)]
+    #[command(subcommand)]
     File(CameraFileRequest),
 
     /// capture an image
     Capture {
         /// if specified, will capture a burst of images over the given number
         /// of seconds
-        #[clap(visible_alias = "burst", short, long)]
+        #[arg(visible_alias = "burst", short, long)]
         burst_duration: Option<u8>,
 
-        #[clap(visible_alias = "fast", short = 'f', long)]
+        #[arg(visible_alias = "fast", short = 'f', long)]
         burst_high_speed: bool,
     },
 
     CCHack {
-        #[clap(short, long)]
+        #[arg(short, long)]
         interval: u8,
 
-        #[clap(short, long)]
+        #[arg(short, long)]
         count: Option<u32>,
     },
 
@@ -40,29 +40,29 @@ pub enum CameraRequest {
     Initialize,
 
     Status {
-        #[clap(short, long, action)]
+        #[arg(short, long, action)]
         verbose: bool,
     },
 
     /// get a property of the camera's state
-    #[clap(subcommand)]
+    #[command(subcommand)]
     Get(CameraGetRequest),
 
     /// set a property of the camera's state
-    #[clap(subcommand)]
+    #[command(subcommand)]
     Set(CameraSetRequest),
 
     /// control continuous capture
-    #[clap(name = "cc")]
-    #[clap(subcommand)]
+    #[command(name = "cc")]
+    #[command(subcommand)]
     ContinuousCapture(CameraContinuousCaptureRequest),
 
     /// record videos
-    #[clap(subcommand)]
+    #[command(subcommand)]
     Record(CameraRecordRequest),
 
     /// zoom in and out
-    #[clap(subcommand)]
+    #[command(subcommand)]
     Zoom(CameraZoomRequest),
 }
 
@@ -121,14 +121,14 @@ pub enum CameraFileRequest {
     List {
         /// the hexadecimal file handle of a folder; if provided, the contents
         /// of the folder will be listed
-        #[clap(parse(try_from_str = ps_serde_util::parse_hex_u32))]
+        #[arg(value_parser = ps_serde_util::parse_hex_u32)]
         parent: Option<u32>,
     },
 
     /// download a file from the camera
     Get {
         /// the hexadecimal file handle of a file
-        #[clap(parse(try_from_str = ps_serde_util::parse_hex_u32))]
+        #[arg(value_parser = ps_serde_util::parse_hex_u32)]
         handle: u32,
     },
 }

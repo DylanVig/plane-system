@@ -1,20 +1,21 @@
 use anyhow::Context;
+use async_trait::async_trait;
 use futures::{SinkExt, StreamExt};
 use simplebgc::*;
 use std::path::Path;
-use tokio_serial::{Serial, SerialPortSettings};
+use tokio_serial::{SerialPortBuilder, SerialStream};
 use tokio_util::codec::{Decoder, Framed};
+use tracing::log::*;
 
 use super::SimpleBgcGimbalInterface;
 
 pub struct HardwareGimbalInterface {
-    inner: Framed<Serial, V1Codec>,
+    inner: Framed<SerialStream, V1Codec>,
 }
 
 impl HardwareGimbalInterface {
-    pub fn with_path<P: AsRef<Path>>(device_path: P) -> anyhow::Result<Self> {
-        let settings = SerialPortSettings::default();
-        let port = Serial::from_path(device_path, &settings)?;
+    pub fn with_path<P: AsRef<str>>(device_path: P) -> anyhow::Result<Self> {
+        let port = SerialStream::open(&tokio_serial::new(device_path.as_ref(), 115_200))?;
 
         return Ok(Self {
             inner: V1Codec.framed(port),

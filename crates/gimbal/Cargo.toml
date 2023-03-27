@@ -3,6 +3,17 @@ name = "ps-gimbal"
 version = "0.1.0"
 edition = "2021"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
 [dependencies]
+async-trait = { workspace = true }
+tokio = { workspace = true }
+tokio-util = { workspace = true }
+tokio-serial = "5.4.1"
+anyhow = { workspace = true }
+flume = { workspace = true }
+num-traits = { workspace = true }
+serde = { workspace = true }
+tracing = { workspace = true }
+clap = { workspace = true }
+futures = { workspace = true }
+ps-client = { path = "../client" }
+simplebgc = { git = "https://github.com/CUAir/simplebgc-rs.git", rev = "2796cfa" }

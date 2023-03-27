@@ -1,13 +1,27 @@
-use crate::{interface::GimbalInterface};
+use std::path::Path;
+
+use anyhow::{bail, Context};
+use async_trait::async_trait;
+use futures::FutureExt;
+use tokio_util::sync::CancellationToken;
+use tracing::log::*;
+
+use crate::{
+    config::GimbalConfig,
+    interface::{GimbalInterface, HardwareGimbalInterface, SoftwareGimbalInterface},
+    GimbalCommand, GimbalKind, GimbalRequest, GimbalResponse,
+};
 
 pub struct GimbalTask {
     iface: Box<dyn GimbalInterface + Send>,
-    cmd: flume::Receiver<GimbalCommand>,
+    cmd_tx: flume::Sender<GimbalCommand>,
+    cmd_rx: flume::Receiver<GimbalCommand>,
 }
 
 impl GimbalTask {
-    pub fn connect_with_path<P: AsRef<Path>>(
-        cmd: flume::Receiver<GimbalCommand>,
+    pub fn connect_with_path<P: AsRef<str>>(
+        cmd_tx: flume::Sender<GimbalCommand>,
+        cmd_rx: flume::Receiver<GimbalCommand>,
         path: P,
     ) -> anyhow::Result<Self> {
         let iface = HardwareGimbalInterface::with_path(path)
@@ -15,12 +29,14 @@ impl GimbalTask {
 
         Ok(Self {
             iface: Box::new(iface),
-            cmd,
+            cmd_tx,
+            cmd_rx,
         })
     }
 
     pub fn connect(
-        cmd: flume::Receiver<GimbalCommand>,
+        cmd_tx: flume::Sender<GimbalCommand>,
+        cmd_rx: flume::Receiver<GimbalCommand>,
         kind: GimbalKind,
     ) -> anyhow::Result<Self> {
         let iface: Box<dyn GimbalInterface + Send> = match kind {
@@ -36,35 +52,13 @@ impl GimbalTask {
 
         Ok(Self {
             iface,
-            cmd,
+            cmd_tx,
+            cmd_rx,
         })
     }
 
-    pub fn init(&self) -> anyhow::Result<()> {
-        trace!("initializing gimbal");
-        Ok(())
-    }
-
-    pub async fn run(&mut self) -> anyhow::Result<()> {
-        self.init()?;
-
-        let mut interrupt_recv = self.channels.interrupt.subscribe();
-        let interrupt_fut = interrupt_recv.recv().fuse();
-        futures::pin_mut!(interrupt_fut);
-
-        loop {
-            futures::select! {
-                cmd = self.cmd.recv_async().fuse() => {
-                    if let Ok(cmd) = cmd {
-                        let result = self.exec(cmd.request()).await;
-                        let _ = cmd.respond(result);
-                    }
-                }
-                _ = interrupt_fut => break,
-            }
-        }
-
-        Ok(())
+    pub fn cmd(&self) -> flume::Sender<GimbalCommand> {
+        self.cmd_tx.clone()
     }
 
     async fn exec(&mut self, cmd: &GimbalRequest) -> anyhow::Result<GimbalResponse> {
@@ -79,39 +73,49 @@ impl GimbalTask {
 }
 
 #[async_trait]
-impl Task for GimbalTask{
+impl ps_client::Task for GimbalTask {
     fn name(&self) -> &'static str {
         "gimbal"
     }
 
     async fn run(self: Box<Self>, cancel: CancellationToken) -> anyhow::Result<()> {
-        let Self {
-            iface,
-            cmd,
-            ..
-        } = *self;
+        let Self { mut iface, cmd_rx, .. } = *self;
 
-        let loop_fut = async move{
+        let loop_fut = async move {
+            while let Ok((cmd, return_chan)) = cmd_rx.recv() {
+                match cmd {
+                    GimbalRequest::Control { roll, pitch } => {
+                        let result = iface.control_angles(roll, pitch).await;
+                        let _ = return_chan.send(result.map(|_| GimbalResponse::Unit));
+                    },
+                }
+            }
 
+            Ok::<_, anyhow::Error>(())
         };
 
-        select! {
-            _ = cancel.cancelled() => {}
-            res = loop_fut => { res? }
-          }
-  
-        Ok(())
+        tokio::select! {
+          _ = cancel.cancelled() => {}
+          res = loop_fut => { res? }
+        }
 
+        Ok(())
     }
 }
 
-pub fn create_task(iface: GimbalInterface) -> anyhow::Result<GimbalTask> {
-    let (evt_tx, evt_rx) = flume::bounded(256);
+pub fn create_task(config: GimbalConfig) -> anyhow::Result<GimbalTask> {
+    let (cmd_tx, cmd_rx) = flume::bounded(256);
 
-    Ok(EventTask {
-        address: config.address,
-        version: config.mavlink,
-        evt_tx,
-        evt_rx,
-    })
+    if let Some(path) = config.path {
+        match config.kind {
+            GimbalKind::Hardware { .. } => {
+                GimbalTask::connect_with_path(cmd_tx, cmd_rx, path)
+            }
+            GimbalKind::Software => {
+                bail!("supplying gimbal device path is not supported for software gimbal")
+            }
+        }
+    } else {
+        GimbalTask::connect(cmd_tx, cmd_rx, config.kind)
+    }
 }

@@ -123,7 +123,9 @@ RUN rustup target add ${TARGET_RUST}
 
 # add rust config
 ARG TARGET_PKGCONFIG
-RUN mkdir -p .cargo && printf "[target.${TARGET_RUST}]\nrustflags=[\"-C\",\"link_args=-Wl,-rpath-link,/usr/lib/${TARGET_PKGCONFIG}/:/lib/${TARGET_PKGCONFIG}\",\"--cfg\",\"tokio_unstable\"]\nlinker = \"/opt/cross/bin/${TARGET_GCC}-gcc\"\n" > .cargo/config.toml
+RUN mkdir -p .cargo 
+RUN printf "[target.${TARGET_RUST}]\nrustflags=[\"-C\",\"link_args=-Wl,-rpath-link,/usr/lib/${TARGET_PKGCONFIG}/:/lib/${TARGET_PKGCONFIG}\",\"--cfg\",\"tokio_unstable\"]\nlinker = \"/opt/cross/bin/${TARGET_GCC}-gcc\"\n" >> .cargo/config.toml
+RUN printf "[registries.crates-io]\nprotocol = \"sparse\"" >> .cargo/config.toml
 RUN cat .cargo/config.toml
 
 # run

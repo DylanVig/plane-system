@@ -1,9 +1,7 @@
 use clap::Subcommand;
 use serde::Serialize;
 
-use crate::Command;
-
-pub type GimbalCommand = Command<GimbalRequest, GimbalResponse>;
+pub type GimbalCommand = ps_client::Command<GimbalRequest, GimbalResponse>;
 
 #[derive(Subcommand, Debug, Clone)]
 #[clap(rename_all = "kebab-case")]
