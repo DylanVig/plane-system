@@ -37,24 +37,33 @@ impl ControlTask {
     }
 }
 
-async fn timedSearch(active: u16, inactive: u16) {
-    sleep(active);
-    startCC();
-    sleep(inactive);
-    endCC();
+async fn time_search(active: u16, inactive: u16, main_camera_tx: flume::Sender<CameraRequest>) {
+    loop { //assumes cc is not running on entry
+        sleep(inactive); 
+        start_cc(main_camera_tx); 
+        sleep(active); 
+        end_cc(main_camera_tx);
+    }
+  
 }
 
-//assume  we have main_camera_tx
-async fn start_cc(main_camera_tx: flume::Sender<CameraRequest>) {
-    main_camera_rx.send(CameraRequest::ContinuousCapture(
-        ps_main_camera::CameraContinuousCaptureRequest::Start,
-    ));
-}
+async fn distance_search(
+    distance_threshold: u64,
+    waypoint: Vec<geo::Point>,
+    telemetry_rx: watch::Receiver<PixhawkTelemetry>,
+    main_camera_tx: flume::Sender<CameraRequest>
+) {
+    let enter = true; // start assuming not in range
+    loop {
+        transition_by_distance(distance_threshold, waypoint, telemetry_rx, enter);
+        start_cc(main_camera_tx);
+        //checking for exit to end cc
+        enter = false;
+        transition_by_distance(distance_threshold, waypoint, telemetry_rx, enter);
+        end_cc(main_camera_tx);
+        enter = true;
+    }
 
-async fn end_cc() {
-    main_camera_rx.send(CameraRequest::ContinuousCapture(
-        ps_main_camera::CameraContinuousCaptureRequest::Stop,
-    ));
 }
 
 #[async_trait]
@@ -73,30 +82,19 @@ impl Task for ControlTask {
                             ModeRequest::Inactive(_) => todo!(),
                             ModeRequest::ZoomControl(req) => todo!(),
                             ModeRequest::Search(req) => match req {
-                                //Use .select with within distance to cancel search when out of range
-                                SearchRequest::Time(active, inactive) =>
-                                //standby mode
-
-                                //wait for sometime
-
-                                //searchmode
-
-                                //figure out how to call cc
-
-                                //time
-
-                                //ad nauseaum
-                                {
-                                    todo!()
+                                SearchRequest::Time(active, inactive) => {
+                                    time_search(active, inactive, main_camera_tx);
                                 }
-                                SearchRequest::Distance(distance, waypoint) => todo!(),
-                                SearchRequest::Manual() =>
-                                //wait for buttonpress
-
-                                //run until the buttonpress works
-                                {
-                                    todo!()
+                                SearchRequest::Distance(distance, waypoint) => {
+                                    distance_search(distance, waypoint, telemetry_rx, main_camera_tx);
                                 }
+                                SearchRequest::Manual(start) if start => {
+                                    start_cc(main_camera_tx);
+                                }
+                                SearchRequest::Manual(start) => {
+                                    end_cc(main_camera_tx);
+                                }
+                               
                             },
                         };
 
