@@ -1,11 +1,13 @@
 #!/bin/bash
 
+docker="${DOCKER:-docker}"
+
 # This script does NOT build the plane system. Instead, it builds a Docker image
 # which can be used to build the plane system for a Raspberry Pi 3. This
 # cross-compiler uses glibc 2.28, so the binaries it generates will be able to
 # run on Raspbian as well as Ubuntu.
 
-docker build \
+$docker build \
 	--build-arg GLIBC_VERSION=2.28 \
 	--build-arg BINUTILS_VERSION=2.37 \
 	--build-arg LINUX_SERIES=5.x \
