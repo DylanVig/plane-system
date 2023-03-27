@@ -2,8 +2,8 @@ use anyhow::Context;
 use async_trait::async_trait;
 use futures::{SinkExt, StreamExt};
 use simplebgc::*;
-use std::path::Path;
-use tokio_serial::{SerialPortBuilder, SerialStream};
+
+use tokio_serial::SerialStream;
 use tokio_util::codec::{Decoder, Framed};
 use tracing::log::*;
 

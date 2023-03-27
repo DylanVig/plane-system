@@ -1,10 +1,7 @@
-use std::path::Path;
-
 use anyhow::{bail, Context};
 use async_trait::async_trait;
 use futures::FutureExt;
 use tokio_util::sync::CancellationToken;
-use tracing::log::*;
 
 use crate::{
     config::GimbalConfig,
@@ -79,7 +76,9 @@ impl ps_client::Task for GimbalTask {
     }
 
     async fn run(self: Box<Self>, cancel: CancellationToken) -> anyhow::Result<()> {
-        let Self { mut iface, cmd_rx, .. } = *self;
+        let Self {
+            mut iface, cmd_rx, ..
+        } = *self;
 
         let loop_fut = async move {
             while let Ok((cmd, return_chan)) = cmd_rx.recv() {
@@ -87,7 +86,7 @@ impl ps_client::Task for GimbalTask {
                     GimbalRequest::Control { roll, pitch } => {
                         let result = iface.control_angles(roll, pitch).await;
                         let _ = return_chan.send(result.map(|_| GimbalResponse::Unit));
-                    },
+                    }
                 }
             }
 
@@ -108,9 +107,7 @@ pub fn create_task(config: GimbalConfig) -> anyhow::Result<GimbalTask> {
 
     if let Some(path) = config.path {
         match config.kind {
-            GimbalKind::Hardware { .. } => {
-                GimbalTask::connect_with_path(cmd_tx, cmd_rx, path)
-            }
+            GimbalKind::Hardware { .. } => GimbalTask::connect_with_path(cmd_tx, cmd_rx, path),
             GimbalKind::Software => {
                 bail!("supplying gimbal device path is not supported for software gimbal")
             }

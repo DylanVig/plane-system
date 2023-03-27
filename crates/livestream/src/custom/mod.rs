@@ -17,7 +17,7 @@ pub struct CustomConfig {
     /// Each key is the name of a pipeline that can be started at runtime, and
     /// each value is a GStreamer [pipeline
     /// description](https://gstreamer.freedesktop.org/documentation/tools/gst-launch.html?gi-language=c#pipeline-description).
-    /// 
+    ///
     /// Example:
     /// ```json
     /// "livestream": {
@@ -31,7 +31,7 @@ pub struct CustomConfig {
     ///   }
     /// }
     /// ```
-    /// 
+    ///
     /// At runtime, you can enter into the plane system:
     /// ```text
     /// ps> livestream start keem

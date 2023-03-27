@@ -150,18 +150,18 @@ async fn run_tasks(
 
     #[cfg(feature = "csb")]
     let csb_evt_rx = if let Some(camera_config) = &config.main_camera {
-        if let Some(c) = &camera_config.current_sensing{
+        if let Some(c) = &camera_config.current_sensing {
             debug!("initializing csb task");
 
-            let (evt_task, csb_rx) = ps_main_camera::csb::create_task(c.clone()).context("failed to initialize csb task")?;
-    
+            let (evt_task, csb_rx) = ps_main_camera::csb::create_task(c.clone())
+                .context("failed to initialize csb task")?;
+
             tasks.push(Box::new(evt_task));
-    
+
             Some(csb_rx)
         } else {
             None
         }
-        
     } else {
         None
     };

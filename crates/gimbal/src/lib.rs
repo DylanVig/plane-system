@@ -1,8 +1,8 @@
 pub mod command;
-pub mod task;
 pub mod config;
 mod interface;
+pub mod task;
 
 pub use command::*;
-pub use task::*;
 pub use interface::GimbalKind;
+pub use task::*;

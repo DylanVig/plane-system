@@ -34,10 +34,7 @@ pub fn create_task(
     let bin_spec =
         strfmt::strfmt(&bin_spec, &fmt_vars).context("invalid pipeline format string")?;
 
-    Ok(PreviewTask {
-        bin_spec,
-        frame_rx,
-    })
+    Ok(PreviewTask { bin_spec, frame_rx })
 }
 
 #[async_trait]

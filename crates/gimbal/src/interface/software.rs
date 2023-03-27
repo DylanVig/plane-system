@@ -1,8 +1,8 @@
 use anyhow::Context;
 use async_trait::async_trait;
 use simplebgc::*;
-use tracing::log::*;
 use std::time::{Duration, Instant};
+use tracing::log::*;
 
 use std::f32::consts::PI;
 use tokio::{spawn, sync::*, time::interval};

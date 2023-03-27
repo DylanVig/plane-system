@@ -267,11 +267,7 @@ impl PixhawkInterface {
     /// Sets a parameter on the Pixhawk and waits for acknowledgement. The
     /// default timeout is 10 seconds.
     #[allow(dead_code)]
-    pub async fn set_param<T: MavParam>(
-        &mut self,
-        id: &str,
-        param_value: T,
-    ) -> anyhow::Result<T> {
+    pub async fn set_param<T: MavParam>(&mut self, id: &str, param_value: T) -> anyhow::Result<T> {
         debug!("setting param {:?} to {:?}", id, param_value);
 
         let mut param_id: [char; 16] = ['\0'; 16];
