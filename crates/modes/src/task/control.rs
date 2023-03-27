@@ -1,4 +1,8 @@
-//file to control processing commands and then calling plane system modes and itneracting between them
+//file to control processing commands and then calling plane system modes and interacting between them
+use crossterm::event::{read, Event, KeyCode, KeyEvent, KeyModifiers};
+
+use tokio::time;
+
 
 pub enum Modes {
     Search,
@@ -6,40 +10,45 @@ pub enum Modes {
     None,
 }
 
+
+
 pub struct ControlTask {
-    ctrl_evt_rx: flume::Receiver<ControlEvent>,
-    ctrl_evt_tx: flume::Sender<ControlEvent>,
-    cmd_rx: ChannelCommandSource<CameraRequest, CameraResponse>,
-    cmd_tx: ChannelCommandSink<CameraRequest, CameraResponse>,
+    cmd_rx: ChannelCommandSource<SearchRequest, SearchResponse>,
+    cmd_tx: ChannelCommandSink<SearchRequest, SearchResponse>,
+    camera_ctrl_cmd_tx: flume::Sender<CameraRequest>,
+    telem_rx: watch::Receiver<Telemetry>,
 }
 
 impl ControlTask {
-    pub(super) fn new() -> Self {
+    pub(super) fn new(camera_ctrl_cmd_tx: flume::Sender<CameraRequest>,
+        telem_rx: watch::Receiver<Telemetry>) -> Self {
         let (cmd_tx, cmd_rx) = flume::bounded(256);
-        let (ctrl_evt_tx, ctrl_evt_rx) = flume::bounded(256);
+
+
 
         Self {
-            ctrl_evt_rx,
-            ctrl_evt_tx,
+            camera_cntrl_cmd_tx,
+            telem_rx,
             cmd_rx,
             cmd_tx,
         }
     }
 
-    pub fn cmd(&self) -> ChannelCommandSink<CameraRequest, CameraResponse> {
+    pub fn cmd(&self) -> ChannelCommandSink<SearchRequest, SearchResponse> {
         self.cmd_tx.clone()
     }
 
-    pub fn event(&self) -> flume::Receiver<ControlEvent> {
-        self.ctrl_evt_rx.clone()
+}
+
+async fn timedSearch(active: u16, inactive: u16) {
+    
+    loop {
+        //TODO: call continous capture
+        sleep(active * 1000); //s to ms
+                              //TODO: exit continous capture
+        sleep(inactive * 1000);
     }
 }
-
-async fn timedSearch(active: u16, u16 inactive) {
-    
-}
-
-
 
 #[async_trait]
 impl Task for ControlTask {
@@ -58,29 +67,33 @@ impl Task for ControlTask {
                             ModeRequest::ZoomControl(req) => todo!(),
                             ModeRequest::Search(req) => match req {
                                 //Use .select with within distance to cancel search when out of range
-                                SearchRequest::Time(active, inactive) => 
+                                SearchRequest::Time(active, inactive) =>
                                 //standby mode
 
                                 //wait for sometime
 
                                 //searchmode
 
-                                //figure out how to call cc 
+                                //figure out how to call cc
 
-                                //time 
+                                //time
 
                                 //ad nauseaum
-                                
-                                
-                                todo!(),
+                                {
+                                    todo!()
+                                }
                                 SearchRequest::Distance(distance, waypoint) => todo!(),
-                                SearchRequest::Manual() => 
+                                SearchRequest::Manual() =>
                                 //wait for buttonpress
-                                
-                                //run until the buttonpress works
-                                
-                                
-                                todo!(),
+
+                                //run until the buttonpress happens again
+                                // want to race a wait for a button press with continuis capture
+
+                                //redo
+                                ControlTask
+                                {
+                                    todo!()
+                                }
                             },
                         };
 
@@ -100,6 +113,4 @@ impl Task for ControlTask {
 
         Ok(())
     }
-
-
 }

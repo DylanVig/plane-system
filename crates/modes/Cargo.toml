@@ -39,6 +39,7 @@ geo = { workspace = true }
 tokio-serial = { git = "https://github.com/CUAir/tokio-serial.git", default-features = false }
 rppal = { version = "0.13.1", optional = true }
 tokio-util = { version = "0.7", features = ["codec"] }
+crossterm = "0.16.0"
 
 [features]
 csb = ["rppal"]

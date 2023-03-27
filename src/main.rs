@@ -186,8 +186,7 @@ async fn run_tasks(
     let livestream_cmd_tx = if let Some(c) = config.livestream {
         debug!("initializing aux camera tasks");
 
-        let (custom_task, preview_task) =
-            ps_livestream::create_tasks(c, camera_preview_frame_rx)?;
+        let (custom_task, preview_task) = ps_livestream::create_tasks(c, camera_preview_frame_rx)?;
 
         let mut livestream_cmd_tx = None;
 
@@ -207,6 +206,19 @@ async fn run_tasks(
 
     #[cfg(not(feature = "livestream"))]
     let livestream_save_cmd_tx = None;
+
+    //Initialize plane system modes
+    let ps_modes_cmd_tx = {
+        debug!("initializing plane system modes tasks");
+
+        let (modes_task) = ps_modes::create_tasks(c, camera_preview_frame_rx, telem_rx)?;
+
+        if let Some(modes_task) = modes_task {
+            ps_modes_cmd_tx = Some(modes_task.cmd());
+            tasks.push(Box::new(modes_task));
+        }
+        ps_modes_cmd_tx
+    };
 
     let mut join_set = JoinSet::new();
 
