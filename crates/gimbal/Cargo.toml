@@ -16,4 +16,5 @@ tracing = { workspace = true }
 clap = { workspace = true }
 futures = { workspace = true }
 ps-client = { path = "../client" }
-simplebgc = { git = "https://github.com/CUAir/simplebgc-rs.git", rev = "2796cfa" }
+enumflags2 = "0.7"
+simplebgc = { git = "https://github.com/CUAir/simplebgc-rs.git", rev = "feb7a99d74a2c090f508e8beb0b67edeadce1cc4" }

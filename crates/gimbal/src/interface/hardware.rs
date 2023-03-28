@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use anyhow::Context;
 use async_trait::async_trait;
 use futures::{SinkExt, StreamExt};
@@ -15,7 +17,9 @@ pub struct HardwareGimbalInterface {
 
 impl HardwareGimbalInterface {
     pub fn with_path<P: AsRef<str>>(device_path: P) -> anyhow::Result<Self> {
-        let port = SerialStream::open(&tokio_serial::new(device_path.as_ref(), 115_200))?;
+        let port = SerialStream::open(
+            &tokio_serial::new(device_path.as_ref(), 115_200).timeout(Duration::from_secs(5)),
+        )?;
 
         return Ok(Self {
             inner: V2Codec.framed(port),
@@ -66,12 +70,13 @@ impl HardwareGimbalInterface {
 #[async_trait]
 impl SimpleBgcGimbalInterface for HardwareGimbalInterface {
     async fn send_command(&mut self, cmd: OutgoingCommand) -> anyhow::Result<()> {
-        
+        trace!("cmd = {cmd:?}");
         self.inner.send(cmd).await?;
         Ok(())
     }
 
     async fn recv_command(&mut self) -> anyhow::Result<Option<IncomingCommand>> {
+        trace!("recv command");
         if let Some(cmd_result) = self.inner.next().await {
             let cmd = cmd_result?;
             return Ok(Some(cmd));

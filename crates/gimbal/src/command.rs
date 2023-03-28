@@ -6,7 +6,14 @@ pub type GimbalCommand = ps_client::Command<GimbalRequest, GimbalResponse>;
 #[derive(Subcommand, Debug, Clone)]
 #[clap(rename_all = "kebab-case")]
 pub enum GimbalRequest {
-    Control { roll: f64, pitch: f64 },
+    Control {
+        /// roll in degrees
+        #[arg(allow_negative_numbers = true)]
+        roll: f64,
+        /// pitch in degrees
+        #[arg(allow_negative_numbers = true)]
+        pitch: f64,
+    },
 }
 
 #[derive(Debug, Clone, Serialize)]

@@ -2,6 +2,7 @@ use anyhow::{bail, Context};
 use async_trait::async_trait;
 use futures::FutureExt;
 use tokio_util::sync::CancellationToken;
+use tracing::log::*;
 
 use crate::{
     config::GimbalConfig,
@@ -81,14 +82,21 @@ impl ps_client::Task for GimbalTask {
         } = *self;
 
         let loop_fut = async move {
-            while let Ok((cmd, return_chan)) = cmd_rx.recv() {
+            trace!("boku");
+
+            while let Ok((cmd, return_chan)) = cmd_rx.recv_async().await {
+                trace!("cmd = {cmd:?}");
+
                 match cmd {
                     GimbalRequest::Control { roll, pitch } => {
                         let result = iface.control_angles(roll, pitch).await;
+                        trace!("result = {result:?}");
                         let _ = return_chan.send(result.map(|_| GimbalResponse::Unit));
                     }
                 }
             }
+
+            trace!("🤖");
 
             Ok::<_, anyhow::Error>(())
         };

@@ -1,5 +1,6 @@
 use clap::Parser;
 use futures::{AsyncWriteExt, FutureExt};
+use gimbal::GimbalResponse;
 use ps_client::ChannelCommandSink;
 use rustyline_async::{Readline, SharedWriter};
 use tokio::{select, sync::oneshot};
@@ -25,10 +26,12 @@ enum Command {
 
     Exit,
 }
+
+#[derive(Clone)]
 pub struct CliChannels {
-    camera_cmd_tx: Option<ChannelCommandSink<mc::CameraRequest, mc::CameraResponse>>,
-    livestream_cmd_tx: Option<ChannelCommandSink<ls::LivestreamRequest, ls::LivestreamResponse>>,
-    gimbal_cmd_tx: Option<ChannelCommandSink<gimbal::GimbalRequest, gimbal::GimbalResponse>>,
+    pub camera_cmd_tx: Option<ChannelCommandSink<mc::CameraRequest, mc::CameraResponse>>,
+    pub livestream_cmd_tx: Option<ChannelCommandSink<ls::LivestreamRequest, ls::LivestreamResponse>>,
+    pub gimbal_cmd_tx: Option<ChannelCommandSink<gimbal::GimbalRequest, gimbal::GimbalResponse>>,
 }
 
 pub async fn run_interactive_cli(
@@ -59,7 +62,7 @@ pub async fn run_interactive_cli(
 
                         editor.add_history_entry(line);
 
-                        run_interactive_cmd(request, &channels, &cancellation_token).await?;
+                        tokio::spawn(run_interactive_cmd(request, channels.clone(), cancellation_token.clone()));
                     }
 
                     Err(err) => {
@@ -78,8 +81,8 @@ pub async fn run_interactive_cli(
 
 async fn run_interactive_cmd(
     cmd: Command,
-    channels: &CliChannels,
-    cancellation_token: &CancellationToken,
+    channels: CliChannels,
+    cancellation_token: CancellationToken,
 ) -> anyhow::Result<()> {
     let CliChannels {
         camera_cmd_tx,
@@ -123,12 +126,17 @@ async fn run_interactive_cmd(
         }
 
         Command::Gimbal(request) => {
+            info!("cono1");
             if let Some(gimbal_cmd_tx) = &gimbal_cmd_tx {
                 let (ret_tx, ret_rx) = oneshot::channel();
 
-                if let Err(err) = gimbal_cmd_tx.send_async((request, ret_tx)).await {
+                info!("request = {request:?}");
+
+                if let Err(err) = gimbal_cmd_tx.try_send((request, ret_tx)) {
                     error!("gimbal task did not accept command: {:#?}", err);
                 }
+
+                info!("awaiting gimbal response");
 
                 match ret_rx.await? {
                     Ok(response) => info!("{:?}", response),
