@@ -82,8 +82,6 @@ impl ps_client::Task for GimbalTask {
         } = *self;
 
         let loop_fut = async move {
-            trace!("boku");
-
             while let Ok((cmd, return_chan)) = cmd_rx.recv_async().await {
                 trace!("cmd = {cmd:?}");
 
