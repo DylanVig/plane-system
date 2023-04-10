@@ -26,7 +26,7 @@ impl ControlTask {
         let (cmd_tx, cmd_rx) = flume::bounded(256);
 
         Self {
-            camera_cntrl_cmd_tx,
+            camera_ctrl_cmd_tx,
             telem_rx,
             cmd_rx,
             cmd_tx,
