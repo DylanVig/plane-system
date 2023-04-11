@@ -1,4 +1,5 @@
-FROM docker.io/debian:buster AS cc
+ARG BASE_IMAGE=docker.io/debian:buster
+FROM $BASE_IMAGE AS cc
 
 RUN useradd -m ccuser
 RUN mkdir -p /opt/cross
