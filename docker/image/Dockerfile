@@ -1,3 +1,4 @@
+ARG RUST_IMAGE="docker.io/rust:1.68-slim-bullseye"
 ARG BASE_IMAGE="docker.io/debian:buster"
 FROM $BASE_IMAGE AS create-cross-compiler
 
@@ -104,9 +105,7 @@ RUN make -j${PARALLELISM} && make install
 
 RUN rm -r /tmp/build-gcc /tmp/build-glibc /tmp/build-binutils /tmp/linux*
 
-ARG RUST_IMAGE="docker.io/rust:1.68-slim-bullseye"
 FROM $RUST_IMAGE AS cross-compiler
-ARG RUST_IMAGE
 
 COPY --from=create-cross-compiler /opt/cross/bin /opt/cross/bin
 ENV PATH="/opt/cross/bin:${PATH}"
