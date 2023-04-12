@@ -103,14 +103,10 @@ RUN make -j${PARALLELISM} install-target-libgcc
 WORKDIR "/tmp/build-glibc"
 RUN make -j${PARALLELISM} && make install
 
-RUN rm -r /tmp/build-gcc /tmp/build-glibc /tmp/build-binutils /tmp/linux*
-
 FROM $RUST_IMAGE AS cross-compiler
 
-COPY --from=create-cross-compiler /opt/cross/bin /opt/cross/bin
+COPY --from=create-cross-compiler /opt/cross /opt/cross
 ENV PATH="/opt/cross/bin:${PATH}"
-
-USER root
 
 ARG TARGET_DEBIAN
 ENV TARGET_DEBIAN=${TARGET_DEBIAN}
@@ -124,17 +120,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 	ca-certificates \
 	&& rm -rf /var/lib/apt/lists/*
 
-RUN useradd -m ccuser
-
-USER ccuser
-WORKDIR "/home/ccuser"
-
 # add rust config
 ARG TARGET_RUST
+ARG TARGET_GCC
 ARG TARGET_PKGCONFIG
-RUN mkdir -p .cargo 
-RUN printf "[target.${TARGET_RUST}]\nrustflags=[\"-C\",\"link_args=-Wl,-rpath-link,/usr/lib/${TARGET_PKGCONFIG}/:/lib/${TARGET_PKGCONFIG}\",\"--cfg\",\"tokio_unstable\"]\nlinker = \"/opt/cross/bin/${TARGET_GCC}-gcc\"\n" >> .cargo/config.toml
-RUN printf "[registries.crates-io]\nprotocol = \"sparse\"" >> .cargo/config.toml
+RUN printf "[target.${TARGET_RUST}]\nrustflags = [\"-C\",\"link_args=-Wl,-rpath-link,/usr/lib/${TARGET_PKGCONFIG}/:/lib/${TARGET_PKGCONFIG}\",\"--cfg\",\"tokio_unstable\"]\nlinker = \"/opt/cross/bin/${TARGET_GCC}-gcc\"\n" >> $CARGO_HOME/config.toml
+RUN printf "[registries.crates-io]\nprotocol = \"sparse\"\n" >> $CARGO_HOME/config.toml
 RUN rustup target add ${TARGET_RUST}
 
 # run
@@ -143,4 +134,4 @@ WORKDIR "/app"
 
 # add env vars
 ENV CFLAGS=${CPPFLAGS} CC=${TARGET_GCC}-gcc PKG_CONFIG_PATH= PKG_CONFIG_SYSROOT_DIR= PKG_CONFIG_LIBDIR=/usr/lib/${TARGET_PKGCONFIG}/pkgconfig TARGET_RUST=${TARGET_RUST}
-CMD cargo build --locked --target ${TARGET_RUST}
+CMD cargo build --locked --target $TARGET_RUST
