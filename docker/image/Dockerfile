@@ -130,6 +130,7 @@ USER ccuser
 WORKDIR "/home/ccuser"
 
 # add rust config
+ARG TARGET_RUST
 ARG TARGET_PKGCONFIG
 RUN mkdir -p .cargo 
 RUN printf "[target.${TARGET_RUST}]\nrustflags=[\"-C\",\"link_args=-Wl,-rpath-link,/usr/lib/${TARGET_PKGCONFIG}/:/lib/${TARGET_PKGCONFIG}\",\"--cfg\",\"tokio_unstable\"]\nlinker = \"/opt/cross/bin/${TARGET_GCC}-gcc\"\n" >> .cargo/config.toml
