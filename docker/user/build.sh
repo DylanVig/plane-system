@@ -1,5 +1,7 @@
 #!/bin/bash
 
+# This script is used to compile the plane system using a cross-compiler image.
+
 set -euxo pipefail
 
 DOCKER="${DOCKER:-podman}"
@@ -16,7 +18,7 @@ if ! podman volume exists plane-system-build; then
 fi
 
 case "$1" in
-"rpi3-raspbian-v1" | "rpi4-ubuntu-v1" | "rpi4-ubuntu-v1-arm")
+"rpi3-raspbian/v1" | "rpi4-ubuntu/v1")
   echo "building plane system for target $1" 
   $DOCKER run -it --rm -v ${ROOT_DIR}:/app -v plane-system-build:/app/target -v plane-system-cargo:/home/ccuser/.cargo/registry dr.cuair.org/x-compiler:$1
   ;;
@@ -24,6 +26,6 @@ case "$1" in
   echo "usage: build.sh <target>"
   ;;
 *)
-  echo "target must be one of: rpi3-raspbian-v1, rpi4-ubuntu-v1, rpi4-ubuntu-v1-arm"
+  echo "target must be one of: rpi3-raspbian-v1, rpi4-ubuntu-v1, rpi4-ubuntu-v1"
   ;;
 esac

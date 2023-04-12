@@ -2,7 +2,7 @@
 
 set -euxo pipefail
 
-docker="${DOCKER:-podman}"
+runtime="${RUNTIME:-podman}"
 
 # we default PARALLELISM=2 b/c M1/M2 Macs tend to come with small amounts of memory
 # and swap configured, so they will just kill our processes if they use too much
@@ -10,12 +10,12 @@ docker="${DOCKER:-podman}"
 
 parallelism="${PARALLELISM:-2}"
 
-# This script does NOT build the plane system. Instead, it builds a Docker image
+# This script does NOT build the plane system. Instead, it builds a Runtime image
 # which can be used to build the plane system for a Raspberry Pi 4.
 
 
 
-$docker build \
+$runtime build \
 	--build-arg PARALLELISM=$parallelism \
 	--build-arg GLIBC_VERSION=2.32 \
 	--build-arg BINUTILS_VERSION=2.37 \
@@ -28,5 +28,5 @@ $docker build \
 	--build-arg TARGET_PKGCONFIG=aarch64-linux-gnu \
 	--build-arg TARGET_RUST=aarch64-unknown-linux-gnu \
 	--build-arg CPPFLAGS="" \
-	--build-arg BASE_IMAGE="docker.io/arm64v8/debian:bullseye" \
-	-t dr.cuair.org/x-compiler:rpi4-ubuntu-v1-arm64 .
+	--build-arg BASE_IMAGE="runtime.io/arm64v8/debian:bullseye" \
+	-t dr.cuair.org/x-compiler/rpi4-ubuntu-arm64:v1 .
