@@ -1,11 +1,14 @@
-pub use ps_modes::control;
-
+use crate::task::control::ControlTask;
+use ps_main_camera::CameraRequest;
+use ps_main_camera::ControlTask;
+use ps_main_camera::MainCameraConfig;
+use ps_telemetry::Telemetry;
 pub fn create_tasks(
     config: MainCameraConfig,
     camera_ctrl_cmd_tx: flume::Sender<CameraRequest>,
     telem_rx: watch::Receiver<Telemetry>,
 ) -> anyhow::Result<(ControlTask)> {
-    let control_task = ControlTask::new(camera_cntrl_cmd_tx, telem_rx);
+    let control_task = ControlTask::new(camera_ctrl_cmd_tx, telem_rx);
 
     Ok(control_task)
 }

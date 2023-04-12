@@ -1,9 +1,19 @@
 //file to control processing commands and then calling plane system modes and interacting between them
-
+use crate::{ModeRequest, SearchRequest, SearchResponse};
+use async_trait::async_trait;
 use crossterm::event::{read, Event, KeyCode, KeyEvent, KeyModifiers};
+use ps_client::ChannelCommandSink;
+use ps_client::ChannelCommandSource;
+use ps_client::Task;
 use ps_main_camera::CameraRequest;
-
+use ps_telemetry::PixhawkTelemetry;
+use ps_telemetry::Telemetry;
+use tokio::select;
+use tokio::sync::watch;
 use tokio::time;
+use tokio::time::sleep;
+use tokio_util::sync::CancellationToken;
+use util::{end_cc, start_cc, transition_by_distance};
 
 pub enum Modes {
     Search,
@@ -74,7 +84,7 @@ impl Task for ControlTask {
 
     async fn run(self: Box<Self>, cancel: CancellationToken) -> anyhow::Result<()> {
         let loop_fut = async move {
-            let ctrl_evt_tx = self.ctrl_evt_tx;
+            let ctrl_evt_tx = self.cmd_tx;
             loop {
                 match self.cmd_rx.recv_async().await {
                     Ok((req, ret)) => {
@@ -82,29 +92,26 @@ impl Task for ControlTask {
                             ModeRequest::Inactive(_) => todo!(),
                             ModeRequest::ZoomControl(req) => todo!(),
                             ModeRequest::Search(req) => match req {
-                                //Use .select with within distance to cancel search when out of range
-                                SearchRequest::Time(active, inactive) =>
-                                //standby mode
-
-                                //wait for sometime
-
-                                //searchmode
-
-                                //figure out how to call cc
-
-                                //time
-
-                                //ad nauseaum
-                                {
-                                    todo!()
+                                SearchRequest::Time(active, inactive) => {
+                                    time_search(active, inactive, self.camera_ctrl_cmd_tx);
+                                    Ok(())
                                 }
-                                SearchRequest::Distance(distance, waypoint) => todo!(),
-                                SearchRequest::Manual() =>
-                                //wait for buttonpress
-
-                                //run until the buttonpress works
-                                {
-                                    todo!()
+                                SearchRequest::Distance(distance, waypoint) => {
+                                    distance_search(
+                                        distance,
+                                        waypoint,
+                                        self.telem_rx,
+                                        self.camera_ctrl_cmd_tx,
+                                    );
+                                    Ok(())
+                                }
+                                SearchRequest::Manual(start) if start => {
+                                    start_cc(self.camera_ctrl_cmd_tx);
+                                    Ok(())
+                                }
+                                SearchRequest::Manual(start) => {
+                                    end_cc(self.camera_ctrl_cmd_tx);
+                                    Ok(())
                                 }
                             },
                         };

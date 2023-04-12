@@ -77,6 +77,7 @@ async fn main() -> anyhow::Result<()> {
                     ("ps_telemetry", LevelFilter::DEBUG),
                     ("ps_gs", LevelFilter::DEBUG),
                     ("ps_pixhawk", LevelFilter::DEBUG),
+                    ("ps_modes", LevelFilter::DEBUG),
                 ])),
         )
         .init();

@@ -1,7 +1,7 @@
 [package]
 name = "ps-modes"
-version = "1.0.0"
-authors = ["Amin Benalla <mohamedabenalla@gmail.com>"]
+version = "1.0.0" 
+authors = ["Amin Benalla <mohamedabenalla@gmail.com>", "Caroline Hohner <chohner2@comcast.net>"]
 edition = "2021"
 
 [dependencies]
@@ -14,6 +14,7 @@ ps-telemetry = { path = "../telemetry"}
 # logging + error handling
 anyhow = "1.0"
 log = "0.4"
+thiserror = "1.0"
 
 # async 
 tokio = { version = "1.16", features = ["full"] }
