@@ -134,4 +134,4 @@ WORKDIR "/app"
 
 # add env vars
 ENV CFLAGS=${CPPFLAGS} CC=${TARGET_GCC}-gcc PKG_CONFIG_PATH= PKG_CONFIG_SYSROOT_DIR= PKG_CONFIG_LIBDIR=/usr/lib/${TARGET_PKGCONFIG}/pkgconfig TARGET_RUST=${TARGET_RUST}
-CMD cargo build --locked --target $TARGET_RUST
+CMD cargo build --target $TARGET_RUST
