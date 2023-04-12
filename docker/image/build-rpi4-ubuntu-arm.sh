@@ -28,5 +28,6 @@ $runtime build \
 	--build-arg TARGET_PKGCONFIG=aarch64-linux-gnu \
 	--build-arg TARGET_RUST=aarch64-unknown-linux-gnu \
 	--build-arg CPPFLAGS="" \
-	--build-arg BASE_IMAGE="runtime.io/arm64v8/debian:bullseye" \
+	--build-arg BASE_IMAGE="docker.io/arm64v8/debian:bullseye" \
+	--build-arg RUST_IMAGE="docker.io/arm64v8/rust:1.68-slim-bullseye" \
 	-t dr.cuair.org/x-compiler/rpi4-ubuntu-arm64:v1 .

@@ -1,4 +1,4 @@
-ARG BASE_IMAGE=docker.io/debian:buster
+ARG BASE_IMAGE="docker.io/debian:buster"
 FROM $BASE_IMAGE AS create-cross-compiler
 
 ARG PARALLELISM
@@ -102,12 +102,14 @@ RUN make -j${PARALLELISM} install-target-libgcc
 WORKDIR "/tmp/build-glibc"
 RUN make -j${PARALLELISM} && make install
 
-RUN rm -r tmp/build-gcc tmp/build-glibc tmp/build-binutils tmp/linux*
+RUN rm -r /tmp/build-gcc /tmp/build-glibc /tmp/build-binutils /tmp/linux*
 
-ENV PATH="/opt/cross/bin:${PATH}"
-FROM $BASE_IMAGE
+ARG RUST_IMAGE="docker.io/rust:1.68-slim-bullseye"
+FROM $RUST_IMAGE AS cross-compiler
+ARG RUST_IMAGE
 
 COPY --from=create-cross-compiler /opt/cross/bin /opt/cross/bin
+ENV PATH="/opt/cross/bin:${PATH}"
 
 USER root
 
@@ -120,16 +122,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 	libusb-1.0-0-dev:${TARGET_DEBIAN} libudev-dev:${TARGET_DEBIAN} libgstreamer1.0-dev:${TARGET_DEBIAN} \
 	libgstreamer-plugins-base1.0-dev:${TARGET_DEBIAN} \
 	libglib2.0-dev:${TARGET_DEBIAN} libssl-dev:${TARGET_DEBIAN} \
+	ca-certificates \
 	&& rm -rf /var/lib/apt/lists/*
+
+RUN useradd -m ccuser
 
 USER ccuser
 WORKDIR "/home/ccuser"
-
-# install rust toolchain
-ARG TARGET_RUST
-RUN curl https://sh.rustup.rs -sSf | bash -s -- -y --default-toolchain 1.68
-ENV PATH="/home/ccuser/.cargo/bin:${PATH}"
-RUN rustup target add ${TARGET_RUST}
 
 # add rust config
 ARG TARGET_PKGCONFIG

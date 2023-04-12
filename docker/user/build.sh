@@ -20,12 +20,12 @@ fi
 case "$1" in
 "rpi3-raspbian/v1" | "rpi4-ubuntu/v1")
   echo "building plane system for target $1" 
-  $DOCKER run -it --rm -v ${ROOT_DIR}:/app -v plane-system-build:/app/target -v plane-system-cargo:/home/ccuser/.cargo/registry dr.cuair.org/x-compiler:$1
+  $DOCKER run -it --rm  -v ${ROOT_DIR}:/app -v plane-system-build:/app/target -v plane-system-cargo:/home/ccuser/.cargo/registry dr.cuair.org/x-compiler/$1:latest
   ;;
 "")
   echo "usage: build.sh <target>"
   ;;
 *)
-  echo "target must be one of: rpi3-raspbian-v1, rpi4-ubuntu-v1, rpi4-ubuntu-v1"
+  echo "target must be one of: rpi3-raspbian, rpi4-ubuntu"
   ;;
 esac
