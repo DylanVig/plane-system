@@ -126,7 +126,6 @@ async fn run_interactive_cmd(
         }
 
         Command::Gimbal(request) => {
-            info!("cono1");
             if let Some(gimbal_cmd_tx) = &gimbal_cmd_tx {
                 let (ret_tx, ret_rx) = oneshot::channel();
 
