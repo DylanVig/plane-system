@@ -3,6 +3,7 @@ use ps_main_camera::CameraRequest;
 use ps_main_camera::ControlTask;
 use ps_main_camera::MainCameraConfig;
 use ps_telemetry::Telemetry;
+use tokio::sync::watch;
 pub fn create_tasks(
     config: MainCameraConfig,
     camera_ctrl_cmd_tx: flume::Sender<CameraRequest>,

@@ -6,14 +6,15 @@ use ps_client::ChannelCommandSink;
 use ps_client::ChannelCommandSource;
 use ps_client::Task;
 use ps_main_camera::CameraRequest;
-use ps_telemetry::PixhawkTelemetry;
+//use ps_telemetry::PixhawkTelemetry;
 use ps_telemetry::Telemetry;
 use tokio::select;
 use tokio::sync::watch;
 use tokio::time;
 use tokio::time::sleep;
+use tokio::time::Duration;
 use tokio_util::sync::CancellationToken;
-use util::{end_cc, start_cc, transition_by_distance};
+use super::util::{end_cc, start_cc, transition_by_distance};
 
 pub enum Modes {
     Search,
@@ -33,7 +34,7 @@ impl ControlTask {
         camera_ctrl_cmd_tx: flume::Sender<CameraRequest>,
         telem_rx: watch::Receiver<Telemetry>,
     ) -> Self {
-        let (cmd_tx, cmd_rx) = flume::bounded(256);
+        let (cmd_tx, cmd_rx) = flume::bounded::<usize>(256);
 
         Self {
             camera_ctrl_cmd_tx,
@@ -48,30 +49,32 @@ impl ControlTask {
     }
 }
 
-async fn time_search(active: u16, inactive: u16, main_camera_tx: flume::Sender<CameraRequest>) {
+async fn time_search(active: u64, inactive: u64, main_camera_tx: flume::Sender<CameraRequest>) {
+    let inactive_dur =  Duration::new(inactive, 0);
+    let active_dur = Duration::new(active, 0);
     loop {
         //assumes cc is not running on entry
-        sleep(inactive);
-        start_cc(main_camera_tx);
-        sleep(active);
-        end_cc(main_camera_tx);
+        sleep(inactive_dur);
+        start_cc(&main_camera_tx);
+        sleep(active_dur);
+        end_cc(&main_camera_tx);
     }
 }
 
 async fn distance_search(
     distance_threshold: u64,
     waypoint: Vec<geo::Point>,
-    telemetry_rx: watch::Receiver<PixhawkTelemetry>,
+    telemetry_rx: watch::Receiver<Telemetry>,
     main_camera_tx: flume::Sender<CameraRequest>,
 ) {
-    let enter = true; // start assuming not in range
+    let mut enter = true; // start assuming not in range
     loop {
-        transition_by_distance(distance_threshold, waypoint, telemetry_rx, enter);
-        start_cc(main_camera_tx);
+        transition_by_distance( &waypoint, &telemetry_rx, distance_threshold, enter);
+        start_cc(&main_camera_tx);
         //checking for exit to end cc
         enter = false;
-        transition_by_distance(distance_threshold, waypoint, telemetry_rx, enter);
-        end_cc(main_camera_tx);
+        transition_by_distance( &waypoint, &telemetry_rx, distance_threshold, enter);
+        end_cc(&main_camera_tx);
         enter = true;
     }
 }
@@ -106,11 +109,11 @@ impl Task for ControlTask {
                                     Ok(())
                                 }
                                 SearchRequest::Manual(start) if start => {
-                                    start_cc(self.camera_ctrl_cmd_tx);
+                                    start_cc(&self.camera_ctrl_cmd_tx);
                                     Ok(())
                                 }
                                 SearchRequest::Manual(start) => {
-                                    end_cc(self.camera_ctrl_cmd_tx);
+                                    end_cc(&self.camera_ctrl_cmd_tx);
                                     Ok(())
                                 }
                             },

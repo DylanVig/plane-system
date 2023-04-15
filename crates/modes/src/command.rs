@@ -1,9 +1,10 @@
 use anyhow::bail;
 use clap::Subcommand;
 use geo::coords_iter::GeometryCoordsIter::Point;
-use geo::coords_iter::GeometryExteriorCoordsIter::Point;
-use geo::Geometry::Point;
+//use geo::coords_iter::GeometryExteriorCoordsIter::Point;
+//use geo::Geometry::Point;
 use serde::Serialize;
+
 use std::{
     collections::HashMap,
     num::ParseFloatError,
@@ -65,7 +66,7 @@ pub enum SearchRequest {
     //Activates search when in a given range of a waypoint, deactivates when exiting range
     Distance {
         distance: u64,             //distance measured in meters
-        waypoint: Vec<geo::Point>, //coordinates in [lat,lon]
+        waypoint: Vec<Point>, //coordinates in [lat,lon]
     },
     //Switches between active and inactive cature are handled by the user
     Manual {
