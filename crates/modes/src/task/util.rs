@@ -56,7 +56,7 @@ fn in_range(
     telemetry_rx: &watch::Receiver<Telemetry>, //should maybe all be just Tele?
     distance_threshold: u64,
 ) -> bool {
-    let distance = 0.;
+    let distance = 0.0;
     let telemetry_point = get_telemetry(&telemetry_rx);
     match telemetry_point {
         Ok(_) => {
