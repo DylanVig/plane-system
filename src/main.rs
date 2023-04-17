@@ -7,7 +7,7 @@ use tokio_util::sync::CancellationToken;
 use tracing::metadata::LevelFilter;
 use tracing_subscriber::{filter::Targets, layer::SubscriberExt, util::SubscriberInitExt, Layer};
 
-use crate::cli::interactive::run_interactive_cli;
+use crate::cli::interactive::{run_interactive_cli, CliChannels};
 
 #[macro_use]
 extern crate tracing;
@@ -78,6 +78,7 @@ async fn main() -> anyhow::Result<()> {
                     ("ps_telemetry", LevelFilter::DEBUG),
                     ("ps_gs", LevelFilter::DEBUG),
                     ("ps_pixhawk", LevelFilter::DEBUG),
+                    ("ps_gimbal", LevelFilter::DEBUG),
                 ])),
         )
         .init();
@@ -150,18 +151,18 @@ async fn run_tasks(
 
     #[cfg(feature = "csb")]
     let csb_evt_rx = if let Some(camera_config) = &config.main_camera {
-        if let Some(c) = &camera_config.current_sensing{
+        if let Some(c) = &camera_config.current_sensing {
             debug!("initializing csb task");
 
-            let (evt_task, csb_rx) = ps_main_camera::csb::create_task(c.clone()).context("failed to initialize csb task")?;
-    
+            let (evt_task, csb_rx) = ps_main_camera::csb::create_task(c.clone())
+                .context("failed to initialize csb task")?;
+
             tasks.push(Box::new(evt_task));
-    
+
             Some(csb_rx)
         } else {
             None
         }
-        
     } else {
         None
     };
@@ -234,13 +235,30 @@ async fn run_tasks(
     #[cfg(not(feature = "livestream"))]
     let livestream_save_cmd_tx = None;
 
+    let gimbal_cmd_tx = if let Some(c) = config.gimbal {
+        debug!("initializing gimbal task");
+        let gimbal_task = ps_gimbal::create_task(c)?;
+
+        let gimbal_cmd_tx = gimbal_task.cmd();
+        tasks.push(Box::new(gimbal_task));
+
+        Some(gimbal_cmd_tx)
+    } else {
+        None
+    };
+
     let mut join_set = JoinSet::new();
+
+    let cli_channels = CliChannels {
+        camera_cmd_tx: camera_ctrl_cmd_tx,
+        livestream_cmd_tx,
+        gimbal_cmd_tx,
+    };
 
     join_set.spawn(run_interactive_cli(
         editor,
         stdout,
-        camera_ctrl_cmd_tx,
-        livestream_cmd_tx,
+        cli_channels,
         cancellation_token.clone(),
     ));
 

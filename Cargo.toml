@@ -17,6 +17,7 @@ ps-pixhawk = { path = "crates/pixhawk" }
 ps-telemetry = { path = "crates/telemetry" }
 ps-types = { path = "crates/types" }
 ps-client = { path = "crates/client" }
+ps-gimbal = { path = "crates/gimbal" }
 
 # logging + error handling
 tracing = "0.1"
@@ -44,7 +45,7 @@ warp = "0.3"
 
 # utility
 ctrlc = "3.2"
-clap = { version = "3", features = ["derive"] }
+clap = { workspace = true }
 config = "0.13"
 rustyline-async = { version = "0.2" }
 
@@ -62,6 +63,8 @@ members = ["crates/*"]
 resolver = "2"
 
 [workspace.dependencies]
+clap = { version = "4", features = ["derive"] }
+
 anyhow = { version = "1.0", features = ["backtrace"] }
 log = "0.4"
 tracing = "0.1"

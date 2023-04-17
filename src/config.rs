@@ -2,18 +2,12 @@ use std::{net::SocketAddr, path::Path};
 
 use config::{Config, ConfigError, File};
 use serde::Deserialize;
-
-#[derive(Debug, Deserialize)]
-pub struct PlaneServerConfig {
-    pub address: SocketAddr,
-}
-
 #[derive(Debug, Deserialize)]
 pub struct PlaneSystemConfig {
-    // pub plane_server: PlaneServerConfig,
     pub pixhawk: Option<ps_pixhawk::PixhawkConfig>,
     pub ground_server: Option<ps_gs::GsConfig>,
     pub main_camera: Option<ps_main_camera::MainCameraConfig>,
+    pub gimbal: Option<ps_gimbal::GimbalConfig>,
 
     #[cfg(feature = "livestream")]
     pub livestream: Option<ps_livestream::LivestreamConfig>,

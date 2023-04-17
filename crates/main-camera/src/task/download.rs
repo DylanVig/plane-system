@@ -163,7 +163,7 @@ impl Task for DownloadTask {
                         }
                     };
 
-                    info!("downloaded image information from camera"); 
+                    info!("downloaded image information from camera");
 
                     let download = Download {
                         telemetry: telem.clone(),
