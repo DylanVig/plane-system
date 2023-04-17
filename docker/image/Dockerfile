@@ -1,4 +1,8 @@
-FROM debian:buster AS cc
+ARG RUST_IMAGE="docker.io/rust:1.68-slim-bullseye"
+ARG BASE_IMAGE="docker.io/debian:buster"
+FROM $BASE_IMAGE AS create-cross-compiler
+
+ARG PARALLELISM
 
 RUN useradd -m ccuser
 RUN mkdir -p /opt/cross
@@ -44,7 +48,7 @@ ARG TARGET_GCC
 RUN mkdir -p /tmp/build-binutils
 WORKDIR "/tmp/build-binutils"
 RUN echo "configuring binutils version ${BINUTILS_VERSION} with target ${TARGET_GCC}" && ../binutils-${BINUTILS_VERSION}/configure --prefix=/opt/cross --target=${TARGET_GCC} --enable-gold --disable-nls
-RUN make -j8 && make install
+RUN make -j${PARALLELISM} && make install
 
 ARG LINUX_SERIES
 ARG LINUX_VERSION
@@ -59,15 +63,15 @@ RUN tar xf linux-${LINUX_VERSION}.tar.xz
 WORKDIR "/tmp/linux-${LINUX_VERSION}"
 RUN make ARCH=${TARGET_LINUX} INSTALL_HDR_PATH=/opt/cross/${TARGET_GCC} headers_install
 
-ARG GCC_CONFIGURE_FLAGS
+ARG GCC_CONFIGURE_FLAGS=""
 ENV GCC_CONFIGURE_FLAGS=${GCC_CONFIGURE_FLAGS}
 
 # build and install gcc
 RUN mkdir -p /tmp/build-gcc
 WORKDIR "/tmp/build-gcc"
 RUN ../gcc-${GCC_VERSION}/configure --prefix=/opt/cross --target=${TARGET_GCC} --enable-languages=c,c++ --disable-bootstrap --disable-nls ${GCC_CONFIGURE_FLAGS}
-RUN make -j8 all-gcc
-RUN make -j8 install-gcc
+RUN make -j${PARALLELISM} all-gcc
+RUN make -j${PARALLELISM} install-gcc
 
 ARG GLIBC_VERSION
 
@@ -85,46 +89,44 @@ ENV CPPFLAGS=${CPPFLAGS}
 
 RUN ../glibc-${GLIBC_VERSION}/configure --prefix=/opt/cross/${TARGET_GCC} --build=$MACHTYPE --host=${TARGET_GCC} --target=${TARGET_GCC} --with-headers=/opt/cross/${TARGET_GCC}/include libc_cv_forced_unwind=yes || cat config.log
 RUN make install-bootstrap-headers=yes install-headers
-RUN make -j8 csu/subdir_lib
+RUN make -j${PARALLELISM} csu/subdir_lib
 RUN install csu/crt1.o csu/crti.o csu/crtn.o /opt/cross/${TARGET_GCC}/lib
 RUN ${TARGET_GCC}-gcc ${CPPFLAGS} -nostdlib -nostartfiles -shared -x c /dev/null -o /opt/cross/${TARGET_GCC}/lib/libc.so
 RUN touch /opt/cross/${TARGET_GCC}/include/gnu/stubs.h
 
 # build libgcc
 WORKDIR "/tmp/build-gcc"
-RUN make -j8 all-target-libgcc
-RUN make -j8 install-target-libgcc
+RUN make -j${PARALLELISM} all-target-libgcc
+RUN make -j${PARALLELISM} install-target-libgcc
 
 # build glibc stage 2
 WORKDIR "/tmp/build-glibc"
-RUN make -j8 && make install
+RUN make -j${PARALLELISM} && make install
 
-USER root
+FROM $RUST_IMAGE AS cross-compiler
+
+COPY --from=create-cross-compiler /opt/cross /opt/cross
+ENV PATH="/opt/cross/bin:${PATH}"
 
 ARG TARGET_DEBIAN
 ENV TARGET_DEBIAN=${TARGET_DEBIAN}
 
-# install dependencies of GCC and plane system
+# install dependencies of plane system
 RUN dpkg --add-architecture ${TARGET_DEBIAN}
 RUN apt-get update && apt-get install -y --no-install-recommends \
 	libusb-1.0-0-dev:${TARGET_DEBIAN} libudev-dev:${TARGET_DEBIAN} libgstreamer1.0-dev:${TARGET_DEBIAN} \
 	libgstreamer-plugins-base1.0-dev:${TARGET_DEBIAN} \
 	libglib2.0-dev:${TARGET_DEBIAN} libssl-dev:${TARGET_DEBIAN} \
+	ca-certificates \
 	&& rm -rf /var/lib/apt/lists/*
 
-USER ccuser
-WORKDIR "/home/ccuser"
-
-# install rust toolchain
-ARG TARGET_RUST
-RUN curl https://sh.rustup.rs -sSf | bash -s -- -y --default-toolchain 1.65
-ENV PATH="/home/ccuser/.cargo/bin:${PATH}"
-RUN rustup target add ${TARGET_RUST}
-
 # add rust config
+ARG TARGET_RUST
+ARG TARGET_GCC
 ARG TARGET_PKGCONFIG
-RUN mkdir -p .cargo && printf "[target.${TARGET_RUST}]\nrustflags=[\"-C\",\"link_args=-Wl,-rpath-link,/usr/lib/${TARGET_PKGCONFIG}/:/lib/${TARGET_PKGCONFIG}\",\"--cfg\",\"tokio_unstable\"]\nlinker = \"/opt/cross/bin/${TARGET_GCC}-gcc\"\n" > .cargo/config.toml
-RUN cat .cargo/config.toml
+RUN printf "[target.${TARGET_RUST}]\nrustflags = [\"-C\",\"link_args=-Wl,-rpath-link,/usr/lib/${TARGET_PKGCONFIG}/:/lib/${TARGET_PKGCONFIG}\",\"--cfg\",\"tokio_unstable\"]\nlinker = \"/opt/cross/bin/${TARGET_GCC}-gcc\"\n" >> $CARGO_HOME/config.toml
+RUN printf "[registries.crates-io]\nprotocol = \"sparse\"\n" >> $CARGO_HOME/config.toml
+RUN rustup target add ${TARGET_RUST}
 
 # run
 VOLUME /app
@@ -132,4 +134,4 @@ WORKDIR "/app"
 
 # add env vars
 ENV CFLAGS=${CPPFLAGS} CC=${TARGET_GCC}-gcc PKG_CONFIG_PATH= PKG_CONFIG_SYSROOT_DIR= PKG_CONFIG_LIBDIR=/usr/lib/${TARGET_PKGCONFIG}/pkgconfig TARGET_RUST=${TARGET_RUST}
-CMD cargo build --target ${TARGET_RUST}
+CMD cargo build --target $TARGET_RUST

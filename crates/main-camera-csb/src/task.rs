@@ -44,10 +44,14 @@ pub fn create_task(config: CsbConfig) -> anyhow::Result<(EventTask, flume::Recei
         })
         .transpose()?;
 
+    debug!("listening for interrupts on pin {}", config.gpio_int);
+
     let mut pin_int = gpio
         .get(config.gpio_int)
         .context("failed to access interrupt gpio pin")?
         .into_input_pullup();
+
+    debug!("sending acks on pin {}", config.gpio_ack);
 
     let pin_ack = gpio
         .get(config.gpio_ack)
@@ -89,7 +93,9 @@ impl Task for EventTask {
         } = *self;
 
         let loop_fut = async move {
-            defer(|| {
+            // need to assign to a variable so it is not dropped until the end
+            // of closure; when we drop we clear the interrupt handler
+            let _m = defer(|| {
                 let _ = pin_int.clear_async_interrupt();
             });
 

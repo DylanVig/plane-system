@@ -1,6 +1,6 @@
 use std::{sync::Arc, time::Duration};
 
-use anyhow::{Context, bail};
+use anyhow::{bail, Context};
 use async_trait::async_trait;
 use bytes::{Buf, Bytes, BytesMut};
 use chrono::{DateTime, Local};
@@ -8,7 +8,7 @@ use log::*;
 
 use ps_client::Task;
 
-use tokio::{io::AsyncWriteExt, select, sync::RwLock, time::interval};
+use tokio::{select, sync::RwLock, time::interval};
 use tokio_util::sync::CancellationToken;
 
 use crate::{interface::PropertyCode, task::util::convert_camera_value, LiveConfig};
@@ -36,13 +36,16 @@ pub struct LiveTask {
 }
 
 impl LiveTask {
-    pub(super) fn new(interface: Arc<RwLock<InterfaceGuard>>, config: LiveConfig) -> anyhow::Result<Self> {
+    pub(super) fn new(
+        interface: Arc<RwLock<InterfaceGuard>>,
+        config: LiveConfig,
+    ) -> anyhow::Result<Self> {
         let (frame_tx, frame_rx) = flume::bounded(256);
 
         if config.framerate <= 0.0 || config.framerate > 30.0 {
             bail!("camera live preview framerate must be greater than zero and less than or equal to 30");
         }
-        
+
         Ok(Self {
             interface,
             config,

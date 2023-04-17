@@ -4,7 +4,7 @@
 
 The plane system is designed to run on Unix. On Windows, you will need to use WSL, so skip to the [WSL setup](#wsl-setup) section.
 
-- Install [Rust 1.63.0 or higher](https://rustup.rs/).
+- Install [Rust 1.65.0 or higher](https://rustup.rs/).
 - Install dependencies
   - Arch/Manjaro: `pacman -S libusb gstreamer`
   - Ubuntu/Debian: `apt-get install libusb-1.0-0-dev libudev-dev libglib2.0-dev libgstreamer1.0-dev`

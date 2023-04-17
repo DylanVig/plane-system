@@ -2,9 +2,11 @@ use anyhow::bail;
 
 use serde::Deserialize;
 
-pub mod preview;
 pub mod custom;
+pub mod preview;
 
+/// Controls the plane system's interface with GStreamer, which can be used to
+/// save video to files and livestream video to the ground.
 #[derive(Clone, Debug, Deserialize)]
 pub struct LivestreamConfig {
     pub custom: Option<custom::CustomConfig>,
@@ -14,10 +16,7 @@ pub struct LivestreamConfig {
 pub fn create_tasks(
     config: LivestreamConfig,
     frame_rx: Option<flume::Receiver<ps_main_camera::LiveFrame>>,
-) -> anyhow::Result<(
-    Option<custom::CustomTask>,
-    Option<preview::PreviewTask>,
-)> {
+) -> anyhow::Result<(Option<custom::CustomTask>, Option<preview::PreviewTask>)> {
     if let LivestreamConfig {
         custom: None,
         preview: None,

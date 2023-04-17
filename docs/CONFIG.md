@@ -1,10 +1,14 @@
 # configuration file
 
-The plane system accepts configuration from `plane-system.json`.
+The plane system accepts configuration from a JSON file. We have lots of preset
+configurations in the `config` folder.
 
-This file is located automatically if it is in the working directory when the plane system is invoked, but if it's located somewhere else, it can be specified with the CLI option `--config=/path/to/plane-system.json`.
+You specify the configuration using the `--config` command line argument:
 
-Note that the executable is also named `plane-system`, so if the executable and the config file are in the same directory, then you need to specify the JSON file specifically using the `--config` option. Or you can rename the executable.
+```sh
+./plane-system --config config/camera-only.json
+cargo run -- --config config/camera-only.json
+```
 
 # configuration options
 
@@ -12,47 +16,74 @@ Note that the executable is also named `plane-system`, so if the executable and 
 
 This property controls how the plane system interacts with a Pixhawk. Set this to `null` disable communication with a Pixhawk, or provide an object with the following properties:
 
-- `mavlink`: required, accepts an object of the form `{ "type": "V1" }` where `type` is `V1` or `V2`, depending on the Mavlink protocol version that the Pixhawk sends
-- `address`: required, accepts a socket address (host and port) where the plane system will listen for UDP packets
-
-## `plane_server`
-
-This property controls the plane system's HTTP API. Provide an object with the following properties.
-
-- `address`: required, accepts a socket address (host and port) where the plane system will listen for incoming HTTP requests
+- `pixhawk.mavlink`: required, accepts an object of the form `{ "type": "V1" }` where `type` is `V1` or `V2`, depending on the Mavlink protocol version that the Pixhawk sends
+- `pixhawk.address`: required, accepts a socket address (host and port) where the plane system will listen for UDP packets
 
 ## `ground_server`
 
 This property controls the plane system's interface with the ground server over HTTP. Set this to `null` to disable communication with the ground server, or provide an object with the following properties:
 
-- `address`: required, accepts an HTTP address where the ground server's API is available (do not include the path, just the scheme and hostname)
+- `ground_server.address`: required, accepts an HTTP address where the ground server's API is available (do not include the path, just the scheme and hostname)
 
-## `scheduler`
+## `main_camera`
 
-**The scheduler is still a work in progress. The `gps` property will be removed in future versions.**
+This property controls the plane system's interface with the [Sony
+R10C](https://www.notion.so/Sony-R10C-a3b2547c751147a38a154f326d40f312) camera.
+Set this to `null` or omit it to disable the camera, or provide an object with
+the following properties:
 
-This property controls the plane system's image capture scheduler. Set this to `null` to disable automated image capture and gimbal control, or provide an object with the following properties:
+- `main_camera.download` (object): 
+  - `main_camera.download.save_path` (string): The path where images captured by
+    the R10C will be saved once they are downloaded. The plane system will
+    automatically create a folder named after the current time inside of this
+    path and save videos here. 
+- `main_camera.live` (object, optional):
+  - `main_camera.live.framerate` (float): The framerate at which the camera's
+    live preview should be requested. Must be greater than zero and less than or
+    equal to 30. 
+    
+    Note that you also need to set `livestream.preview` in order to see data
+    from the camera's live preview.
 
-- `gps`: required, accepts an object with properties `latitude` (number) and `longitude` (number) that describe a GPS location where the gimbal should point
+## `livestream`
 
-## `image`
+This property controls the plane system's interface with GStreamer, which can be
+used to save video to files and livestream video to the ground. Set this to `null` or omit it to disable this, or provide an object with the following properties:
 
-This property controls the plane system's image processing module. This module is responsible for taking images that are received from the camera, pairing them with the most recent telemetry, and saving them to the disk. You can set this to `null`, but doing so will disable all of the aforementioned features.
+- `livestream.preview` (object, optional):
+  - **Note:** this property must be used with `main_camera.live`.
+  - `livestream.preview.save_path` (string): Path where videos from the camera
+    preview should be saved. The plane system will automatically create a folder
+    named after the current time inside of this path and save videos here.
+  - `livestream.preview.bin` (array of string): Describes a GStreamer [bin](https://gstreamer.freedesktop.org/documentation/application-development/basics/bins.html) which will received JPEG-encoded frames from the R10C via an `appsrc`.
 
-- `save_path`: optional, accepts a path where images captured by the camera will be saved when they are downloaded. if this is not specified, the plane system will save them in the present working directory.
+    Strings are joined together with newlines. Can use `{save_path}` as a placeholder for the timestamped save path.
+- `livestream.custom` (object, optional):
+  - `livestream.custom.save_path` (string): Path where videos from the custom
+    pipelines should be saved. The plane system will automatically create a
+    folder named after the current time inside of this path and save videos
+    here.
+  - `livestream.custom.pipelines` (map from string to array of string): Each key
+    is the name of a pipeline that can be started at runtime, and each value is
+    a GStreamer [pipeline
+    description](https://gstreamer.freedesktop.org/documentation/tools/gst-launch.html?gi-language=c#pipeline-description).
 
-## `camera`
+    Example:
+    ```
+    "livestream": {
+      "custom": {
+        "save_path": "./videos/",
+        "pipelines": {
+          "keem": [
+            "v4l2src device=\"/dev/video0\" ! videoconvert ! x264enc ! mp4mux ! filesink={save_path}/out.mp4"
+          ]
+        }
+      }
+    }
+    ```
 
-This property controls the plane system's interface with a camera. Set this to `null` to disable the camera, or provide an object with the following properties:
-
-- `kind`: required, accepts a camera model (string)
-  - the following camera models are currently defined: `R10C`
-
-## `gimbal`
-
-This property controls the plane system's interface with a gimbal. Set this to `null` to disable the gimbal, or provide an object with the following properties:
-
-- `kind`: required, accepts a gimbal type (object) that can be one of the following:
-  - `{ "type": "software" }`: simulated gimbal
-  - `{ "type": "hardware", "protocol": "SimpleBGC" }`: hardware gimbal that communicates over the SimpleBGC protocol
-- `device_path`: optional, the path to the device file for gimbals that communicate via USB or serial connections. if this is not specified, and `kind.type` is `"hardware"` , the plane system will try to find the gimbal automatically. an error will be thrown if this process fails.
+    At runtime, you can enter into the plane system:
+    ```
+    ps> livestream start keem
+    ps> livestream stop keem
+    ```

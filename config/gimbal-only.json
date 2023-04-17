@@ -1,0 +1,6 @@
+{
+  "gimbal": {
+    "kind": { "type": "Hardware", "protocol": "SimpleBGC" },
+    "path": "/dev/ttyUSB0"
+  }
+}

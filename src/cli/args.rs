@@ -5,6 +5,6 @@ use std::path::PathBuf;
 pub struct MainArgs {
     /// The path to the config file for the plane system. Will use
     /// plane-system.json by default.
-    #[clap(parse(from_os_str), long, short)]
+    #[clap(long, short)]
     pub config: PathBuf,
 }

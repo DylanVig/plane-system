@@ -18,6 +18,7 @@ ps-telemetry = { path = "crates/telemetry" }
 ps-types = { path = "crates/types" }
 ps-client = { path = "crates/client" }
 ps-modes = { path = "crates/modes" }
+ps-gimbal = { path = "crates/gimbal" }
 
 # logging + error handling
 tracing = "0.1"
@@ -45,7 +46,7 @@ warp = "0.3"
 
 # utility
 ctrlc = "3.2"
-clap = { version = "3", features = ["derive"] }
+clap = { workspace = true }
 config = "0.13"
 rustyline-async = { version = "0.2" }
 
@@ -54,7 +55,7 @@ geo = { workspace = true }
 drop_guard = "0.3.0"
 
 [features]
-default = ["livestream"]
+default = ["livestream", "csb"]
 livestream = ["ps-livestream"]
 csb = ["ps-main-camera/csb"]
 
@@ -63,8 +64,11 @@ members = ["crates/*"]
 resolver = "2"
 
 [workspace.dependencies]
+clap = { version = "4", features = ["derive"] }
+
 anyhow = { version = "1.0", features = ["backtrace"] }
 log = "0.4"
+tracing = "0.1"
 
 serde = { version = "1.0", features = ["derive"] }
 bytes = "1.1"

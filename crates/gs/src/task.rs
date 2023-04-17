@@ -4,7 +4,7 @@ use anyhow::Context;
 use async_trait::async_trait;
 use flume;
 
-use log::{debug, trace, warn};
+use log::{debug, info, trace, warn};
 
 use ps_client::Task;
 use ps_telemetry::Telemetry;
@@ -27,10 +27,18 @@ pub enum GsCommand {
 ///Creates task returning an upload task and transmitting channel
 pub fn create_task(config: GsConfig) -> anyhow::Result<UploadTask> {
     let (cmd_tx, cmd_rx) = flume::bounded(256);
+    let mut http_client = reqwest::Client::builder();
+
+    if let Some(proxy) = config.proxy {
+        info!("using http proxy {proxy}");
+        http_client = http_client.proxy(reqwest::Proxy::http(proxy).context("invalid proxy url")?);
+    }
 
     Ok(UploadTask {
         base_url: reqwest::Url::from_str(&config.address).context("invalid ground server url")?,
-        http_client: reqwest::Client::new(),
+        http_client: http_client
+            .build()
+            .context("could not configure http client")?,
         cmd_rx,
         cmd_tx,
     })

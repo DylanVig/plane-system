@@ -9,13 +9,15 @@ ps-serde-util = { path = "../serde-util" }
 ps-client = { path = "../client" }
 ps-telemetry = { path = "../telemetry" }
 ps-main-camera-csb = { path = "../main-camera-csb" }
+ps-gs = { path = "../gs" }
 
 # logging + error handling
-anyhow = "1.0"
-log = "0.4"
+anyhow = { workspace = true }
+log = { workspace = true }
+tracing = { workspace = true }
 
 # async 
-tokio = { version = "1.16", features = ["full"] }
+tokio = { workspace = true }
 tokio-stream = { version = "0.1", features = ["sync"] }
 futures = "0.3"
 flume = "0.10"
@@ -24,20 +26,20 @@ async-trait = "0.1"
 # protocols + serialization
 serde = "1.0"
 serde_json = { version = "1.0" }
-ptp = { git = "https://github.com/CUAir/rust-ptp", rev = "cf633770" }
+ptp = { git = "https://github.com/CUAir/rust-ptp", rev = "957874330acb5a9745ca899310c7731d7c4719a5" }
 num-traits = "0.2"
 num-derive = "0.3"
 
 # utility
 bytes = "1.1"
-clap = { version = "3", features = ["derive"] }
+clap = { workspace = true }
 
 chrono = { workspace = true }
 geo = { workspace = true }
 
 # i/o
 rusb = "0.9"
-tokio-serial = { git = "https://github.com/CUAir/tokio-serial.git", default-features = false }
+tokio-serial = "5.4.1"
 tokio-util = { version = "0.7", features = ["codec"] }
 
 [features]

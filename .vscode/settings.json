@@ -75,5 +75,7 @@
     "valarray": "cpp",
     "variant": "cpp"
   },
-  "rust-analyzer.checkOnSave.enable": false
+  "rust-analyzer.checkOnSave.enable": false,
+  "liveshare.allowGuestTaskControl": true,
+  "liveshare.languages.allowGuestCommandControl": true
 }

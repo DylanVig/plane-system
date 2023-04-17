@@ -27,7 +27,7 @@ flume = { workspace = true }
 serde = { workspace = true }
 
 # utility
-clap = { version = "3", features = ["derive"] }
+clap = { workspace = true }
 chrono = { workspace = true }
 drop_guard = "0.3.0"
 strfmt = "0.2"
