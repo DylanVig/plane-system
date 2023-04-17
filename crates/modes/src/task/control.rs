@@ -1,5 +1,5 @@
 //file to control processing commands and then calling plane system modes and interacting between them
-use crate::{ModeRequest, SearchRequest, SearchResponse};
+use crate::command::{ModeRequest, ModeResponse, SearchRequest};
 use async_trait::async_trait;
 use crossterm::event::{read, Event, KeyCode, KeyEvent, KeyModifiers};
 use ps_client::ChannelCommandSink;
@@ -7,6 +7,7 @@ use ps_client::ChannelCommandSource;
 use ps_client::Task;
 use ps_main_camera::CameraRequest;
 //use ps_telemetry::PixhawkTelemetry;
+use super::util::{end_cc, start_cc, transition_by_distance};
 use ps_telemetry::Telemetry;
 use tokio::select;
 use tokio::sync::watch;
@@ -14,7 +15,6 @@ use tokio::time;
 use tokio::time::sleep;
 use tokio::time::Duration;
 use tokio_util::sync::CancellationToken;
-use super::util::{end_cc, start_cc, transition_by_distance};
 
 pub enum Modes {
     Search,
@@ -23,8 +23,8 @@ pub enum Modes {
 }
 
 pub struct ControlTask {
-    cmd_rx: ChannelCommandSource<SearchRequest, SearchResponse>,
-    cmd_tx: ChannelCommandSink<SearchRequest, SearchResponse>,
+    cmd_rx: ChannelCommandSource<ModeRequest, ModeResponse>,
+    cmd_tx: ChannelCommandSink<ModeRequest, ModeResponse>,
     camera_ctrl_cmd_tx: flume::Sender<CameraRequest>,
     telem_rx: watch::Receiver<Telemetry>,
 }
@@ -34,7 +34,7 @@ impl ControlTask {
         camera_ctrl_cmd_tx: flume::Sender<CameraRequest>,
         telem_rx: watch::Receiver<Telemetry>,
     ) -> Self {
-        let (cmd_tx, cmd_rx) = flume::bounded::<usize>(256);
+        let (cmd_tx, cmd_rx) = flume::bounded::<ModeRequest, ModeResponse>(256);
 
         Self {
             camera_ctrl_cmd_tx,
@@ -44,13 +44,13 @@ impl ControlTask {
         }
     }
 
-    pub fn cmd(&self) -> ChannelCommandSink<SearchRequest, SearchResponse> {
+    pub fn cmd(&self) -> ChannelCommandSink<ModeRequest, ModeResponse> {
         self.cmd_tx.clone()
     }
 }
 
 async fn time_search(active: u64, inactive: u64, main_camera_tx: flume::Sender<CameraRequest>) {
-    let inactive_dur =  Duration::new(inactive, 0);
+    let inactive_dur = Duration::new(inactive, 0);
     let active_dur = Duration::new(active, 0);
     loop {
         //assumes cc is not running on entry
@@ -69,11 +69,11 @@ async fn distance_search(
 ) {
     let mut enter = true; // start assuming not in range
     loop {
-        transition_by_distance( &waypoint, &telemetry_rx, distance_threshold, enter);
+        transition_by_distance(&waypoint, &telemetry_rx, distance_threshold, enter);
         start_cc(&main_camera_tx);
         //checking for exit to end cc
         enter = false;
-        transition_by_distance( &waypoint, &telemetry_rx, distance_threshold, enter);
+        transition_by_distance(&waypoint, &telemetry_rx, distance_threshold, enter);
         end_cc(&main_camera_tx);
         enter = true;
     }
@@ -92,14 +92,15 @@ impl Task for ControlTask {
                 match self.cmd_rx.recv_async().await {
                     Ok((req, ret)) => {
                         let result = match req {
-                            ModeRequest::Inactive(_) => todo!(),
+                            ModeRequest::Inactive => todo!(),
+                            ModeRequest::LivestreamOnly => todo!(),
                             ModeRequest::ZoomControl(req) => todo!(),
                             ModeRequest::Search(req) => match req {
-                                SearchRequest::Time(active, inactive) => {
+                                SearchRequest::Time { active, inactive } => {
                                     time_search(active, inactive, self.camera_ctrl_cmd_tx);
                                     Ok(())
                                 }
-                                SearchRequest::Distance(distance, waypoint) => {
+                                SearchRequest::Distance { distance, waypoint } => {
                                     distance_search(
                                         distance,
                                         waypoint,
@@ -108,11 +109,11 @@ impl Task for ControlTask {
                                     );
                                     Ok(())
                                 }
-                                SearchRequest::Manual(start) if start => {
+                                SearchRequest::Manual { start } if start => {
                                     start_cc(&self.camera_ctrl_cmd_tx);
                                     Ok(())
                                 }
-                                SearchRequest::Manual(start) => {
+                                SearchRequest::Manual { start } => {
                                     end_cc(&self.camera_ctrl_cmd_tx);
                                     Ok(())
                                 }

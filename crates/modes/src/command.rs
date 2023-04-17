@@ -1,10 +1,10 @@
 use anyhow::bail;
 use clap::Subcommand;
-use geo::coords_iter::GeometryCoordsIter::Point;
 //use geo::coords_iter::GeometryExteriorCoordsIter::Point;
 //use geo::Geometry::Point;
 use serde::Serialize;
 
+use geo::Point;
 use std::{
     collections::HashMap,
     num::ParseFloatError,
@@ -13,6 +13,11 @@ use std::{
 };
 use thiserror::Error;
 
+// #[derive(Clone, Debug)]
+// struct waypoints {
+//     points: Vec<geo::Point>,
+// }
+
 #[derive(Error, Debug)]
 pub enum ParsePointError {
     #[error("invalid coordinates given")]
@@ -20,15 +25,31 @@ pub enum ParsePointError {
     #[error("missing comma")]
     MissingComma,
 }
+// impl FromStr for waypoints {
+//     type Err = ParsePointError;
+//     fn from_str(env: &str) -> Result<waypoints, ParsePointError> {
+//         let mut points: Vec<geo::Point> = Vec::new();
+//         if let Some((lat, lon)) = env.split_once(',') {
+//             let lat_float = lat.parse::<f64>()?;
+//             let lon_float = lon.parse::<f64>()?;
+//             points.push(geo::Point::new(lon_float, lat_float));
+//         } else {
+//             return Err(ParsePointError::MissingComma);
+//         }
+//         return Ok(waypoints(points));
+//     }
+// }
 
-fn parse_geopoint(env: &str) -> Result<geo::Point, ParsePointError> {
+fn parse_point_list(wp_list: &str) -> Result<Vec<geo::Point>, ParsePointError> {
+    let mut points: Vec<geo::Point> = Vec::new();
     if let Some((lat, lon)) = env.split_once(',') {
         let lat_float = lat.parse::<f64>()?;
         let lon_float = lon.parse::<f64>()?;
-        return Ok(geo::Point::new(lon_float, lat_float));
+        points.push(geo::Point::new(lon_float, lat_float));
     } else {
         return Err(ParsePointError::MissingComma);
     }
+    return Ok(points);
 }
 
 #[derive(Subcommand, Debug, Clone)]
@@ -47,7 +68,7 @@ pub enum ModeRequest {
     LivestreamOnly,
 }
 
-#[derive(Debug)]
+#[derive(Subcommand, Debug, Clone)]
 pub enum Presets {
     None,
     Expresetname1,
@@ -60,16 +81,21 @@ pub enum Presets {
 pub enum SearchRequest {
     //Captures for a given active interval and stays inactive for a given inactive interval
     Time {
-        active: u16,   //time measured in seconds
-        inactive: u16, //time measured in seconds
+        active: u64,   //time measured in seconds
+        inactive: u64, //time measured in seconds
     },
     //Activates search when in a given range of a waypoint, deactivates when exiting range
     Distance {
-        distance: u64,             //distance measured in meters
-        waypoint: Vec<Point>, //coordinates in [lat,lon]
+        distance: u64, //distance measured in meters
+        #[clap(value_parser = "parse_point_list")]
+        waypoint: Vec<geo::Point>, //coordinates in [lat,lon]
     },
     //Switches between active and inactive cature are handled by the user
     Manual {
         start: bool, //whether to start or end continous capture (cc)
     },
+}
+
+pub enum ModeResponse {
+    Response,
 }

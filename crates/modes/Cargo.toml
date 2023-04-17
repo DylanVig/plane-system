@@ -31,7 +31,7 @@ num-derive = "0.3"
 # utility
 bytes = "1.1"
 defer = "0.1"
-clap = { version = "3", features = ["derive"] }
+clap = { version = "4", features = ["derive"] }
 
 chrono = { workspace = true }
 geo = { workspace = true }
