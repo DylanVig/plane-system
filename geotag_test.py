@@ -116,12 +116,14 @@ target_dy_old = image_altitude * (
         			   )
 
 
-print(image_roll, image_pitch, image_yaw)
-print(target_dx, target_dx_old)
-print(target_dy, target_dy_old)
+print(delta_pixel_x / (image_width / 2), delta_pixel_y / (image_height / 2))
+
+#print(image_roll, image_pitch, image_yaw)
+print(target_dx)
+print(target_dy)
 
 # Computations for conversion back into lat/long using inverse haversine
-distance_to_target = sqrt(target_dx_old ** 2 + target_dy ** 2) # meters
+distance_to_target = sqrt(target_dx ** 2 + target_dy ** 2) # meters
 direction_to_target = pi / 2.0 - atan2(target_dy, target_dx) # radians
 
 # Returns new latitude and longitude in DEGREES
@@ -133,8 +135,10 @@ def inverse_haversine(ilat, ilong, dist, dir):
 
 	return new_lat, new_long
 
-# new gps in radians
-new_lat, new_long = inverse_haversine(image_lat * pi / 180, image_long * pi / 180, distance_to_target, direction_to_target)
+# new gps in degrees
+#new_lat, new_long = inverse_haversine(image_lat * pi / 180, image_long * pi / 180, distance_to_target, direction_to_target)
+new_lat, new_long = image_lat + target_dy * 3.28084 / 364000, image_long + target_dx * 3.28084 / 269000
+
 
 # Prints the predicted lat/long of the image
 print(new_lat, image_lat, new_lat - image_lat)
