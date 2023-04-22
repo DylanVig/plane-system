@@ -156,20 +156,32 @@ async fn send_image(
     let timestamp = chrono::Utc::now().timestamp_millis();
 
     let json = if let Some(telemetry) = telemetry {
+        let position = telemetry
+            .pixhawk
+            .as_ref()
+            .and_then(|p| p.position)
+            .map(|p| p.0);
+
+        let attitude = telemetry
+            .pixhawk
+            .as_ref()
+            .and_then(|p| p.attitude)
+            .map(|p| p.0);
+
         json!({
             "timestamp": timestamp,
             "imgMode": "fixed",
             "fov": 60.0,
             "telemetry": {
-                "altitude": telemetry.pixhawk.as_ref().map(|p| p.position.0.altitude_msl),
-                "planeYaw": telemetry.pixhawk.as_ref().map(|p| p.attitude.0.yaw),
+                "altitude": position.map(|p| p.altitude_msl),
+                "planeYaw": attitude.map(|p| p.yaw),
                 "gps": {
-                    "longitude": telemetry.pixhawk.as_ref().map(|p| p.position.0.point.x()),
-                    "latitude": telemetry.pixhawk.as_ref().map(|p| p.position.0.point.y()),
+                    "longitude": position.map(|p| p.point.x()),
+                    "latitude": position.map(|p| p.point.y()),
                 },
                 "gimOrt": {
-                    "pitch": telemetry.pixhawk.as_ref().map(|p| p.attitude.0.pitch),
-                    "roll": telemetry.pixhawk.as_ref().map(|p| p.attitude.0.roll),
+                    "pitch": attitude.map(|p| p.pitch),
+                    "roll": attitude.map(|p| p.roll),
                 }
             }
         })
