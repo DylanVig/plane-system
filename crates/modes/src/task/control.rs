@@ -9,8 +9,8 @@ use ps_client::ChannelCommandSource;
 use ps_client::Task;
 use ps_main_camera::CameraRequest;
 use ps_main_camera::CameraResponse;
-use ps_gimbal::control::GimbalRequest;
-use ps_gimbal::control::GimbalResponse;
+use ps_gimbal::GimbalRequest;
+use ps_gimbal::GimbalResponse;
 
 //use ps_telemetry::PixhawkTelemetry;
 use super::util::{end_cc, start_cc, transition_by_distance, capture, rotate_gimbal};

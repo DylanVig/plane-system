@@ -10,6 +10,8 @@ ps-client = { path = "../client" }
 ps-main-camera = { path = "../main-camera"}
 ps-livestream = { path = "../livestream"}
 ps-telemetry = { path = "../telemetry"}
+ps-gimbal = { path = "../gimbal" }
+
 
 # logging + error handling
 anyhow = "1.0"

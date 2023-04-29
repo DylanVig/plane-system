@@ -2,8 +2,8 @@ use crate::task::control::ControlTask;
 use ps_main_camera::CameraRequest;
 use ps_main_camera::CameraResponse;
 use ps_telemetry::Telemetry;
-use ps_gimbal::control::GimbalResponse;
-use ps_gimbal::control::GimbalRequest;
+use ps_gimbal::GimbalResponse;
+use ps_gimbal::GimbalRequest;
 use tokio::sync::watch;
 pub fn create_tasks(
     camera_ctrl_cmd_tx: flume::Sender<(
