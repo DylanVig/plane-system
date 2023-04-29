@@ -96,12 +96,19 @@ pub async fn start_cc(
         tokio::sync::oneshot::Sender<Result<CameraResponse, anyhow::Error>>,
     )>,
 ) -> Result<CameraResponse, anyhow::Error> {
-    command(
+    command_camera(
         main_camera_tx,
         CameraRequest::ContinuousCapture(ps_main_camera::CameraContinuousCaptureRequest::Start),
     )
     .await
 }
+
+pub async fn rotate_gimbal(roll: f64, pitch: f64, 
+    gimbal_tx: flume::Sender<(GimbalRequest, tokio::sync::oneshot::Sender<Result<GimbalResponse, Error>>)>) 
+    -> Result<GimbalResponse, anyhow::Error> {
+        let request = GimbalRequest::Control(roll, pitch);
+        command_gimbal(gimbal_tex, request).await
+    }
 
 pub async fn end_cc(
     main_camera_tx: flume::Sender<(
@@ -109,14 +116,23 @@ pub async fn end_cc(
         tokio::sync::oneshot::Sender<Result<CameraResponse, anyhow::Error>>,
     )>,
 ) -> Result<CameraResponse, anyhow::Error> {
-    command(
+    command_camera(
         main_camera_tx,
         CameraRequest::ContinuousCapture(ps_main_camera::CameraContinuousCaptureRequest::Stop),
     )
     .await
 }
 
-async fn command(
+async fn capture(main_camera_tx: flume::Sender<(
+    CameraRequest,
+    tokio::sync::oneshot::Sender<Result<CameraResponse, anyhow::Error>>,
+)>,
+) -> Result<CameraResponse, anyhow::Error> {
+    let request = CameraRequest::Capture { burst_duration: None, burst_high_speed: false};
+    command_camera(main_camera_tx, request).await
+}
+
+async fn command_camera(
     main_camera_tx: flume::Sender<(
         CameraRequest,
         tokio::sync::oneshot::Sender<Result<CameraResponse, anyhow::Error>>,
@@ -129,3 +145,21 @@ async fn command(
     }
     rx.await?
 }
+
+
+async fn command_gimbal( gimbal_tx:flume::Sender<(
+    GimbalRequest,
+     tokio::sync::oneshot::Sender<Result<GimbalResponse, Error>>)>,
+    request: GimbalRequest
+) ->Result<GimbalRepsonse, anyhow::Error> {
+    let (tx, rx) = oneshot::channel();
+    if let Err(_) = gimbal_tx.send((request, tx)) {
+        anyhow::bail!("could not send command");
+    }
+    rx.await?
+
+}
+    
+
+
+//make command_gimbal anew

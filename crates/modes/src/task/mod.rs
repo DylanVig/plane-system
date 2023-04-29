@@ -9,8 +9,9 @@ pub fn create_tasks(
         tokio::sync::oneshot::Sender<Result<CameraResponse, anyhow::Error>>,
     )>,
     telem_rx: watch::Receiver<Telemetry>,
+    gimbal_tx: flume::Sender<(GimbalRequest, tokio::sync::oneshot::Sender<Result<GimbalResponse, Error>>)>,
 ) -> anyhow::Result<ControlTask> {
-    let control_task = ControlTask::new(camera_ctrl_cmd_tx, telem_rx);
+    let control_task = ControlTask::new(camera_ctrl_cmd_tx, telem_rx, gimbal_tx);
 
     Ok(control_task)
 }

@@ -33,6 +33,7 @@ pub struct ControlTask {
         tokio::sync::oneshot::Sender<Result<CameraResponse, anyhow::Error>>,
     )>,
     telem_rx: watch::Receiver<Telemetry>,
+    gimbal_tx: flume::Sender<(GimbalRequest, tokio::sync::oneshot::Sender<Result<GimbalResponse, Error>>)>,
 }
 
 impl ControlTask {
@@ -42,6 +43,7 @@ impl ControlTask {
             tokio::sync::oneshot::Sender<Result<CameraResponse, anyhow::Error>>,
         )>,
         telem_rx: watch::Receiver<Telemetry>,
+        gimbal_tx: flume::Sender<(GimbalRequest, tokio::sync::oneshot::Sender<Result<GimbalResponse, Error>>)>,
     ) -> Self {
         let (cmd_tx, cmd_rx) = flume::bounded(256);
 
@@ -50,6 +52,7 @@ impl ControlTask {
             telem_rx,
             cmd_rx,
             cmd_tx,
+            gimbal_tx,
         }
     }
 
@@ -83,13 +86,45 @@ async fn time_search(
     }
 }
 
+async fn pan_search(image_count:u16,
+     gimbal_tx: flume::Sender<(
+        GimbalRequest, tokio::sync::oneshot::Sender<Result<GimbalResponse, Error>>)>,
+) -> Result<(), SearchModeError> {
+    let angle = 20.0;
+    let mut dir = 1;
+    loop {
+        let mut pitch = dir*angle*image_count/-2.0;
+        match rotate_gimbal(0, pitch, gimbal_tx.clone()) {
+            Ok(_) => {}
+            Err(e) => return Err(GimbalRequestError),
+        }
+        for n in 1 .. image_count {
+            match capture(gimbal_tx.clone()) {
+                Ok(_) => {} 
+                Err(e) => return Err(CameraRequestError),
+            }
+            pitch = pitch + dir*angle;
+            match rotate_gimbal(0, pitch, gimbal_tx.clone()) {
+                Ok(_) => {}
+                Err(e) => return Err(GimbalRequestError),
+            }
+        }
+        dir = dir*-1;
+    }
+
+
+}
+
 #[derive(Error, Debug)]
 pub enum SearchModeError {
     #[error("could not send request to the camera")]
     CameraRequestError,
     #[error("invalid waypoint entered")]
     WaypointError,
+    #[error("could not send request to the gimbal")]
+    GimbalRequestError,
 }
+
 
 async fn distance_search(
     distance_threshold: u64,
@@ -166,6 +201,10 @@ impl Task for ControlTask {
                                 }
                                 SearchRequest::Manual { start } => {
                                     end_cc(self.camera_ctrl_cmd_tx.clone());
+                                    Ok(ModeResponse::Response)
+                                }
+                                SearchRequest::Panning {image_count} => {
+                                    pan_search(image_count, self.gimbal_tx.clone());
                                     Ok(ModeResponse::Response)
                                 }
                             },

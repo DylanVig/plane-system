@@ -213,16 +213,7 @@ async fn run_tasks(
         (None, None)
     };
 
-    //Initialize plane system modes
-    let ps_modes_cmd_tx = if let Some(camera_ctrl_tx) = camera_ctrl_cmd_tx.clone() {
-        let modes_task = ps_modes::create_tasks(camera_ctrl_tx.clone(), telem_rx_modes)?;
-
-        let modes_cmd_tx = Some(modes_task.cmd());
-        tasks.push(Box::new(modes_task));
-        modes_cmd_tx
-    } else {
-        None
-    };
+    
 
     #[cfg(feature = "livestream")]
     let livestream_cmd_tx = if let Some(c) = config.livestream {
@@ -256,6 +247,17 @@ async fn run_tasks(
         tasks.push(Box::new(gimbal_task));
 
         Some(gimbal_cmd_tx)
+    } else {
+        None
+    };
+
+    //Initialize plane system modes
+    let ps_modes_cmd_tx = if let Some(camera_ctrl_tx) = camera_ctrl_cmd_tx.clone() {
+        let modes_task = ps_modes::create_tasks(camera_ctrl_tx, telem_rx_modes, gimbal_cmd_tx.clone())?; 
+
+        let modes_cmd_tx = Some(modes_task.cmd());
+        tasks.push(Box::new(modes_task));
+        modes_cmd_tx
     } else {
         None
     };

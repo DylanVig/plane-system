@@ -82,7 +82,11 @@ pub enum SearchRequest {
     //Switches between active and inactive cature are handled by the user
     Manual {
         start: bool, //whether to start or end continous capture (cc)
-    },
+    }, 
+    Panning { //does a sweeping pan, takes given number of images during 
+        //angle to be calculated in code based on current FOV angle?
+        image_count: u16,
+    }
 }
 
 #[derive(Subcommand, Debug, Clone)]
