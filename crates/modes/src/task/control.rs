@@ -93,6 +93,9 @@ async fn time_search(
 async fn pan_search(image_count:u16,
      gimbal_tx: flume::Sender<(
         GimbalRequest, tokio::sync::oneshot::Sender<Result<GimbalResponse, Error>>)>,
+    main_camera_tx: flume::Sender<(
+        CameraRequest,
+        tokio::sync::oneshot::Sender<Result<CameraResponse, anyhow::Error>>,)>,
 ) -> Result<(), SearchModeError> {
     let angle = 20.0;
     let mut dir = 1.0;
@@ -103,7 +106,7 @@ async fn pan_search(image_count:u16,
     }
     loop {
         for n in 1 .. image_count {
-            match capture(gimbal_tx.clone()).await {
+            match capture(main_camera_tx.clone()).await {
                 Ok(_) => {} 
                 Err(e) => return Err(CameraRequestError),
             }
@@ -208,7 +211,7 @@ impl Task for ControlTask {
                                     Ok(ModeResponse::Response)
                                 }
                                 SearchRequest::Panning {image_count} => {
-                                    pan_search(image_count, self.gimbal_tx.clone());
+                                    pan_search(image_count, self.gimbal_tx.clone(), self.camera_ctrl_cmd_tx.clone());
                                     Ok(ModeResponse::Response)
                                 }
                             },

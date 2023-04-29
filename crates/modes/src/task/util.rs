@@ -108,7 +108,7 @@ pub async fn start_cc(
 pub async fn rotate_gimbal(roll: f64, pitch: f64, 
     gimbal_tx: flume::Sender<(GimbalRequest, tokio::sync::oneshot::Sender<Result<GimbalResponse, anyhow::Error>>)>) 
     -> Result<GimbalResponse, anyhow::Error> {
-        let request = GimbalRequest::Control(roll, pitch);
+        let request = GimbalRequest::Control{roll, pitch};
         command_gimbal(gimbal_tx, request).await
     }
 
