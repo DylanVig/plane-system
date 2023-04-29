@@ -92,12 +92,12 @@ async fn pan_search(image_count:u16,
 ) -> Result<(), SearchModeError> {
     let angle = 20.0;
     let mut dir = 1;
+    let mut pitch = dir*angle*image_count/-2.0;
+    match rotate_gimbal(0, pitch, gimbal_tx.clone()) {
+        Ok(_) => {}
+        Err(e) => return Err(GimbalRequestError),
+    }
     loop {
-        let mut pitch = dir*angle*image_count/-2.0;
-        match rotate_gimbal(0, pitch, gimbal_tx.clone()) {
-            Ok(_) => {}
-            Err(e) => return Err(GimbalRequestError),
-        }
         for n in 1 .. image_count {
             match capture(gimbal_tx.clone()) {
                 Ok(_) => {} 
