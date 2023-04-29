@@ -1,16 +1,5 @@
-use anyhow::bail;
 use clap::Subcommand;
-//use geo::coords_iter::GeometryExteriorCoordsIter::Point;
-//use geo::Geometry::Point;
-use serde::Serialize;
-
-use geo::Point;
-use std::{
-    collections::HashMap,
-    num::ParseFloatError,
-    path::{Path, PathBuf},
-    str::FromStr,
-};
+use std::num::ParseFloatError;
 use thiserror::Error;
 
 // #[derive(Clone, Debug)]
@@ -42,7 +31,7 @@ pub enum ParsePointError {
 
 fn parse_point_list(wp_list: &str) -> Result<Vec<geo::Point>, ParsePointError> {
     let mut points: Vec<geo::Point> = Vec::new();
-    if let Some((lat, lon)) = env.split_once(',') {
+    if let Some((lat, lon)) = wp_list.split_once(',') {
         let lat_float = lat.parse::<f64>()?;
         let lon_float = lon.parse::<f64>()?;
         points.push(geo::Point::new(lon_float, lat_float));
@@ -87,7 +76,7 @@ pub enum SearchRequest {
     //Activates search when in a given range of a waypoint, deactivates when exiting range
     Distance {
         distance: u64, //distance measured in meters
-        #[clap(value_parser = "parse_point_list")]
+        #[clap(value_parser = parse_point_list)]
         waypoint: Vec<geo::Point>, //coordinates in [lat,lon]
     },
     //Switches between active and inactive cature are handled by the user
@@ -96,6 +85,7 @@ pub enum SearchRequest {
     },
 }
 
+#[derive(Subcommand, Debug, Clone)]
 pub enum ModeResponse {
     Response,
 }

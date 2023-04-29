@@ -171,7 +171,9 @@ async fn run_tasks(
     debug!("initializing telemetry task");
     let telem_task = ps_telemetry::create_task(pixhawk_evt_rx, csb_evt_rx)
         .context("failed to initialize telemetry task")?;
-    let telem_rx = telem_task.telemetry();
+    let telem_rx_camera = telem_task.telemetry();
+    let telem_rx_modes = telem_task.telemetry();
+
     tasks.push(Box::new(telem_task));
 
     let gs_cmd_tx = if let Some(c) = config.ground_server {
@@ -191,7 +193,7 @@ async fn run_tasks(
     let (camera_ctrl_cmd_tx, camera_preview_frame_rx) = if let Some(c) = config.main_camera {
         debug!("initializing camera tasks");
         let (control_task, evt_task, download_task, live_task) =
-            ps_main_camera::create_tasks(c, telem_rx, gs_cmd_tx)
+            ps_main_camera::create_tasks(c, telem_rx_camera, gs_cmd_tx)
                 .context("failed to initialize camera tasks")?;
 
         let ctrl_cmd_tx = control_task.cmd();
@@ -209,6 +211,17 @@ async fn run_tasks(
         (Some(ctrl_cmd_tx), preview_frame_rx)
     } else {
         (None, None)
+    };
+
+    //Initialize plane system modes
+    let ps_modes_cmd_tx = if let Some(camera_ctrl_tx) = camera_ctrl_cmd_tx.clone() {
+        let modes_task = ps_modes::create_tasks(camera_ctrl_tx.clone(), telem_rx_modes)?;
+
+        let modes_cmd_tx = Some(modes_task.cmd());
+        tasks.push(Box::new(modes_task));
+        modes_cmd_tx
+    } else {
+        None
     };
 
     #[cfg(feature = "livestream")]
@@ -236,20 +249,9 @@ async fn run_tasks(
     #[cfg(not(feature = "livestream"))]
     let livestream_save_cmd_tx = None;
 
-    //Initialize plane system modes
-    let ps_modes_cmd_tx = {
-        let (modes_task) = ps_modes::create_tasks(c, camera_preview_frame_rx, telem_rx)?;
-
-        if let Some(modes_task) = modes_task {
-            ps_modes_cmd_tx = Some(modes_task.cmd());
-            tasks.push(Box::new(modes_task));
-        }
-        ps_modes_cmd_tx
-    };
-
     let gimbal_cmd_tx = if let Some(c) = config.gimbal {
         debug!("initializing gimbal task");
-
+        let gimbal_task = ps_gimbal::create_task(c)?;
         let gimbal_cmd_tx = gimbal_task.cmd();
         tasks.push(Box::new(gimbal_task));
 
@@ -258,10 +260,13 @@ async fn run_tasks(
         None
     };
 
+    let mut join_set = JoinSet::new();
+
     let cli_channels = CliChannels {
         camera_cmd_tx: camera_ctrl_cmd_tx,
         livestream_cmd_tx,
         gimbal_cmd_tx,
+        ps_modes_cmd_tx,
     };
 
     join_set.spawn(run_interactive_cli(

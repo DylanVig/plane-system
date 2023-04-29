@@ -2,7 +2,6 @@ use anyhow::{bail, Context};
 use async_trait::async_trait;
 use chrono::{DateTime, Local};
 use futures::sink::With;
-use log::{debug, error, info, warn};
 use num_traits::ToPrimitive;
 use ps_client::{ChannelCommandSink, ChannelCommandSource, Task};
 use ptp::{Data, Event};
@@ -145,8 +144,9 @@ impl Task for ControlTask {
             let ctrl_evt_tx = self.ctrl_evt_tx;
             let cmd_rx = self.cmd_rx;
             let cmd_tx = self.cmd_tx;
-            let interface = &*self.interface;
             let mut magnification_vector: Vec<(i32, f32)> = Vec::new();
+            let min_focal_length = self.min_focal_length;
+            let max_focal_length = self.max_focal_length;
             async move {
                 loop {
                     match cmd_rx.recv_async().await {
@@ -223,14 +223,58 @@ impl Task for ControlTask {
                                 }
                                 CameraRequest::Reset => run_reset(interface).await,
                                 CameraRequest::Initialize => run_initialize(interface).await,
-                                CameraRequest::Status => run_status(interface).await,
+                                CameraRequest::Status { verbose } => {
+                                    run_status(interface, verbose).await
+                                }
                                 CameraRequest::Get(_) => todo!(),
                                 CameraRequest::Set(req) => run_set(interface, req).await,
                                 CameraRequest::ContinuousCapture(req) => {
                                     run_cc(req, interface).await
                                 }
                                 CameraRequest::Record(_) => todo!(),
-                                CameraRequest::Zoom(req) => run_zoom(interface, req).await,
+                                CameraRequest::ZoomInitialize(req) => {
+                                    match req {
+                                        CameraZoomInitializeRequest::Load { path } => {
+                                            info!("loading focal lengths depending on levels");
+                                            let magnification_vector_string =
+                                                tokio::fs::read_to_string(path).await?;
+                                            magnification_vector =
+                                                serde_json::from_str(&magnification_vector_string)?;
+                                        }
+                                        CameraZoomInitializeRequest::Initialize { path } => {
+                                            info!("getting focal lengths depending on levels");
+                                            magnification_vector = get_magnification_levels(
+                                                interface,
+                                                min_focal_length,
+                                            )
+                                            .await?;
+                                            info!(
+                                                "magnification vector is {:?}",
+                                                &magnification_vector
+                                            );
+                                            // Serialize it to a JSON string.
+                                            let magnification_vector_json =
+                                                serde_json::to_string(&magnification_vector)?;
+
+                                            // Write to a file
+                                            tokio::fs::write(&path, magnification_vector_json)
+                                                .await?;
+
+                                            info!("printing to json {:?}", &path);
+                                        }
+                                    };
+                                    Ok(CameraResponse::Unit)
+                                }
+                                CameraRequest::Zoom(req) => {
+                                    run_zoom(
+                                        interface,
+                                        req,
+                                        min_focal_length,
+                                        max_focal_length,
+                                        &magnification_vector,
+                                    )
+                                    .await
+                                }
                             };
 
                             let _ = ret.send(result);

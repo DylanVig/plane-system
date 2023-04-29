@@ -24,14 +24,20 @@ enum Command {
     #[command(subcommand)]
     Gimbal(ps_gimbal::GimbalRequest),
 
+    #[command(subcommand)]
+    Mode(ps_modes::command::ModeRequest),
+
     Exit,
 }
 
 #[derive(Clone)]
 pub struct CliChannels {
     pub camera_cmd_tx: Option<ChannelCommandSink<mc::CameraRequest, mc::CameraResponse>>,
-    pub livestream_cmd_tx: Option<ChannelCommandSink<ls::LivestreamRequest, ls::LivestreamResponse>>,
+    pub livestream_cmd_tx:
+        Option<ChannelCommandSink<ls::LivestreamRequest, ls::LivestreamResponse>>,
     pub gimbal_cmd_tx: Option<ChannelCommandSink<gimbal::GimbalRequest, gimbal::GimbalResponse>>,
+    pub ps_modes_cmd_tx:
+        Option<ChannelCommandSink<ps_modes::command::ModeRequest, ps_modes::command::ModeResponse>>,
 }
 
 pub async fn run_interactive_cli(
@@ -88,6 +94,7 @@ async fn run_interactive_cmd(
         camera_cmd_tx,
         livestream_cmd_tx,
         gimbal_cmd_tx,
+        ps_modes_cmd_tx,
     } = channels;
 
     match cmd {
@@ -143,6 +150,27 @@ async fn run_interactive_cmd(
                 };
             } else {
                 error!("gimbal task is not running");
+            }
+        }
+
+        Command::Mode(request) => {
+            if let Some(ps_modes_tx) = &ps_modes_cmd_tx {
+                let (ret_tx, ret_rx) = oneshot::channel();
+
+                info!("request = {request:?}");
+
+                if let Err(err) = ps_modes_tx.try_send((request, ret_tx)) {
+                    error!("modes task did not accept command: {:#?}", err);
+                }
+
+                info!("awaiting modes response");
+
+                match ret_rx.await? {
+                    Ok(response) => info!("{:?}", response),
+                    Err(err) => error!("{:?}", err),
+                };
+            } else {
+                error!("modes task is not running");
             }
         }
 
