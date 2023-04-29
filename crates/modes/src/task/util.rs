@@ -4,6 +4,8 @@ use ps_main_camera::CameraRequest;
 //use ps_telemetry::PixhawkTelemetry;
 use geo::algorithm::euclidean_distance::EuclideanDistance;
 use ps_main_camera::CameraResponse;
+use ps_gimbal::control::GimbalRequest;
+use ps_gimbal::control::GimbalResponse;
 use ps_telemetry::Telemetry;
 use thiserror::Error;
 use tokio::sync::oneshot;
@@ -104,10 +106,10 @@ pub async fn start_cc(
 }
 
 pub async fn rotate_gimbal(roll: f64, pitch: f64, 
-    gimbal_tx: flume::Sender<(GimbalRequest, tokio::sync::oneshot::Sender<Result<GimbalResponse, Error>>)>) 
+    gimbal_tx: flume::Sender<(GimbalRequest, tokio::sync::oneshot::Sender<Result<GimbalResponse, anyhow::Error>>)>) 
     -> Result<GimbalResponse, anyhow::Error> {
         let request = GimbalRequest::Control(roll, pitch);
-        command_gimbal(gimbal_tex, request).await
+        command_gimbal(gimbal_tx, request).await
     }
 
 pub async fn end_cc(
@@ -123,7 +125,7 @@ pub async fn end_cc(
     .await
 }
 
-async fn capture(main_camera_tx: flume::Sender<(
+pub async fn capture(main_camera_tx: flume::Sender<(
     CameraRequest,
     tokio::sync::oneshot::Sender<Result<CameraResponse, anyhow::Error>>,
 )>,
@@ -149,9 +151,9 @@ async fn command_camera(
 
 async fn command_gimbal( gimbal_tx:flume::Sender<(
     GimbalRequest,
-     tokio::sync::oneshot::Sender<Result<GimbalResponse, Error>>)>,
+     tokio::sync::oneshot::Sender<Result<GimbalResponse, anyhow::Error>>)>,
     request: GimbalRequest
-) ->Result<GimbalRepsonse, anyhow::Error> {
+) ->Result<GimbalResponse, anyhow::Error> {
     let (tx, rx) = oneshot::channel();
     if let Err(_) = gimbal_tx.send((request, tx)) {
         anyhow::bail!("could not send command");

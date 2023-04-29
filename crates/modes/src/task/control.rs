@@ -2,14 +2,18 @@
 use crate::command::{ModeRequest, ModeResponse, SearchRequest};
 use crate::task::control::SearchModeError::CameraRequestError;
 use crate::task::control::SearchModeError::WaypointError;
+use crate::task::control::SearchModeError::GimbalRequestError;
 use async_trait::async_trait;
 use ps_client::ChannelCommandSink;
 use ps_client::ChannelCommandSource;
 use ps_client::Task;
 use ps_main_camera::CameraRequest;
 use ps_main_camera::CameraResponse;
+use ps_gimbal::control::GimbalRequest;
+use ps_gimbal::control::GimbalResponse;
+
 //use ps_telemetry::PixhawkTelemetry;
-use super::util::{end_cc, start_cc, transition_by_distance};
+use super::util::{end_cc, start_cc, transition_by_distance, capture, rotate_gimbal};
 use anyhow::Error;
 use ps_telemetry::Telemetry;
 use thiserror::Error;
@@ -91,25 +95,25 @@ async fn pan_search(image_count:u16,
         GimbalRequest, tokio::sync::oneshot::Sender<Result<GimbalResponse, Error>>)>,
 ) -> Result<(), SearchModeError> {
     let angle = 20.0;
-    let mut dir = 1;
-    let mut pitch = dir*angle*image_count/-2.0;
-    match rotate_gimbal(0, pitch, gimbal_tx.clone()) {
+    let mut dir = 1.0;
+    let mut pitch = dir*angle*(image_count as f64)/-2.0;
+    match rotate_gimbal(0.0, pitch, gimbal_tx.clone()).await {
         Ok(_) => {}
         Err(e) => return Err(GimbalRequestError),
     }
     loop {
         for n in 1 .. image_count {
-            match capture(gimbal_tx.clone()) {
+            match capture(gimbal_tx.clone()).await {
                 Ok(_) => {} 
                 Err(e) => return Err(CameraRequestError),
             }
             pitch = pitch + dir*angle;
-            match rotate_gimbal(0, pitch, gimbal_tx.clone()) {
+            match rotate_gimbal(0.0, pitch, gimbal_tx.clone()).await {
                 Ok(_) => {}
                 Err(e) => return Err(GimbalRequestError),
             }
         }
-        dir = dir*-1;
+        dir = dir*-1.0;
     }
 
 
