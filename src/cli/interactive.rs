@@ -7,6 +7,7 @@ use tokio::{select, sync::oneshot};
 use tokio_util::sync::CancellationToken;
 
 use ps_gimbal as gimbal;
+#[cfg(feature = "livestream")]
 use ps_livestream::custom as ls;
 use ps_main_camera as mc;
 
@@ -17,6 +18,7 @@ enum Command {
     #[command(name = "camera")]
     MainCamera(ps_main_camera::CameraRequest),
 
+    #[cfg(feature = "livestream")]
     #[command(subcommand)]
     #[command(name = "livestream", alias = "ls")]
     LiveStream(ps_livestream::custom::LivestreamRequest),
@@ -33,6 +35,7 @@ enum Command {
 #[derive(Clone)]
 pub struct CliChannels {
     pub camera_cmd_tx: Option<ChannelCommandSink<mc::CameraRequest, mc::CameraResponse>>,
+    #[cfg(feature = "livestream")]
     pub livestream_cmd_tx:
         Option<ChannelCommandSink<ls::LivestreamRequest, ls::LivestreamResponse>>,
     pub gimbal_cmd_tx: Option<ChannelCommandSink<gimbal::GimbalRequest, gimbal::GimbalResponse>>,
@@ -92,6 +95,7 @@ async fn run_interactive_cmd(
 ) -> anyhow::Result<()> {
     let CliChannels {
         camera_cmd_tx,
+        #[cfg(feature = "livestream")]
         livestream_cmd_tx,
         gimbal_cmd_tx,
         ps_modes_cmd_tx,
@@ -115,6 +119,7 @@ async fn run_interactive_cmd(
             }
         }
 
+        #[cfg(feature = "livestream")]
         Command::LiveStream(request) => {
             if let Some(livestream_cmd_tx) = &livestream_cmd_tx {
                 let (ret_tx, ret_rx) = oneshot::channel();

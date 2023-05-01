@@ -1,0 +1,23 @@
+{
+    "gimbal": {
+      "kind": { "type": "Hardware", "protocol": "SimpleBGC" },
+      "path": "/dev/ttyUSB0"
+    },
+    "pixhawk": null,
+    "plane_server": {
+    "address": "[::]:8080"
+     },
+    "ground_server": null,
+     "scheduler": null,
+    "main_camera": {
+    "live": {
+      "framerate": 30
+    },
+    "download": {
+      "save_path": "./images/"
+    },
+    "min_focal_length": 16,
+    "max_focal_length": 50
+    },
+    "livestream": null
+  }

@@ -85,7 +85,7 @@ pub enum SearchRequest {
     }, 
     Panning { //does a sweeping pan, takes given number of images during 
         //angle to be calculated in code based on current FOV angle?
-        image_count: u16,
+        //gimbal_positions: Vec<(f64, f64)>,
     }
 }
 

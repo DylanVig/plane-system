@@ -8,6 +8,7 @@ pub struct PlaneSystemConfig {
     pub ground_server: Option<ps_gs::GsConfig>,
     pub main_camera: Option<ps_main_camera::MainCameraConfig>,
     pub gimbal: Option<ps_gimbal::GimbalConfig>,
+    pub modes: Option<ps_modes::ModesConfig>,
 
     #[cfg(feature = "livestream")]
     pub livestream: Option<ps_livestream::LivestreamConfig>,

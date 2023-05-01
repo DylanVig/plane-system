@@ -11,6 +11,7 @@ use ps_main_camera::CameraRequest;
 use ps_main_camera::CameraResponse;
 use ps_gimbal::GimbalRequest;
 use ps_gimbal::GimbalResponse;
+use crate::config::ModesConfig;
 
 //use ps_telemetry::PixhawkTelemetry;
 use super::util::{end_cc, start_cc, transition_by_distance, capture, rotate_gimbal};
@@ -38,10 +39,12 @@ pub struct ControlTask {
     )>,
     telem_rx: watch::Receiver<Telemetry>,
     gimbal_tx: flume::Sender<(GimbalRequest, tokio::sync::oneshot::Sender<Result<GimbalResponse, Error>>)>,
+    modes_config: ModesConfig,
 }
 
 impl ControlTask {
     pub(super) fn new(
+        modes_config: ModesConfig,
         camera_ctrl_cmd_tx: flume::Sender<(
             CameraRequest,
             tokio::sync::oneshot::Sender<Result<CameraResponse, anyhow::Error>>,
@@ -57,6 +60,7 @@ impl ControlTask {
             cmd_rx,
             cmd_tx,
             gimbal_tx,
+            modes_config,
         }
     }
 
@@ -90,33 +94,28 @@ async fn time_search(
     }
 }
 
-async fn pan_search(image_count:u16,
+async fn pan_search(gimbal_positions: Vec<(f64, f64)>,
      gimbal_tx: flume::Sender<(
         GimbalRequest, tokio::sync::oneshot::Sender<Result<GimbalResponse, Error>>)>,
     main_camera_tx: flume::Sender<(
         CameraRequest,
         tokio::sync::oneshot::Sender<Result<CameraResponse, anyhow::Error>>,)>,
 ) -> Result<(), SearchModeError> {
-    let angle = 20.0;
-    let mut dir = 1.0;
-    let mut pitch = dir*angle*(image_count as f64)/-2.0;
-    match rotate_gimbal(0.0, pitch, gimbal_tx.clone()).await {
-        Ok(_) => {}
-        Err(e) => return Err(GimbalRequestError),
-    }
+    
     loop {
-        for n in 1 .. image_count {
+        for pos in &gimbal_positions {
+      
+            // pitch, roll
+            match rotate_gimbal(pos.1, pos.0, gimbal_tx.clone()).await {
+                Ok(_) => {}
+                Err(e) => return Err(GimbalRequestError),
+            }
             match capture(main_camera_tx.clone()).await {
                 Ok(_) => {} 
                 Err(e) => return Err(CameraRequestError),
             }
-            pitch = pitch + dir*angle;
-            match rotate_gimbal(0.0, pitch, gimbal_tx.clone()).await {
-                Ok(_) => {}
-                Err(e) => return Err(GimbalRequestError),
-            }
         }
-        dir = dir*-1.0;
+
     }
 
 
@@ -210,8 +209,8 @@ impl Task for ControlTask {
                                     end_cc(self.camera_ctrl_cmd_tx.clone());
                                     Ok(ModeResponse::Response)
                                 }
-                                SearchRequest::Panning {image_count} => {
-                                    pan_search(image_count, self.gimbal_tx.clone(), self.camera_ctrl_cmd_tx.clone());
+                                SearchRequest::Panning {} => {
+                                    pan_search(self.modes_config.gimbal_positions.clone(), self.gimbal_tx.clone(), self.camera_ctrl_cmd_tx.clone());
                                     Ok(ModeResponse::Response)
                                 }
                             },
