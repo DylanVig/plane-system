@@ -11,7 +11,7 @@ use ps_main_camera::CameraRequest;
 use ps_main_camera::CameraResponse;
 use ps_gimbal::GimbalRequest;
 use ps_gimbal::GimbalResponse;
-use crate::config::ModesConfig;
+use crate::config::{ModesConfig, GimbalPosition};
 
 //use ps_telemetry::PixhawkTelemetry;
 use super::util::{end_cc, start_cc, transition_by_distance, capture, rotate_gimbal};
@@ -94,7 +94,7 @@ async fn time_search(
     }
 }
 
-async fn pan_search(gimbal_positions: Vec<(f64, f64)>,
+async fn pan_search(gimbal_positions: Vec<GimbalPosition>,
      gimbal_tx: flume::Sender<(
         GimbalRequest, tokio::sync::oneshot::Sender<Result<GimbalResponse, Error>>)>,
     main_camera_tx: flume::Sender<(
@@ -106,7 +106,7 @@ async fn pan_search(gimbal_positions: Vec<(f64, f64)>,
         for pos in &gimbal_positions {
       
             // pitch, roll
-            match rotate_gimbal(pos.1, pos.0, gimbal_tx.clone()).await {
+            match rotate_gimbal(pos.roll, pos.pitch, gimbal_tx.clone()).await {
                 Ok(_) => {}
                 Err(e) => return Err(GimbalRequestError),
             }

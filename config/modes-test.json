@@ -1,15 +1,18 @@
 {
-    "gimbal": {
-      "kind": { "type": "Hardware", "protocol": "SimpleBGC" },
-      "path": "/dev/ttyUSB0"
+  "gimbal": {
+    "kind": {
+      "type": "Hardware",
+      "protocol": "SimpleBGC"
     },
-    "pixhawk": null,
-    "plane_server": {
+    "path": "/dev/ttyUSB0"
+  },
+  "pixhawk": null,
+  "plane_server": {
     "address": "[::]:8080"
-     },
-    "ground_server": null,
-     "scheduler": null,
-    "main_camera": {
+  },
+  "ground_server": null,
+  "scheduler": null,
+  "main_camera": {
     "live": {
       "framerate": 30
     },
@@ -18,6 +21,14 @@
     },
     "min_focal_length": 16,
     "max_focal_length": 50
-    },
-    "livestream": null
+  },
+  "livestream": null,
+  "modes": {
+    "gimbal_positions": [
+      {
+        "roll": 1,
+        "pitch": 50
+      }
+    ]
   }
+}
