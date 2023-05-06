@@ -2,11 +2,6 @@ use clap::Subcommand;
 use std::num::ParseFloatError;
 use thiserror::Error;
 
-// #[derive(Clone, Debug)]
-// struct waypoints {
-//     points: Vec<geo::Point>,
-// }
-
 #[derive(Error, Debug)]
 pub enum ParsePointError {
     #[error("invalid coordinates given")]
@@ -57,14 +52,15 @@ pub enum ModeRequest {
     LivestreamOnly,
 }
 
+// to-do: Each preset should have a determined area to cover, behavior will be hardcodeds
 #[derive(Subcommand, Debug, Clone)]
 pub enum Presets {
     None,
-    Expresetname1,
-    Expresetname2,
-    Expresetname3,
-    Expresetname4,
-    Expresetname5,
+    ExPresetName1,
+    ExPresetName2,
+    ExPresetName3,
+    ExPresetName4,
+    ExPresetName5,
 }
 #[derive(Subcommand, Debug, Clone)]
 pub enum SearchRequest {
@@ -82,11 +78,10 @@ pub enum SearchRequest {
     //Switches between active and inactive cature are handled by the user
     Manual {
         start: bool, //whether to start or end continous capture (cc)
-    }, 
-    Panning { //does a sweeping pan, takes given number of images during 
-        //angle to be calculated in code based on current FOV angle?
-        //gimbal_positions: Vec<(f64, f64)>,
-    }
+    },
+    Panning {
+        //does a sweeping pan, takes given number of images during ss
+    },
 }
 
 #[derive(Subcommand, Debug, Clone)]

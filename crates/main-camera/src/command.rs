@@ -47,7 +47,7 @@ pub enum CameraRequest {
         #[arg(short, long, action)]
         verbose: bool,
     },
-    ///initialize zoom to be able to set it using fov
+    /// initialize zoom to be able to set it using fov
     #[clap(subcommand)]
     ZoomInitialize(CameraZoomInitializeRequest),
     /// get a property of the camera's state
@@ -74,14 +74,14 @@ pub enum CameraRequest {
 
 #[derive(Subcommand, Debug, Clone)]
 pub enum CameraZoomRequest {
-    ///Zooms out for given milliseconds
+    /// zooms out for given milliseconds
     Wide { duration: u64 },
-    ///Zooms in for given milliseconds
+    /// zooms in for given milliseconds
     Tele { duration: u64 },
-    ///Zooms to level between [0,30] with 0 being fully zoomed out and 30 fully zoomed in.
-    ///Warning: Zoom levels [30,60] do not physically zoom the camera but rather crop the image
+    /// zooms to level between [0,30] with 0 being fully zoomed out and 30 fully zoomed in.
+    /// warning: Zoom levels [30,60] do not physically zoom the camera but rather crop the image
     Level { level: u8 },
-    ///Zooms to the closest focal length avaliable by the camera
+    /// zooms to the closest focal length avaliable by the camera
     FocalLength { focal_length: f32 },
 }
 
@@ -113,9 +113,9 @@ pub enum CameraSetRequest {
 
 #[derive(Subcommand, Debug, Clone)]
 pub enum CameraZoomInitializeRequest {
-    ///JSON to load magnification information from
+    /// JSON to load magnification information from
     Load { path: PathBuf },
-    ///Initialize magnification information (pairing zoom levels to fov) and save to file
+    /// initialize magnification information (pairing zoom levels to fov) and save to file
     Initialize { path: PathBuf },
 }
 #[derive(Subcommand, Debug, Clone)]

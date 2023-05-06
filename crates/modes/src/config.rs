@@ -2,6 +2,7 @@ use serde::Deserialize;
 
 #[derive(Debug, Deserialize)]
 pub struct ModesConfig {
+    // The gibal positions in the procedure for panning in orderss
     pub gimbal_positions: Vec<GimbalPosition>,
 }
 

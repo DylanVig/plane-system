@@ -1,20 +1,20 @@
-//file to control processing commands and then calling plane system modes and interacting between them
+//! file to control processing commands and then calling plane system modes and interacting between them
 use crate::command::{ModeRequest, ModeResponse, SearchRequest};
+use crate::config::{GimbalPosition, ModesConfig};
 use crate::task::control::SearchModeError::CameraRequestError;
-use crate::task::control::SearchModeError::WaypointError;
 use crate::task::control::SearchModeError::GimbalRequestError;
+use crate::task::control::SearchModeError::WaypointError;
 use async_trait::async_trait;
 use ps_client::ChannelCommandSink;
 use ps_client::ChannelCommandSource;
 use ps_client::Task;
-use ps_main_camera::CameraRequest;
-use ps_main_camera::CameraResponse;
 use ps_gimbal::GimbalRequest;
 use ps_gimbal::GimbalResponse;
-use crate::config::{ModesConfig, GimbalPosition};
+use ps_main_camera::CameraRequest;
+use ps_main_camera::CameraResponse;
 
 //use ps_telemetry::PixhawkTelemetry;
-use super::util::{end_cc, start_cc, transition_by_distance, capture, rotate_gimbal};
+use super::util::{capture, end_cc, rotate_gimbal, start_cc, transition_by_distance};
 use anyhow::Error;
 use ps_telemetry::Telemetry;
 use thiserror::Error;
@@ -30,7 +30,7 @@ pub enum Modes {
     None,
 }
 
-pub struct ControlTask {
+pub struct ModesTask {
     cmd_rx: ChannelCommandSource<ModeRequest, ModeResponse>,
     cmd_tx: ChannelCommandSink<ModeRequest, ModeResponse>,
     camera_ctrl_cmd_tx: flume::Sender<(
@@ -38,11 +38,14 @@ pub struct ControlTask {
         tokio::sync::oneshot::Sender<Result<CameraResponse, anyhow::Error>>,
     )>,
     telem_rx: watch::Receiver<Telemetry>,
-    gimbal_tx: flume::Sender<(GimbalRequest, tokio::sync::oneshot::Sender<Result<GimbalResponse, Error>>)>,
+    gimbal_tx: flume::Sender<(
+        GimbalRequest,
+        tokio::sync::oneshot::Sender<Result<GimbalResponse, Error>>,
+    )>,
     modes_config: ModesConfig,
 }
 
-impl ControlTask {
+impl ModesTask {
     pub(super) fn new(
         modes_config: ModesConfig,
         camera_ctrl_cmd_tx: flume::Sender<(
@@ -50,7 +53,10 @@ impl ControlTask {
             tokio::sync::oneshot::Sender<Result<CameraResponse, anyhow::Error>>,
         )>,
         telem_rx: watch::Receiver<Telemetry>,
-        gimbal_tx: flume::Sender<(GimbalRequest, tokio::sync::oneshot::Sender<Result<GimbalResponse, Error>>)>,
+        gimbal_tx: flume::Sender<(
+            GimbalRequest,
+            tokio::sync::oneshot::Sender<Result<GimbalResponse, Error>>,
+        )>,
     ) -> Self {
         let (cmd_tx, cmd_rx) = flume::bounded(256);
 
@@ -81,12 +87,12 @@ async fn time_search(
     let active_dur = Duration::new(active, 0);
     loop {
         //assumes cc is not running on entry
-        sleep(inactive_dur);
+        sleep(inactive_dur).await;
         match start_cc(main_camera_tx.clone()).await {
             Ok(_) => {}
             Err(e) => return Err(CameraRequestError),
         }
-        sleep(active_dur);
+        sleep(active_dur).await;
         match end_cc(main_camera_tx.clone()).await {
             Ok(_) => {}
             Err(e) => return Err(CameraRequestError),
@@ -94,31 +100,30 @@ async fn time_search(
     }
 }
 
-async fn pan_search(gimbal_positions: Vec<GimbalPosition>,
-     gimbal_tx: flume::Sender<(
-        GimbalRequest, tokio::sync::oneshot::Sender<Result<GimbalResponse, Error>>)>,
+async fn pan_search(
+    gimbal_positions: Vec<GimbalPosition>,
+    gimbal_tx: flume::Sender<(
+        GimbalRequest,
+        tokio::sync::oneshot::Sender<Result<GimbalResponse, Error>>,
+    )>,
     main_camera_tx: flume::Sender<(
         CameraRequest,
-        tokio::sync::oneshot::Sender<Result<CameraResponse, anyhow::Error>>,)>,
+        tokio::sync::oneshot::Sender<Result<CameraResponse, anyhow::Error>>,
+    )>,
 ) -> Result<(), SearchModeError> {
-    
     loop {
         for pos in &gimbal_positions {
-      
             // pitch, roll
             match rotate_gimbal(pos.roll, pos.pitch, gimbal_tx.clone()).await {
                 Ok(_) => {}
                 Err(e) => return Err(GimbalRequestError),
             }
             match capture(main_camera_tx.clone()).await {
-                Ok(_) => {} 
+                Ok(_) => {}
                 Err(e) => return Err(CameraRequestError),
             }
         }
-
     }
-
-
 }
 
 #[derive(Error, Debug)]
@@ -131,10 +136,9 @@ pub enum SearchModeError {
     GimbalRequestError,
 }
 
-
 async fn distance_search(
     distance_threshold: u64,
-    waypoint: Vec<geo::Point>,
+    waypoints: Vec<geo::Point>,
     telemetry_rx: watch::Receiver<Telemetry>,
     main_camera_tx: flume::Sender<(
         CameraRequest,
@@ -143,7 +147,7 @@ async fn distance_search(
 ) -> Result<(), SearchModeError> {
     let mut enter = true; // start assuming not in range
     loop {
-        match transition_by_distance(&waypoint, telemetry_rx.clone(), distance_threshold, enter)
+        match transition_by_distance(&waypoints[..], telemetry_rx.clone(), distance_threshold, enter)
             .await
         {
             Ok(_) => {}
@@ -155,7 +159,7 @@ async fn distance_search(
         }
         //checking for exit to end cc
         enter = false;
-        match transition_by_distance(&waypoint, telemetry_rx.clone(), distance_threshold, enter)
+        match transition_by_distance(&waypoints[..], telemetry_rx.clone(), distance_threshold, enter)
             .await
         {
             Ok(_) => {}
@@ -170,7 +174,7 @@ async fn distance_search(
 }
 
 #[async_trait]
-impl Task for ControlTask {
+impl Task for ModesTask {
     fn name(&self) -> &'static str {
         "modes/control"
     }
@@ -178,8 +182,6 @@ impl Task for ControlTask {
     async fn run(self: Box<Self>, cancel: CancellationToken) -> anyhow::Result<()> {
         let loop_fut = async move {
             let ctrl_evt_tx = self.cmd_tx;
-            //let camera_cntrl = self.camera_ctrl_cmd_tx;
-
             loop {
                 match self.cmd_rx.recv_async().await {
                     Ok((req, ret)) => {
@@ -189,29 +191,29 @@ impl Task for ControlTask {
                             ModeRequest::ZoomControl(req) => todo!(),
                             ModeRequest::Search(req) => match req {
                                 SearchRequest::Time { active, inactive } => {
-                                    time_search(active, inactive, self.camera_ctrl_cmd_tx.clone());
-                                    Ok(ModeResponse::Response)
+                                    time_search(active, inactive, self.camera_ctrl_cmd_tx.clone()).map(|_| ModeResponse::Response)
                                 }
                                 SearchRequest::Distance { distance, waypoint } => {
-                                    distance_search(
+                                   distance_search(
                                         distance,
                                         waypoint,
                                         self.telem_rx.clone(),
                                         self.camera_ctrl_cmd_tx.clone(),
-                                    );
-                                    Ok(ModeResponse::Response)
+                                    ).map(|_| ModeResponse::Response)
+                                 
                                 }
                                 SearchRequest::Manual { start } if start => {
-                                    start_cc(self.camera_ctrl_cmd_tx.clone());
-                                    Ok(ModeResponse::Response)
+                                    start_cc(self.camera_ctrl_cmd_tx.clone()).map(|_| ModeResponse::Response)
                                 }
                                 SearchRequest::Manual { start } => {
-                                    end_cc(self.camera_ctrl_cmd_tx.clone());
-                                    Ok(ModeResponse::Response)
+                                    end_cc(self.camera_ctrl_cmd_tx.clone()).map(|_| ModeResponse::Response)
                                 }
                                 SearchRequest::Panning {} => {
-                                    pan_search(self.modes_config.gimbal_positions.clone(), self.gimbal_tx.clone(), self.camera_ctrl_cmd_tx.clone());
-                                    Ok(ModeResponse::Response)
+                                    pan_search(
+                                        self.modes_config.gimbal_positions.clone(),
+                                        self.gimbal_tx.clone(),
+                                        self.camera_ctrl_cmd_tx.clone(),
+                                    ).map(|_| ModeResponse::Response)
                                 }
                             },
                         };

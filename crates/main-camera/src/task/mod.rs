@@ -40,10 +40,7 @@ pub fn create_tasks(
             None => 0.,
             Some(x) => x,
         },
-        match config.max_focal_length {
-            None => 0.,
-            Some(x) => x,
-        },
+       
     );
     let download_task = DownloadTask::new(
         config.download,

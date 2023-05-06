@@ -27,8 +27,6 @@ pub struct MainCameraConfig {
     pub live: Option<LiveConfig>,
 
     /// Minimium focal length of power zoom
+    /// required for setting zoom based on focal length
     pub min_focal_length: Option<f32>,
-
-    /// Maximium focal length of power zoom
-    pub max_focal_length: Option<f32>,
 }

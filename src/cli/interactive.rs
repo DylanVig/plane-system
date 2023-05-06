@@ -39,7 +39,7 @@ pub struct CliChannels {
     pub livestream_cmd_tx:
         Option<ChannelCommandSink<ls::LivestreamRequest, ls::LivestreamResponse>>,
     pub gimbal_cmd_tx: Option<ChannelCommandSink<gimbal::GimbalRequest, gimbal::GimbalResponse>>,
-    pub ps_modes_cmd_tx:
+    pub modes_cmd_tx:
         Option<ChannelCommandSink<ps_modes::command::ModeRequest, ps_modes::command::ModeResponse>>,
 }
 
@@ -98,7 +98,7 @@ async fn run_interactive_cmd(
         #[cfg(feature = "livestream")]
         livestream_cmd_tx,
         gimbal_cmd_tx,
-        ps_modes_cmd_tx,
+        modes_cmd_tx,
     } = channels;
 
     match cmd {
@@ -167,8 +167,6 @@ async fn run_interactive_cmd(
                 if let Err(err) = ps_modes_tx.try_send((request, ret_tx)) {
                     error!("modes task did not accept command: {:#?}", err);
                 }
-
-                info!("awaiting modes response");
 
                 match ret_rx.await? {
                     Ok(response) => info!("{:?}", response),

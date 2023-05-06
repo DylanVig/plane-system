@@ -59,7 +59,6 @@ pub struct ControlTask {
     cmd_rx: ChannelCommandSource<CameraRequest, CameraResponse>,
     cmd_tx: ChannelCommandSink<CameraRequest, CameraResponse>,
     min_focal_length: f32,
-    max_focal_length: f32,
 }
 
 impl ControlTask {
@@ -67,7 +66,6 @@ impl ControlTask {
         interface: Arc<RwLock<InterfaceGuard>>,
         ptp_evt_rx: broadcast::Receiver<Event>,
         min_focal_length: f32,
-        max_focal_length: f32,
     ) -> Self {
         let (cmd_tx, cmd_rx) = flume::bounded(256);
         let (ctrl_evt_tx, ctrl_evt_rx) = flume::bounded(256);
@@ -80,7 +78,6 @@ impl ControlTask {
             cmd_rx,
             cmd_tx,
             min_focal_length,
-            max_focal_length,
         }
     }
 
@@ -92,12 +89,12 @@ impl ControlTask {
         self.ctrl_evt_rx.clone()
     }
 }
-
-///[get_magnification_levels interface min_foca] returns a vector of tuples of level * focal giving the corresponding focal lenghts for each zoom level]
+/// get_magnification_levels returns a vector of tuples of level * focal giving the corresponding focal lenghts for each zoom level]
 async fn get_magnification_levels(
     interface: &RwLock<InterfaceGuard>,
     min_focal: f32,
 ) -> anyhow::Result<Vec<(i32, f32)>> {
+    // Vector of level * focal length
     let mut v: Vec<(i32, f32)> = Vec::new();
     let mut interface = interface.write().await;
     sleep(Duration::from_millis(5000)).await;
@@ -144,9 +141,9 @@ impl Task for ControlTask {
             let ctrl_evt_tx = self.ctrl_evt_tx;
             let cmd_rx = self.cmd_rx;
             let cmd_tx = self.cmd_tx;
+            // Vector of associated levels and focal lengths
             let mut magnification_vector: Vec<(i32, f32)> = Vec::new();
             let min_focal_length = self.min_focal_length;
-            let max_focal_length = self.max_focal_length;
             async move {
                 loop {
                     match cmd_rx.recv_async().await {
@@ -232,45 +229,15 @@ impl Task for ControlTask {
                                     run_cc(req, interface).await
                                 }
                                 CameraRequest::Record(_) => todo!(),
-                                CameraRequest::ZoomInitialize(req) => {
-                                    match req {
-                                        CameraZoomInitializeRequest::Load { path } => {
-                                            info!("loading focal lengths depending on levels");
-                                            let magnification_vector_string =
-                                                tokio::fs::read_to_string(path).await?;
-                                            magnification_vector =
-                                                serde_json::from_str(&magnification_vector_string)?;
-                                        }
-                                        CameraZoomInitializeRequest::Initialize { path } => {
-                                            info!("getting focal lengths depending on levels");
-                                            magnification_vector = get_magnification_levels(
-                                                interface,
-                                                min_focal_length,
-                                            )
-                                            .await?;
-                                            info!(
-                                                "magnification vector is {:?}",
-                                                &magnification_vector
-                                            );
-                                            // Serialize it to a JSON string.
-                                            let magnification_vector_json =
-                                                serde_json::to_string(&magnification_vector)?;
-
-                                            // Write to a file
-                                            tokio::fs::write(&path, magnification_vector_json)
-                                                .await?;
-
-                                            info!("printing to json {:?}", &path);
-                                        }
-                                    };
-                                    Ok(CameraResponse::Unit)
-                                }
+                                CameraRequest::ZoomInitialize(req) => { initialize_zoom(req, min_focal_length, path,
+                                     &mut magnification_vector, interface)
+                                    
+                                },
                                 CameraRequest::Zoom(req) => {
                                     run_zoom(
                                         interface,
                                         req,
                                         min_focal_length,
-                                        max_focal_length,
                                         &magnification_vector,
                                     )
                                     .await
@@ -288,12 +255,36 @@ impl Task for ControlTask {
         };
 
         select! {
-          _ = cancel.cancelled() => {}
+          _ = cancel.cancelled() => {}s
           res = loop_fut => { res? }
         }
 
         Ok(())
     }
+}
+
+async fn initialize_zoom(req: CameraZoomInitializeRequest, min_focal_length: f32,
+     path: PathBuf, magnification_vector: &mut Vec<(i32, f32)>, interface: &RwLock<InterfaceGuard> ) ->  Vec<(i32, f32)> {
+    match req {
+        CameraZoomInitializeRequest::Load { path } => {
+            info!("loading focal lengths depending on levels");
+            let magnification_vector_string = tokio::fs::read_to_string(path).await?;
+            magnification_vector = serde_json::from_str(&magnification_vector_string)?;
+        }
+        CameraZoomInitializeRequest::Initialize { path } => {
+            info!("getting focal lengths depending on levels");
+            magnification_vector = &mut get_magnification_levels(interface, min_focal_length).await?;
+            info!("magnification vector is {:?}", &magnification_vector);
+            // Serialize it to a JSON string.
+            let magnification_vector_json = serde_json::to_string(&magnification_vector)?;
+
+            // Write to a file
+            tokio::fs::write(&path, magnification_vector_json).await?;
+
+            info!("printing to json {:?}", &path);
+        }
+    } 
+    Ok(CameraResponse::Unit)
 }
 
 async fn run_status(
@@ -409,12 +400,11 @@ async fn run_initialize(interface: &RwLock<InterfaceGuard>) -> anyhow::Result<Ca
     Ok(CameraResponse::Unit)
 }
 
-///[run_zoom interface camera_request min_focal max_focal magnification_vector] executes zoom level commands given a request
+/// [run_zoom interface camera_request min_focal magnification_vector] executes zoom level commands given a request
 async fn run_zoom(
     interface: &RwLock<InterfaceGuard>,
     req: CameraZoomRequest,
     min_focal_length: f32,
-    max_focal_length: f32,
     magnification_vector: &Vec<(i32, f32)>,
 ) -> anyhow::Result<CameraResponse> {
     let mut interface = interface.write().await;
