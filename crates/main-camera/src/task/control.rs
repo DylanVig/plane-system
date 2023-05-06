@@ -229,7 +229,7 @@ impl Task for ControlTask {
                                     run_cc(req, interface).await
                                 }
                                 CameraRequest::Record(_) => todo!(),
-                                CameraRequest::ZoomInitialize(req) => { initialize_zoom(req, min_focal_length, path,
+                                CameraRequest::ZoomInitialize(req) => { initialize_zoom(req, min_focal_length,
                                      &mut magnification_vector, interface)
                                     
                                 },
@@ -264,7 +264,7 @@ impl Task for ControlTask {
 }
 
 async fn initialize_zoom(req: CameraZoomInitializeRequest, min_focal_length: f32,
-     path: PathBuf, magnification_vector: &mut Vec<(i32, f32)>, interface: &RwLock<InterfaceGuard> ) ->  Vec<(i32, f32)> {
+     magnification_vector: &mut Vec<(i32, f32)>, interface: &RwLock<InterfaceGuard> ) -> anyhow::Result<CameraResponse>{
     match req {
         CameraZoomInitializeRequest::Load { path } => {
             info!("loading focal lengths depending on levels");
