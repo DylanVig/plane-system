@@ -1,0 +1,25 @@
+{
+  "gimbal": null,
+  "pixhawk": null,
+  "plane_server": null,
+  "ground_server": null,
+  "scheduler": null,
+  "main_camera": {
+    "live": {
+      "framerate": 30
+    },
+    "download": {
+      "save_path": "./images/"
+    },
+    "min_focal_length": 16
+  },
+  "livestream": null,
+  "modes": {
+    "gimbal_positions": [
+      {
+        "roll": 1,
+        "pitch": 50
+      }
+    ]
+  }
+}

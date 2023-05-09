@@ -24,7 +24,7 @@ pub enum ParseTelemetryError {
 // if enter is true, sleeps until the telemetry enters in range of a waypoint
 // if enter is false, sleeps until the telemetry exits the range of a waypoint
 pub async fn transition_by_distance(
-    waypoints: [geo::Point],
+    waypoints: &[geo::Point],
     telemetry_rx: watch::Receiver<Telemetry>,
     distance_threshold: u64,
     enter: bool,
@@ -77,7 +77,7 @@ fn get_telemetry(
 
 // checks whether the telemetry is in a given range of any waypoints
 fn in_range(
-    waypoint: &Vec<geo::Point>,
+    waypoint: &[geo::Point],
     telemetry_rx: watch::Receiver<Telemetry>,
     distance_threshold: u64,
 ) -> Result<bool, ParseTelemetryError> {
@@ -158,7 +158,7 @@ async fn command_camera(
     request: CameraRequest,
 ) -> Result<CameraResponse, anyhow::Error> {
     let (tx, rx) = oneshot::channel();
-    if let Err(_) = main_camera_tx.send_async((request, tx)) {
+    if let Err(_) = main_camera_tx.send_async((request, tx)).await {
         anyhow::bail!("could not send command");
     }
     rx.await?
@@ -173,14 +173,11 @@ async fn command_gimbal(
     request: GimbalRequest,
 ) -> Result<GimbalResponse, anyhow::Error> {
     let (tx, rx) = oneshot::channel();
-    if let Err(_) = gimbal_tx.send_async((request, tx)) {
+    if let Err(_) = gimbal_tx.send_async((request, tx)).await {
         anyhow::bail!("could not send command");
     }
-    rx.await?;
     sleep(Duration::from_millis(3)).await;
+    rx.await?
     //TODO: figure out how to determine whether the gimbal is at the correct angle
     //maybe for ex. check from telemetry if the current angle is correct, add gimbal angle to telemetry
-
 }
-
-

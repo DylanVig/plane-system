@@ -84,7 +84,7 @@ async fn main() -> anyhow::Result<()> {
         )
         .init();
 
-    let mut features: Vec<String> = vec![];
+    let mut features: Vec<&str> = vec![];
 
     #[cfg(feature = "livestream")]
     features.push("livestream");
@@ -174,8 +174,8 @@ async fn run_tasks(
     debug!("initializing telemetry task");
     let telem_task = ps_telemetry::create_task(pixhawk_evt_rx, csb_evt_rx)
         .context("failed to initialize telemetry task")?;
-    
-    let telem_rx_camera =telem_task.telemetry();
+
+    let telem_rx_camera = telem_task.telemetry();
     let telem_rx_modes = telem_rx_camera.clone();
 
     tasks.push(Box::new(telem_task));

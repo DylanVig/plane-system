@@ -52,6 +52,18 @@ pub enum ModeRequest {
     LivestreamOnly,
 }
 
+#[derive(Error, Debug)]
+pub enum ModeError {
+    #[error("could not send request to the camera")]
+    CameraRequestError,
+    #[error("invalid waypoint entered")]
+    WaypointError,
+    #[error("could not send request to the gimbal")]
+    GimbalRequestError,
+    #[error("camera error: {0}")]
+    Camera(#[from] anyhow::Error),
+}
+
 // to-do: Each preset should have a determined area to cover, behavior will be hardcodeds
 #[derive(Subcommand, Debug, Clone)]
 pub enum Presets {

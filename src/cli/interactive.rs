@@ -2,6 +2,9 @@ use clap::Parser;
 use futures::{AsyncWriteExt, FutureExt};
 use gimbal::GimbalResponse;
 use ps_client::ChannelCommandSink;
+use ps_modes::command::ModeError;
+use ps_modes::command::ModeRequest;
+use ps_modes::command::ModeResponse;
 use rustyline_async::{Readline, SharedWriter};
 use tokio::{select, sync::oneshot};
 use tokio_util::sync::CancellationToken;
@@ -39,8 +42,12 @@ pub struct CliChannels {
     pub livestream_cmd_tx:
         Option<ChannelCommandSink<ls::LivestreamRequest, ls::LivestreamResponse>>,
     pub gimbal_cmd_tx: Option<ChannelCommandSink<gimbal::GimbalRequest, gimbal::GimbalResponse>>,
-    pub modes_cmd_tx:
-        Option<ChannelCommandSink<ps_modes::command::ModeRequest, ps_modes::command::ModeResponse>>,
+    pub modes_cmd_tx: Option<
+        flume::Sender<(
+            ModeRequest,
+            oneshot::Sender<Result<ModeResponse, ModeError>>,
+        )>,
+    >,
 }
 
 pub async fn run_interactive_cli(
@@ -159,7 +166,7 @@ async fn run_interactive_cmd(
         }
 
         Command::Mode(request) => {
-            if let Some(ps_modes_tx) = &ps_modes_cmd_tx {
+            if let Some(ps_modes_tx) = &modes_cmd_tx {
                 let (ret_tx, ret_rx) = oneshot::channel();
 
                 info!("request = {request:?}");
