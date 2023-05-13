@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use anyhow::Context;
 use defer::defer;
 use log::{debug, info, warn};
@@ -26,10 +28,10 @@ pub fn create_task(config: CsbConfig) -> anyhow::Result<(EventTask, flume::Recei
 
     let i2c = config
         .i2c
-        .map(|i2c_instance| {
+        .map(|i2c_config| {
             info!("intializing csb i2c");
 
-            let mut i2c = I2c::with_bus(i2c_instance).context("failed to access i2c")?;
+            let mut i2c = I2c::with_bus(i2c_config.bus).context("failed to access i2c")?;
 
             debug!(
                 "opened i2c bus {} at {} hz",
@@ -38,7 +40,7 @@ pub fn create_task(config: CsbConfig) -> anyhow::Result<(EventTask, flume::Recei
                     .context("failed to query i2c clock speed")?
             );
 
-            i2c.set_slave_address(8)?;
+            i2c.set_slave_address(i2c_config.addr)?;
 
             Ok::<_, anyhow::Error>(i2c)
         })
@@ -89,8 +91,30 @@ impl Task for EventTask {
             mut pin_int,
             evt_tx,
             irq_rx,
+            mut i2c,
             ..
         } = *self;
+
+        // log i2c level for debugging
+        // tokio::task::spawn({
+        //     let cancel = cancel.clone();
+        //     async move {
+        //         while !cancel.is_cancelled() {
+        //             let mut reading = [0u8; 2];
+        //             // let mut longitude = [0u8; 4];
+
+        //             if let Some(i2c) = &mut i2c {
+        //                 tokio::task::block_in_place(|| i2c.read(&mut reading[..])).unwrap();
+
+        //                 let reading = u16::from_le_bytes(reading);
+    
+        //                 debug!("i2c says {reading} {reading:x}");
+        //             }
+
+        //             tokio::time::sleep(Duration::from_millis(100)).await;
+        //         }
+        //     }
+        // });
 
         let loop_fut = async move {
             // need to assign to a variable so it is not dropped until the end
@@ -110,16 +134,19 @@ impl Task for EventTask {
 
                 let timestamp = chrono::Local::now();
 
-                // let mut latitude = [0u8; 4];
-                // let mut longitude = [0u8; 4];
+                // let mut reading = [0u8; 2];
+                // // let mut longitude = [0u8; 4];
 
                 // if let Some(i2c) = &mut i2c {
                 //     tokio::task::block_in_place(|| {
-                //         i2c.read(&mut latitude[..])?;
-                //         i2c.read(&mut longitude[..])?;
+                //         i2c.read(&mut reading[..])?;
                 //         Ok::<_, anyhow::Error>(())
                 //     })?;
                 // }
+
+                // let reading = u16::from_le_bytes(reading);
+
+                // debug!("i2c says {reading} {reading:x}");
 
                 // let latitude = u32::from_le_bytes(latitude);
                 // let longitude = u32::from_le_bytes(longitude);

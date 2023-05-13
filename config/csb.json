@@ -12,7 +12,8 @@
 		"current_sensing": {
 			"gpio_int": 23,
 			"gpio_ack": 24,
-			"i2c": 1
+			"i2c_bus": 1,
+			"i2c_addr": 10
 		}
 	},
 	"gimbal": null
