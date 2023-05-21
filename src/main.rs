@@ -74,7 +74,7 @@ async fn main() -> anyhow::Result<()> {
                     ("plane_system", LevelFilter::DEBUG),
                     ("ps_livestream", LevelFilter::DEBUG),
                     ("ps_main_camera", LevelFilter::DEBUG),
-                    ("ps_main_camera_csb", LevelFilter::DEBUG),
+                    ("ps_main_camera_csb", LevelFilter::TRACE),
                     ("ps_telemetry", LevelFilter::DEBUG),
                     ("ps_gs", LevelFilter::DEBUG),
                     ("ps_pixhawk", LevelFilter::DEBUG),
@@ -141,7 +141,7 @@ async fn run_tasks(
         Some(c) => {
             debug!("initializing pixhawk task");
             let evt_task =
-                ps_pixhawk::create_task(c).context("failed to initialize pixhawk task")?;
+                ps_pixhawk::create_tasks(c).context("failed to initialize pixhawk task")?;
             let pixhawk_evt_rx = evt_task.events();
             tasks.push(Box::new(evt_task));
             Some(pixhawk_evt_rx)

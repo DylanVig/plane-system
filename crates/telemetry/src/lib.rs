@@ -79,47 +79,43 @@ impl Task for TelemetryTask {
             ..
         } = *self;
 
-        let loop_fut = async move {
-            let _ = telem_tx.send_modify(|t| t.pixhawk = Some(PixhawkTelemetry::default()));
+        let _ = telem_tx.send_modify(|t| t.pixhawk = Some(PixhawkTelemetry::default()));
 
-            // list of previous telemetries received
-            let mut pixhawk_history = VecDeque::with_capacity(20);
+        // list of previous telemetries received
+        let mut pixhawk_history = VecDeque::with_capacity(20);
 
-            loop {
-                let pixhawk_recv_fut = pixhawk_evt_rx.as_ref().map(|chan| chan.recv_async());
-                let csb_recv_fut = csb_evt_rx.as_ref().map(|chan| chan.recv_async());
+        loop {
+            let pixhawk_recv_fut = pixhawk_evt_rx.as_ref().map(|chan| chan.recv_async());
+            let csb_recv_fut = csb_evt_rx.as_ref().map(|chan| chan.recv_async());
 
-                select! {
-                    evt = OptionFuture::from(pixhawk_recv_fut), if pixhawk_recv_fut.is_some() => {
-                        // unwrap b/c if we are here, then the OptionFuture is OptionFuture(Some),
-                        // so it will not evaluate to None when we await it
+            select! {
+                _ = cancel.cancelled() => {
+                    break;
+                }
 
-                        let evt = evt.unwrap()?;
+                evt = OptionFuture::from(pixhawk_recv_fut), if pixhawk_recv_fut.is_some() => {
+                    // unwrap b/c if we are here, then the OptionFuture is OptionFuture(Some),
+                    // so it will not evaluate to None when we await it
+
+                    if let Ok(evt) = evt.unwrap() {
                         handle_pixhawk_event(evt, &mut pixhawk_history, &telem_tx);
                     }
+                }
 
-                    evt = OptionFuture::from(csb_recv_fut), if csb_recv_fut.is_some() => {
-                        // unwrap b/c if we are here, then the OptionFuture is OptionFuture(Some),
-                        // so it will not evaluate to None when we await it
+                evt = OptionFuture::from(csb_recv_fut), if csb_recv_fut.is_some() => {
+                    // unwrap b/c if we are here, then the OptionFuture is OptionFuture(Some),
+                    // so it will not evaluate to None when we await it
 
-                        let evt = evt.unwrap()?;
+                    if let Ok(evt) = evt.unwrap() {
                         handle_csb_event(evt, &pixhawk_history, &telem_tx);
                     }
+                }
 
-                    else => {
-                        info!("no available telemetry sources, exiting");
-                        break;
-                    }
+                else => {
+                    info!("no available telemetry sources, exiting");
+                    break;
                 }
             }
-
-            #[allow(unreachable_code)]
-            Ok::<_, anyhow::Error>(())
-        };
-
-        select! {
-          _ = cancel.cancelled() => {}
-          res = loop_fut => { res? }
         }
 
         Ok(())

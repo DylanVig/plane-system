@@ -2,12 +2,12 @@ use std::time::Duration;
 
 use anyhow::Context;
 use defer::defer;
-use log::{debug, info, warn};
+use log::{debug, info, warn, trace};
 use rppal::{gpio::*, i2c::*};
 
 use async_trait::async_trait;
 use ps_client::Task;
-use tokio::select;
+use tokio::{select, io::AsyncWriteExt};
 use tokio_util::sync::CancellationToken;
 
 use crate::{CsbConfig, CsbEvent};
@@ -96,25 +96,31 @@ impl Task for EventTask {
         } = *self;
 
         // log i2c level for debugging
-        // tokio::task::spawn({
-        //     let cancel = cancel.clone();
-        //     async move {
-        //         while !cancel.is_cancelled() {
-        //             let mut reading = [0u8; 2];
-        //             // let mut longitude = [0u8; 4];
+        tokio::task::spawn({
+            let cancel = cancel.clone();
+            async move {
+                let mut interval = tokio::time::interval(Duration::from_millis(50));
+                let mut file = tokio::fs::File::create("csb.csv").await.unwrap();
+                let mut file = tokio::io::BufWriter::new(file);
 
-        //             if let Some(i2c) = &mut i2c {
-        //                 tokio::task::block_in_place(|| i2c.read(&mut reading[..])).unwrap();
+                while !cancel.is_cancelled() {
+                    let mut reading = [0u8; 2];
+                    // let mut longitude = [0u8; 4];
 
-        //                 let reading = u16::from_le_bytes(reading);
+                    if let Some(i2c) = &mut i2c {
+                        tokio::task::block_in_place(|| i2c.read(&mut reading[..])).unwrap();
+
+                        let now = chrono::Utc::now();
+                        let reading = u16::from_le_bytes(reading);
     
-        //                 debug!("i2c says {reading} {reading:x}");
-        //             }
+                        trace!("i2c says {reading} {reading:x}");
+                        file.write_all(format!("{now},{reading}\n").as_bytes()).await.unwrap();
+                    }
 
-        //             tokio::time::sleep(Duration::from_millis(100)).await;
-        //         }
-        //     }
-        // });
+                    interval.tick().await;
+                }
+            }
+        });
 
         let loop_fut = async move {
             // need to assign to a variable so it is not dropped until the end
