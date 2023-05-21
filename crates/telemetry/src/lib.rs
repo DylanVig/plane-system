@@ -1,10 +1,11 @@
 use std::{collections::VecDeque, sync::Arc};
 
 use async_trait::async_trait;
-use chrono::prelude::*;
+use chrono::{prelude::*, Duration};
 use futures::future::OptionFuture;
 use log::info;
 use ps_client::Task;
+#[cfg(feature = "csb")]
 use ps_main_camera_csb::CsbEvent;
 use ps_pixhawk::PixhawkEvent;
 use ps_types::{Euler, Point3D, Velocity3D};
@@ -15,43 +16,53 @@ use tokio::{
 };
 use tokio_util::sync::CancellationToken;
 
-#[derive(Clone, Serialize, Deserialize, Debug)]
+mod config;
+
+pub use config::TelemetryConfig;
+
+#[derive(Clone, Serialize, Debug)]
 pub struct Telemetry {
-    pub pixhawk: Option<PixhawkTelemetry>,
+    /// Contains Pixhawk telemetries from oldest to newest
+    pub pixhawk: VecDeque<PixhawkTelemetry>,
+    /// Contains information from the most recent current sensing board spike
+    #[cfg(feature = "csb")]
     pub csb: Option<CsbTelemetry>,
 }
 
-#[derive(Clone, Serialize, Deserialize, Debug, Default)]
+#[derive(Clone, Serialize, Debug, Default)]
 pub struct PixhawkTelemetry {
     pub position: Option<(Point3D, DateTime<Local>)>,
     pub velocity: Option<(Velocity3D, DateTime<Local>)>,
     pub attitude: Option<(Euler, DateTime<Local>)>,
+    pub timestamp: DateTime<Local>,
 }
 
-#[derive(Clone, Serialize, Deserialize, Debug)]
+#[derive(Clone, Serialize, Debug)]
 pub struct CsbTelemetry {
-    pub snapshot_before: PixhawkTelemetry,
-    pub snapshot_after: PixhawkTelemetry,
     pub timestamp: DateTime<Local>,
 }
 
 pub struct TelemetryTask {
+    config: TelemetryConfig,
     pixhawk_evt_rx: Option<flume::Receiver<PixhawkEvent>>,
-    csb_evt_rx: Option<flume::Receiver<ps_main_camera_csb::CsbEvent>>,
+    csb_evt_rx: Option<flume::Receiver<CsbEvent>>,
     telem_rx: watch::Receiver<Telemetry>,
     telem_tx: watch::Sender<Telemetry>,
 }
 
 pub fn create_task(
+    config: TelemetryConfig,
     pixhawk_evt_rx: Option<flume::Receiver<PixhawkEvent>>,
-    csb_evt_rx: Option<flume::Receiver<ps_main_camera_csb::CsbEvent>>,
+    csb_evt_rx: Option<flume::Receiver<CsbEvent>>,
 ) -> anyhow::Result<TelemetryTask> {
     let (telem_tx, telem_rx) = watch::channel(Telemetry {
-        pixhawk: None,
+        pixhawk: VecDeque::new(),
+        #[cfg(feature = "csb")]
         csb: None,
     });
 
     Ok(TelemetryTask {
+        config,
         pixhawk_evt_rx,
         csb_evt_rx,
         telem_rx,
@@ -73,16 +84,14 @@ impl Task for TelemetryTask {
 
     async fn run(self: Box<Self>, cancel: CancellationToken) -> anyhow::Result<()> {
         let Self {
+            config,
             pixhawk_evt_rx,
             csb_evt_rx,
             telem_tx,
             ..
         } = *self;
 
-        let _ = telem_tx.send_modify(|t| t.pixhawk = Some(PixhawkTelemetry::default()));
-
-        // list of previous telemetries received
-        let mut pixhawk_history = VecDeque::with_capacity(20);
+        let retention_period = Duration::milliseconds((config.retention_period * 1000.0) as i64);
 
         loop {
             let pixhawk_recv_fut = pixhawk_evt_rx.as_ref().map(|chan| chan.recv_async());
@@ -98,7 +107,7 @@ impl Task for TelemetryTask {
                     // so it will not evaluate to None when we await it
 
                     if let Ok(evt) = evt.unwrap() {
-                        handle_pixhawk_event(evt, &mut pixhawk_history, &telem_tx);
+                        handle_pixhawk_event(evt, &telem_tx, retention_period);
                     }
                 }
 
@@ -107,7 +116,7 @@ impl Task for TelemetryTask {
                     // so it will not evaluate to None when we await it
 
                     if let Ok(evt) = evt.unwrap() {
-                        handle_csb_event(evt, &pixhawk_history, &telem_tx);
+                        handle_csb_event(evt, &telem_tx);
                     }
                 }
 
@@ -124,147 +133,45 @@ impl Task for TelemetryTask {
 
 fn handle_pixhawk_event(
     event: PixhawkEvent,
-    pixhawk_history: &mut VecDeque<PixhawkTelemetry>,
     telem_tx: &watch::Sender<Telemetry>,
+    retention_period: Duration,
 ) {
-    // base new telem on old telem, update fields
-    let mut telem = pixhawk_history.back().cloned().unwrap_or_default();
+    let _ = telem_tx.send_modify(|t| {
+        let pixhawk_history = &mut t.pixhawk;
 
-    match event {
-        PixhawkEvent::Gps {
-            position, velocity, ..
-        } => {
-            let now = Local::now();
-            telem.position = Some((position, now));
-            telem.velocity = Some((velocity, now));
+        // base new telem on old telem, update fields
+        let mut telem = pixhawk_history.back().cloned().unwrap_or_default();
+
+        let now = Local::now();
+
+        match event {
+            PixhawkEvent::Gps {
+                position, velocity, ..
+            } => {
+                telem.position = Some((position, now));
+                telem.velocity = Some((velocity, now));
+            }
+            PixhawkEvent::Orientation { attitude } => {
+                telem.attitude = Some((attitude, now));
+            }
         }
-        PixhawkEvent::Orientation { attitude } => {
-            telem.attitude = Some((attitude, Local::now()));
+
+        let threshold = now - retention_period;
+
+        while let Some(first) = pixhawk_history.front() {
+            if first.timestamp < threshold {
+                pixhawk_history.pop_front();
+            }
         }
-    }
 
-    let _ = telem_tx.send_modify(|t| t.pixhawk = Some(telem.clone()));
-
-    if pixhawk_history.len() >= 20 {
-        pixhawk_history.pop_front();
-    }
-
-    pixhawk_history.push_back(telem);
+        pixhawk_history.push_back(telem);
+    });
 }
 
-fn handle_csb_event(
-    event: CsbEvent,
-    pixhawk_history: &VecDeque<PixhawkTelemetry>,
-    telem_tx: &watch::Sender<Telemetry>,
-) {
-    let timestamp = event.timestamp;
-
-    // get a snapshot of relevant pixhawk data by picking
-    // the two closest data points for position,
-    // orientation, and velocity
-    let (before, after) = {
-        let (position, velocity, attitude) = {
-            // get latest telemetry information from before the csb timestamp
-            let position = pixhawk_history
-                .iter()
-                .filter_map(|entry| {
-                    let (position, position_ts) = entry.position?;
-                    if position_ts < timestamp {
-                        Some((position, position_ts))
-                    } else {
-                        None
-                    }
-                })
-                .nth_back(0);
-
-            let velocity = pixhawk_history
-                .iter()
-                .filter_map(|entry| {
-                    let (velocity, velocity_ts) = entry.velocity?;
-                    if velocity_ts < timestamp {
-                        Some((velocity, velocity_ts))
-                    } else {
-                        None
-                    }
-                })
-                .nth_back(0);
-
-            let attitude = pixhawk_history
-                .iter()
-                .filter_map(|entry| {
-                    let (attitude, attitude_ts) = entry.attitude?;
-                    if attitude_ts < timestamp {
-                        Some((attitude, attitude_ts))
-                    } else {
-                        None
-                    }
-                })
-                .nth_back(0);
-
-            (position, velocity, attitude)
-        };
-
-        let before = PixhawkTelemetry {
-            position,
-            velocity,
-            attitude,
-        };
-
-        let (position, velocity, attitude) = {
-            // get earliest telemetry information from after the csb timestamp
-            let position = pixhawk_history
-                .iter()
-                .filter_map(|entry| {
-                    let (position, position_ts) = entry.position?;
-                    if position_ts > timestamp {
-                        Some((position, position_ts))
-                    } else {
-                        None
-                    }
-                })
-                .nth(0);
-
-            let velocity = pixhawk_history
-                .iter()
-                .filter_map(|entry| {
-                    let (velocity, velocity_ts) = entry.velocity?;
-                    if velocity_ts > timestamp {
-                        Some((velocity, velocity_ts))
-                    } else {
-                        None
-                    }
-                })
-                .nth(0);
-
-            let attitude = pixhawk_history
-                .iter()
-                .filter_map(|entry| {
-                    let (attitude, attitude_ts) = entry.attitude?;
-                    if attitude_ts > timestamp {
-                        Some((attitude, attitude_ts))
-                    } else {
-                        None
-                    }
-                })
-                .nth(0);
-
-            (position, velocity, attitude)
-        };
-
-        let after = PixhawkTelemetry {
-            position,
-            velocity,
-            attitude,
-        };
-
-        (before, after)
-    };
-
+fn handle_csb_event(event: CsbEvent, telem_tx: &watch::Sender<Telemetry>) {
     let _ = telem_tx.send_modify(|t| {
         t.csb = Some(CsbTelemetry {
-            snapshot_before: before,
-            snapshot_after: after,
-            timestamp,
+            timestamp: event.timestamp,
         })
     });
 }

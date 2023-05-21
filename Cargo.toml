@@ -56,7 +56,7 @@ drop_guard = "0.3.0"
 [features]
 default = ["livestream", "csb"]
 livestream = ["ps-livestream"]
-csb = ["ps-main-camera/csb"]
+csb = ["ps-main-camera/csb", "ps-telemetry/csb"]
 
 [workspace]
 members = ["crates/*"]

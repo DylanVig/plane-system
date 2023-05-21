@@ -168,7 +168,7 @@ async fn run_tasks(
     };
 
     debug!("initializing telemetry task");
-    let telem_task = ps_telemetry::create_task(pixhawk_evt_rx, csb_evt_rx)
+    let telem_task = ps_telemetry::create_task(config.telemetry, pixhawk_evt_rx, csb_evt_rx)
         .context("failed to initialize telemetry task")?;
     let telem_rx = telem_task.telemetry();
     tasks.push(Box::new(telem_task));

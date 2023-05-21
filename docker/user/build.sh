@@ -14,7 +14,7 @@ ROOT_DIR=$( dirname `dirname ${SCRIPT_DIR}` )
 case "$1" in
 "rpi3-raspbian" | "rpi4-ubuntu")
   echo "building plane system for target $1" 
-  $RUNTIME run -it --rm -v ${ROOT_DIR}:/app -v ${CARGO_HOME}/registry:/usr/local/cargo/registry dr.cuair.org/x-compiler/$1:v1
+  $RUNTIME run -it --rm -v ${ROOT_DIR}:/app -v ${CARGO_HOME}/registry:/usr/local/cargo/registry -v ${CARGO_HOME}/git:/usr/local/cargo/git dr.cuair.org/x-compiler/$1:v1
   ;;
 "")
   echo "usage: build.sh <target>"

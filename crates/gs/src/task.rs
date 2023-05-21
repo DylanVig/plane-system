@@ -158,13 +158,13 @@ async fn send_image(
     let json = if let Some(telemetry) = telemetry {
         let position = telemetry
             .pixhawk
-            .as_ref()
+            .back()
             .and_then(|p| p.position)
             .map(|p| p.0);
 
         let attitude = telemetry
             .pixhawk
-            .as_ref()
+            .back()
             .and_then(|p| p.attitude)
             .map(|p| p.0);
 
