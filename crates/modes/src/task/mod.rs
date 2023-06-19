@@ -32,3 +32,5 @@ mod server;
 mod standby;
 mod testing;
 mod util;
+
+pub use server::serve;

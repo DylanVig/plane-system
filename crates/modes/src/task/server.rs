@@ -5,6 +5,7 @@ use axum::{
 };
 use ps_client::CommandSender;
 use tokio::sync::oneshot;
+use tracing::debug;
 
 use crate::command::*;
 
@@ -13,7 +14,7 @@ struct ServerState {
     cmd_tx: CommandSender<ModeRequest, ModeResponse, ModeError>,
 }
 
-async fn serve(
+pub async fn serve(
     cmd_tx: CommandSender<ModeRequest, ModeResponse, ModeError>,
 ) -> Result<(), anyhow::Error> {
     use axum::routing::*;
@@ -22,7 +23,7 @@ async fn serve(
         .route("/pan-search", get(run_panning))
         .with_state(ServerState { cmd_tx });
 
-    axum::Server::bind(&"127.0.0.1:4200".parse().unwrap())
+    axum::Server::bind(&"0.0.0.0:4200".parse().unwrap())
         .serve(app.into_make_service())
         .await?;
 
@@ -30,6 +31,8 @@ async fn serve(
 }
 
 async fn run_panning(State(state): State<ServerState>) -> Response {
+    debug!("hit pan search http endpoint");
+
     let req = ModeRequest::Search(SearchRequest::Panning {});
     let (ret_tx, ret_rx) = oneshot::channel();
     state.cmd_tx.send_async((req, ret_tx)).await;

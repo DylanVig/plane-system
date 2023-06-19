@@ -58,20 +58,31 @@ fn get_telemetry(
     let telemetry = telemetry_rx.borrow();
     let mut lon_float: f64 = 0.0;
     let mut lat_float: f64 = 0.0;
-    let lon_float_opt = telemetry.pixhawk.as_ref().map(|p| p.position.0.point.x());
+
+    let lon_float_opt = telemetry
+        .pixhawk
+        .back()
+        .and_then(|t| t.position)
+        .map(|p| p.0.point.x());
     match lon_float_opt {
         Some(lon) => {
             lon_float = lon as f64;
         }
         None => return Err(ParseTelemetryError::InvalidLon),
     }
-    let lat_float_opt = telemetry.pixhawk.as_ref().map(|p| p.position.0.point.y());
+
+    let lat_float_opt = telemetry
+        .pixhawk
+        .back()
+        .and_then(|t| t.position)
+        .map(|p| p.0.point.y());
     match lat_float_opt {
         Some(lat) => {
             lat_float = lat as f64;
         }
         None => return Err(ParseTelemetryError::InvalidLat),
     }
+
     Ok(geo::Point::new(lon_float, lat_float))
 }
 

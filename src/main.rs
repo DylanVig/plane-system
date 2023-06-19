@@ -266,6 +266,8 @@ async fn run_tasks(
             gimbal_cmd_tx.clone(),
         )?;
 
+        tokio::task::spawn(ps_modes::serve(modes_task.cmd()));
+
         let modes_cmd_tx = Some(modes_task.cmd());
         tasks.push(Box::new(modes_task));
         modes_cmd_tx

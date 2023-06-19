@@ -84,7 +84,7 @@ impl Task for UploadTask {
 
             while let Ok(cmd) = cmd_rx.recv_async().await {
                 //once image is recieved match data,file, and telemtry to now send to ground server
-                let _result = match cmd {
+                let result = match cmd {
                     GsCommand::UploadImage {
                         data,
                         file,
@@ -97,7 +97,8 @@ impl Task for UploadTask {
                             warn!("no telemetry data available for image capture")
                         }
 
-                        send_image(
+                        let mut retries = 0;
+                        while let Err(err) = send_image(
                             data.as_ref(),
                             file.file_name()
                                 .expect("invalid image file name")
@@ -107,7 +108,19 @@ impl Task for UploadTask {
                             &http_client,
                             &base_url,
                         )
-                        .await?;
+                        .await
+                        {
+                            error!("image upload failed: {err}");
+
+                            if retries > 10 {
+                                warn!("exceeded 10 retries, giving up");
+                                break;
+                            }
+
+                            tokio::time::sleep(Duration::from_secs(15)).await;
+
+                            retries += 1;
+                        }
                     }
                 };
             }
@@ -171,7 +184,6 @@ async fn send_image(
         json!({
             "timestamp": timestamp,
             "imgMode": "fixed",
-            "fov": 60.0,
             "telemetry": {
                 "altitude": position.map(|p| p.altitude_msl),
                 "planeYaw": attitude.map(|p| p.yaw),
@@ -194,7 +206,6 @@ async fn send_image(
             json!({
                 "timestamp": timestamp,
                 "imgMode": "fixed",
-                "fov": 60.0,
                 "telemetry": {
                     "altitude": 0.0,
                     "planeYaw": 0.0,
