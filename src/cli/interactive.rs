@@ -1,3 +1,6 @@
+use std::path::PathBuf;
+
+use anyhow::Context;
 use clap::Parser;
 use futures::{AsyncWriteExt, FutureExt};
 use gimbal::GimbalResponse;
@@ -47,6 +50,36 @@ pub struct CliChannels {
             oneshot::Sender<Result<ModeResponse, ModeError>>,
         )>,
     >,
+}
+
+pub async fn run_script(
+    path: PathBuf,
+    channels: CliChannels,
+    cancellation_token: CancellationToken,
+) -> anyhow::Result<()> {
+    let script = tokio::fs::read_to_string(path)
+        .await
+        .context("failed to read script file")?;
+
+    for (index, line) in script.lines().enumerate() {
+        info!("running command {line}");
+
+        let request = Parser::try_parse_from(line.split_ascii_whitespace())
+            .with_context(|| format!("invalid script command on line {index}: {line}"))?;
+
+        let fut = run_interactive_cmd(request, channels.clone(), cancellation_token.clone());
+
+        select! {
+            _ = cancellation_token.cancelled() => {
+                break;
+            }
+            result = fut => {
+                result?;
+            }
+        }
+    }
+
+    Ok(())
 }
 
 pub async fn run_interactive_cli(

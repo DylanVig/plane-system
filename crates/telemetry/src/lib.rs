@@ -1,50 +1,68 @@
+use std::{collections::VecDeque, sync::Arc};
+
 use async_trait::async_trait;
-use chrono::prelude::*;
+use chrono::{prelude::*, Duration};
 use futures::future::OptionFuture;
 use log::info;
 use ps_client::Task;
+#[cfg(feature = "csb")]
+use ps_main_camera_csb::CsbEvent;
+use ps_pixhawk::PixhawkEvent;
 use ps_types::{Euler, Point3D, Velocity3D};
 use serde::{Deserialize, Serialize};
-use tokio::{select, sync::watch};
+use tokio::{
+    select,
+    sync::{watch, RwLock},
+};
 use tokio_util::sync::CancellationToken;
 
-#[derive(Clone, Serialize, Deserialize, Debug)]
+mod config;
+
+pub use config::TelemetryConfig;
+
+#[derive(Clone, Serialize, Debug)]
 pub struct Telemetry {
-    pub pixhawk: Option<PixhawkTelemetry>,
+    /// Contains Pixhawk telemetries from oldest to newest
+    pub pixhawk: VecDeque<PixhawkTelemetry>,
+    /// Contains information from the most recent current sensing board spike
+    #[cfg(feature = "csb")]
     pub csb: Option<CsbTelemetry>,
 }
 
-#[derive(Clone, Serialize, Deserialize, Debug)]
+#[derive(Clone, Serialize, Debug, Default)]
 pub struct PixhawkTelemetry {
-    pub position: (Point3D, DateTime<Local>),
-    pub velocity: (Velocity3D, DateTime<Local>),
-    pub attitude: (Euler, DateTime<Local>),
+    pub position: Option<(Point3D, DateTime<Local>)>,
+    pub velocity: Option<(Velocity3D, DateTime<Local>)>,
+    pub attitude: Option<(Euler, DateTime<Local>)>,
+    pub timestamp: DateTime<Local>,
 }
 
-#[derive(Clone, Serialize, Deserialize, Debug)]
+#[derive(Clone, Serialize, Debug)]
 pub struct CsbTelemetry {
-    pub position: Point3D,
-    pub attitude: Euler,
     pub timestamp: DateTime<Local>,
 }
 
 pub struct TelemetryTask {
-    pixhawk_evt_rx: Option<flume::Receiver<ps_pixhawk::PixhawkEvent>>,
-    csb_evt_rx: Option<flume::Receiver<ps_main_camera_csb::CsbEvent>>,
+    config: TelemetryConfig,
+    pixhawk_evt_rx: Option<flume::Receiver<PixhawkEvent>>,
+    csb_evt_rx: Option<flume::Receiver<CsbEvent>>,
     telem_rx: watch::Receiver<Telemetry>,
     telem_tx: watch::Sender<Telemetry>,
 }
 
 pub fn create_task(
-    pixhawk_evt_rx: Option<flume::Receiver<ps_pixhawk::PixhawkEvent>>,
-    csb_evt_rx: Option<flume::Receiver<ps_main_camera_csb::CsbEvent>>,
+    config: TelemetryConfig,
+    pixhawk_evt_rx: Option<flume::Receiver<PixhawkEvent>>,
+    csb_evt_rx: Option<flume::Receiver<CsbEvent>>,
 ) -> anyhow::Result<TelemetryTask> {
     let (telem_tx, telem_rx) = watch::channel(Telemetry {
-        pixhawk: None,
+        pixhawk: VecDeque::new(),
+        #[cfg(feature = "csb")]
         csb: None,
     });
 
     Ok(TelemetryTask {
+        config,
         pixhawk_evt_rx,
         csb_evt_rx,
         telem_rx,
@@ -66,81 +84,96 @@ impl Task for TelemetryTask {
 
     async fn run(self: Box<Self>, cancel: CancellationToken) -> anyhow::Result<()> {
         let Self {
+            config,
             pixhawk_evt_rx,
             csb_evt_rx,
             telem_tx,
             ..
         } = *self;
 
-        let loop_fut = async move {
-            // store position and attitude, because pixhawk sends these
-            // separately, but we only want to publish pixhawk telem once we
-            // have both
-            let mut pixhawk_position = None;
-            let mut pixhawk_velocity = None;
-            let mut pixhawk_attitude = None;
+        let retention_period = Duration::milliseconds((config.retention_period * 1000.0) as i64);
 
-            loop {
-                let pixhawk_recv_fut = pixhawk_evt_rx.as_ref().map(|chan| chan.recv_async());
-                let csb_recv_fut = csb_evt_rx.as_ref().map(|chan| chan.recv_async());
+        loop {
+            let pixhawk_recv_fut = pixhawk_evt_rx.as_ref().map(|chan| chan.recv_async());
+            let csb_recv_fut = csb_evt_rx.as_ref().map(|chan| chan.recv_async());
 
-                select! {
-                    evt = OptionFuture::from(pixhawk_recv_fut), if pixhawk_recv_fut.is_some() => {
-                        // unwrap b/c if we are here, then the OptionFuture is OptionFuture(Some),
-                        // so it will not evaluate to None when we await it
+            select! {
+                _ = cancel.cancelled() => {
+                    break;
+                }
 
-                        match evt.unwrap()? {
-                            ps_pixhawk::PixhawkEvent::Gps { position, velocity, .. } => {
-                                let now = Local::now();
-                                pixhawk_position = Some((position, now));
-                                pixhawk_velocity = Some((velocity, now));
-                            },
-                            ps_pixhawk::PixhawkEvent::Orientation { attitude } => {
-                                pixhawk_attitude = Some((attitude, Local::now()));
-                            },
-                        }
+                evt = OptionFuture::from(pixhawk_recv_fut), if pixhawk_recv_fut.is_some() => {
+                    // unwrap b/c if we are here, then the OptionFuture is OptionFuture(Some),
+                    // so it will not evaluate to None when we await it
 
-
-                        if let (Some(position), Some(velocity), Some(attitude)) = (pixhawk_position, pixhawk_velocity, pixhawk_attitude) {
-                            let _ = telem_tx
-                                .send_modify(|t| t.pixhawk = Some(PixhawkTelemetry {
-                                    position,
-                                    velocity,
-                                    attitude,
-                                }));
-                        }
-                    }
-
-                    evt = OptionFuture::from(csb_recv_fut), if csb_recv_fut.is_some() => {
-                        // unwrap b/c if we are here, then the OptionFuture is OptionFuture(Some),
-                        // so it will not evaluate to None when we await it
-
-                        let evt = evt.unwrap()?;
-
-                        let _ = telem_tx
-                            .send_modify(|t| t.csb = Some(CsbTelemetry {
-                                position: Default::default(),
-                                attitude: Default::default(),
-                                timestamp: evt.timestamp,
-                            }));
-                    }
-
-                    else => {
-                        info!("no available telemetry sources, exiting");
-                        break;
+                    if let Ok(evt) = evt.unwrap() {
+                        handle_pixhawk_event(evt, &telem_tx, retention_period);
                     }
                 }
+
+                evt = OptionFuture::from(csb_recv_fut), if csb_recv_fut.is_some() => {
+                    // unwrap b/c if we are here, then the OptionFuture is OptionFuture(Some),
+                    // so it will not evaluate to None when we await it
+
+                    if let Ok(evt) = evt.unwrap() {
+                        handle_csb_event(evt, &telem_tx);
+                    }
+                }
+
+                else => {
+                    info!("no available telemetry sources, exiting");
+                    break;
+                }
             }
-
-            #[allow(unreachable_code)]
-            Ok::<_, anyhow::Error>(())
-        };
-
-        select! {
-          _ = cancel.cancelled() => {}
-          res = loop_fut => { res? }
         }
 
         Ok(())
     }
+}
+
+fn handle_pixhawk_event(
+    event: PixhawkEvent,
+    telem_tx: &watch::Sender<Telemetry>,
+    retention_period: Duration,
+) {
+    let _ = telem_tx.send_modify(|t| {
+        let pixhawk_history = &mut t.pixhawk;
+
+        // base new telem on old telem, update fields
+        let mut telem = pixhawk_history.back().cloned().unwrap_or_default();
+
+        let now = Local::now();
+
+        match event {
+            PixhawkEvent::Gps {
+                position, velocity, ..
+            } => {
+                telem.position = Some((position, now));
+                telem.velocity = Some((velocity, now));
+            }
+            PixhawkEvent::Orientation { attitude } => {
+                telem.attitude = Some((attitude, now));
+            }
+        }
+
+        telem.timestamp = now;
+
+        let threshold = now - retention_period;
+
+        while let Some(first) = pixhawk_history.front() {
+            if first.timestamp < threshold {
+                pixhawk_history.pop_front();
+            }
+        }
+
+        pixhawk_history.push_back(telem);
+    });
+}
+
+fn handle_csb_event(event: CsbEvent, telem_tx: &watch::Sender<Telemetry>) {
+    let _ = telem_tx.send_modify(|t| {
+        t.csb = Some(CsbTelemetry {
+            timestamp: event.timestamp,
+        })
+    });
 }

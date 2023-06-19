@@ -1,3 +1,4 @@
+use anyhow::bail;
 use async_trait::async_trait;
 use ps_client::Task;
 use ps_types::{Euler, Point3D, Velocity3D};
@@ -10,22 +11,26 @@ use mavlink::{ardupilotmega as apm, common, MavlinkVersion};
 
 use crate::{interface::PixhawkInterface, PixhawkConfig, PixhawkEvent};
 
+pub fn create_tasks(config: PixhawkConfig) -> anyhow::Result<EventTask> {
+    let (evt_tx, evt_rx) = flume::bounded(256);
+
+    Ok(EventTask {
+        address: config.address,
+        version: match config.mavlink.as_str() {
+            "V1" => MavlinkVersion::V1,
+            "V2" => MavlinkVersion::V2,
+            other => bail!("invalid mavlink version {other}"),
+        },
+        evt_tx,
+        evt_rx,
+    })
+}
+
 pub struct EventTask {
     address: SocketAddr,
     version: MavlinkVersion,
     evt_tx: flume::Sender<PixhawkEvent>,
     evt_rx: flume::Receiver<PixhawkEvent>,
-}
-
-pub fn create_task(config: PixhawkConfig) -> anyhow::Result<EventTask> {
-    let (evt_tx, evt_rx) = flume::bounded(256);
-
-    Ok(EventTask {
-        address: config.address,
-        version: config.mavlink,
-        evt_tx,
-        evt_rx,
-    })
 }
 
 impl EventTask {
@@ -51,11 +56,13 @@ impl Task for EventTask {
         let loop_fut = async move {
             let mut interface = PixhawkInterface::connect(address, version).await?;
 
+            interface.init().await?;
+
             loop {
                 let message = interface.recv().await?;
 
                 match message {
-                    apm::MavMessage::common(common::MavMessage::GLOBAL_POSITION_INT(data)) => {
+                    apm::MavMessage::GLOBAL_POSITION_INT(data) => {
                         let _ = evt_tx.send(PixhawkEvent::Gps {
                             position: Point3D {
                                 point: geo::Point::new(
@@ -74,7 +81,7 @@ impl Task for EventTask {
                             ),
                         });
                     }
-                    apm::MavMessage::common(common::MavMessage::ATTITUDE(data)) => {
+                    apm::MavMessage::ATTITUDE(data) => {
                         let _ = evt_tx.send(PixhawkEvent::Orientation {
                             attitude: Euler::new::<radian>(data.roll, data.pitch, data.yaw),
                         });

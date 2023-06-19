@@ -30,6 +30,4 @@ num-derive = { workspace = true }
 
 mavlink = { features = [
   "ardupilotmega",
-  "uavionix",
-  "icarous",
-], git = "https://github.com/laptou/rust-mavlink" }
+], git = "https://github.com/mavlink/rust-mavlink", rev = "33edf26" }

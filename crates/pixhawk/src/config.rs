@@ -6,5 +6,5 @@ use serde::Deserialize;
 #[derive(Debug, Deserialize)]
 pub struct PixhawkConfig {
     pub address: SocketAddr,
-    pub mavlink: MavlinkVersion,
+    pub mavlink: String,
 }

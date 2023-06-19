@@ -65,7 +65,7 @@ impl PixhawkInterface {
         info!("waiting for heartbeat");
         self.wait_for_message(
             |message| match message {
-                apm::MavMessage::common(common::MavMessage::HEARTBEAT(_)) => true,
+                apm::MavMessage::HEARTBEAT(_) => true,
                 _ => false,
             },
             Duration::from_secs(100),
@@ -185,17 +185,17 @@ impl PixhawkInterface {
                     self.buf.advance(skip);
                     msg
                 }
-                Err(MessageReadError::Parse(ParserError::InvalidChecksum { .. })) => {
-                    debug!(
-                        "message parsing failure (invalid checksum); buffer contents: {:02x?}",
-                        msg_content,
-                    );
-                    trace!("got invalid checksum, dropping message");
-                    let skip = magic_position + msg_body_size;
-                    // let skip = magic_position + 1;
-                    self.buf.advance(skip);
-                    continue;
-                }
+                // Err(MessageReadError::Parse(ParserError::InvalidChecksum { .. })) => {
+                //     debug!(
+                //         "message parsing failure (invalid checksum); buffer contents: {:02x?}",
+                //         msg_content,
+                //     );
+                //     trace!("got invalid checksum, dropping message");
+                //     let skip = magic_position + msg_body_size;
+                //     // let skip = magic_position + 1;
+                //     self.buf.advance(skip);
+                //     continue;
+                // }
                 Err(err) => {
                     warn!(
                         "message parsing failure ({:?}); buffer contents: {:02x?}",
@@ -237,7 +237,7 @@ impl PixhawkInterface {
     pub async fn ping(&mut self) -> anyhow::Result<()> {
         debug!("pinging pixhawk");
 
-        let message = apm::MavMessage::common(common::MavMessage::PING(common::PING_DATA {
+        let message = apm::MavMessage::PING(apm::PING_DATA {
             time_usec: SystemTime::now()
                 .duration_since(SystemTime::UNIX_EPOCH)
                 .unwrap()
@@ -245,13 +245,13 @@ impl PixhawkInterface {
             seq: 0,
             target_system: 0,
             target_component: 0,
-        }));
+        });
 
         self.send(message).await?;
 
         self.wait_for_message(
             |message| match message {
-                apm::MavMessage::common(common::MavMessage::PING(_)) => {
+                apm::MavMessage::PING(_) => {
                     debug!("received ping back");
                     true
                 }
@@ -267,22 +267,25 @@ impl PixhawkInterface {
     /// Sets a parameter on the Pixhawk and waits for acknowledgement. The
     /// default timeout is 10 seconds.
     #[allow(dead_code)]
-    pub async fn set_param<T: MavParam>(&mut self, id: &str, param_value: T) -> anyhow::Result<T> {
+    pub async fn set_param<T: MavParam>(
+        &mut self,
+        id: &str,
+        param_value: T,
+    ) -> anyhow::Result<T> {
         debug!("setting param {:?} to {:?}", id, param_value);
 
-        let mut param_id: [char; 16] = ['\0'; 16];
-        for (index, character) in id.char_indices() {
-            param_id[index] = character;
+        let mut param_id: [u8; 16] = [0; 16];
+        for (index, byte) in id.as_bytes().iter().enumerate() {
+            param_id[index] = *byte;
         }
 
-        let message =
-            apm::MavMessage::common(common::MavMessage::PARAM_SET(common::PARAM_SET_DATA {
-                param_id,
-                param_type: T::MAV_PARAM_TYPE,
-                param_value: num_traits::cast(param_value).unwrap(),
-                target_system: 0,
-                target_component: 0,
-            }));
+        let message = apm::MavMessage::PARAM_SET(apm::PARAM_SET_DATA {
+            param_id,
+            param_type: T::MAV_PARAM_TYPE,
+            param_value: num_traits::cast(param_value).unwrap(),
+            target_system: 0,
+            target_component: 0,
+        });
 
         // send message
         self.send(message).await?;
@@ -293,9 +296,7 @@ impl PixhawkInterface {
         let ack_message = self
             .wait_for_message(
                 |message| match message {
-                    apm::MavMessage::common(common::MavMessage::PARAM_VALUE(data)) => {
-                        data.param_id == param_id
-                    }
+                    apm::MavMessage::PARAM_VALUE(data) => data.param_id == param_id,
                     _ => false,
                 },
                 Duration::from_secs(10),
@@ -304,7 +305,7 @@ impl PixhawkInterface {
             .context("Error occurred while waiting for ack after setting parameter")?;
 
         match ack_message {
-            apm::MavMessage::common(common::MavMessage::PARAM_VALUE(data)) => {
+            apm::MavMessage::PARAM_VALUE(data) => {
                 let param_value = num_traits::cast(data.param_value).unwrap();
                 debug!("received ack, current param value is {:?}", param_value);
                 Ok(param_value)
@@ -318,26 +319,24 @@ impl PixhawkInterface {
     #[allow(dead_code)]
     pub async fn send_command(
         &mut self,
-        command: common::MavCmd,
+        command: apm::MavCmd,
         params: [f32; 7],
-    ) -> anyhow::Result<common::MavResult> {
+    ) -> anyhow::Result<apm::MavResult> {
         debug!("sending command {:?} ({:?})", command, params);
 
-        let message = apm::MavMessage::common(common::MavMessage::COMMAND_LONG(
-            common::COMMAND_LONG_DATA {
-                command,
-                confirmation: 0,
-                param1: params[0],
-                param2: params[1],
-                param3: params[2],
-                param4: params[3],
-                param5: params[4],
-                param6: params[5],
-                param7: params[6],
-                target_system: 0,
-                target_component: 0,
-            },
-        ));
+        let message = apm::MavMessage::COMMAND_LONG(apm::COMMAND_LONG_DATA {
+            command,
+            confirmation: 0,
+            param1: params[0],
+            param2: params[1],
+            param3: params[2],
+            param4: params[3],
+            param5: params[4],
+            param6: params[5],
+            param7: params[6],
+            target_system: 0,
+            target_component: 0,
+        });
 
         // send message
         self.send(message).await?;
@@ -348,9 +347,7 @@ impl PixhawkInterface {
         let ack_message = self
             .wait_for_message(
                 |message| match message {
-                    apm::MavMessage::common(common::MavMessage::COMMAND_ACK(data)) => {
-                        data.command == command
-                    }
+                    apm::MavMessage::COMMAND_ACK(data) => data.command == command,
                     _ => false,
                 },
                 Duration::from_secs(10),
@@ -360,9 +357,10 @@ impl PixhawkInterface {
         debug!("received ack");
 
         match ack_message {
-            apm::MavMessage::common(common::MavMessage::COMMAND_ACK(data)) => match data.result {
-                common::MavResult::MAV_RESULT_ACCEPTED
-                | common::MavResult::MAV_RESULT_IN_PROGRESS => Ok(data.result),
+            apm::MavMessage::COMMAND_ACK(data) => match data.result {
+                apm::MavResult::MAV_RESULT_ACCEPTED | apm::MavResult::MAV_RESULT_IN_PROGRESS => {
+                    Ok(data.result)
+                }
                 _ => Err(anyhow::anyhow!(
                     "Command {:?} failed with status code {:?}",
                     command,
@@ -375,45 +373,45 @@ impl PixhawkInterface {
 }
 
 pub trait MavParam: num_traits::NumCast + std::fmt::Debug {
-    const MAV_PARAM_TYPE: common::MavParamType;
+    const MAV_PARAM_TYPE: apm::MavParamType;
 }
 
 impl MavParam for f32 {
-    const MAV_PARAM_TYPE: common::MavParamType = common::MavParamType::MAV_PARAM_TYPE_REAL32;
+    const MAV_PARAM_TYPE: apm::MavParamType = apm::MavParamType::MAV_PARAM_TYPE_REAL32;
 }
 
 impl MavParam for f64 {
-    const MAV_PARAM_TYPE: common::MavParamType = common::MavParamType::MAV_PARAM_TYPE_REAL64;
+    const MAV_PARAM_TYPE: apm::MavParamType = apm::MavParamType::MAV_PARAM_TYPE_REAL64;
 }
 
 impl MavParam for u8 {
-    const MAV_PARAM_TYPE: common::MavParamType = common::MavParamType::MAV_PARAM_TYPE_UINT8;
+    const MAV_PARAM_TYPE: apm::MavParamType = apm::MavParamType::MAV_PARAM_TYPE_UINT8;
 }
 
 impl MavParam for u16 {
-    const MAV_PARAM_TYPE: common::MavParamType = common::MavParamType::MAV_PARAM_TYPE_UINT16;
+    const MAV_PARAM_TYPE: apm::MavParamType = apm::MavParamType::MAV_PARAM_TYPE_UINT16;
 }
 
 impl MavParam for u32 {
-    const MAV_PARAM_TYPE: common::MavParamType = common::MavParamType::MAV_PARAM_TYPE_UINT32;
+    const MAV_PARAM_TYPE: apm::MavParamType = apm::MavParamType::MAV_PARAM_TYPE_UINT32;
 }
 
 impl MavParam for u64 {
-    const MAV_PARAM_TYPE: common::MavParamType = common::MavParamType::MAV_PARAM_TYPE_UINT64;
+    const MAV_PARAM_TYPE: apm::MavParamType = apm::MavParamType::MAV_PARAM_TYPE_UINT64;
 }
 
 impl MavParam for i8 {
-    const MAV_PARAM_TYPE: common::MavParamType = common::MavParamType::MAV_PARAM_TYPE_INT8;
+    const MAV_PARAM_TYPE: apm::MavParamType = apm::MavParamType::MAV_PARAM_TYPE_INT8;
 }
 
 impl MavParam for i16 {
-    const MAV_PARAM_TYPE: common::MavParamType = common::MavParamType::MAV_PARAM_TYPE_INT16;
+    const MAV_PARAM_TYPE: apm::MavParamType = apm::MavParamType::MAV_PARAM_TYPE_INT16;
 }
 
 impl MavParam for i32 {
-    const MAV_PARAM_TYPE: common::MavParamType = common::MavParamType::MAV_PARAM_TYPE_INT32;
+    const MAV_PARAM_TYPE: apm::MavParamType = apm::MavParamType::MAV_PARAM_TYPE_INT32;
 }
 
 impl MavParam for i64 {
-    const MAV_PARAM_TYPE: common::MavParamType = common::MavParamType::MAV_PARAM_TYPE_INT64;
+    const MAV_PARAM_TYPE: apm::MavParamType = apm::MavParamType::MAV_PARAM_TYPE_INT64;
 }

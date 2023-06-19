@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use anyhow::Context;
 use clap::Parser;
 use ctrlc;
@@ -7,7 +9,10 @@ use tokio_util::sync::CancellationToken;
 use tracing::metadata::LevelFilter;
 use tracing_subscriber::{filter::Targets, layer::SubscriberExt, util::SubscriberInitExt, Layer};
 
-use crate::cli::interactive::{run_interactive_cli, CliChannels};
+use crate::{
+    cli::interactive::{run_interactive_cli, run_script, CliChannels},
+    config::PlaneSystemConfig,
+};
 
 #[macro_use]
 extern crate tracing;
@@ -74,7 +79,7 @@ async fn main() -> anyhow::Result<()> {
                     ("plane_system", LevelFilter::DEBUG),
                     ("ps_livestream", LevelFilter::DEBUG),
                     ("ps_main_camera", LevelFilter::DEBUG),
-                    ("ps_main_camera_csb", LevelFilter::DEBUG),
+                    ("ps_main_camera_csb", LevelFilter::TRACE),
                     ("ps_telemetry", LevelFilter::DEBUG),
                     ("ps_gs", LevelFilter::DEBUG),
                     ("ps_pixhawk", LevelFilter::DEBUG),
@@ -105,11 +110,10 @@ async fn main() -> anyhow::Result<()> {
     let main_args: cli::args::MainArgs = cli::args::MainArgs::parse();
 
     debug!("reading config from {:?}", &main_args.config);
-    let config = crate::config::PlaneSystemConfig::read_from_path(&main_args.config)
+    let config = PlaneSystemConfig::read_from_path(&main_args.config)
         .context("failed to read config file")?;
-    let config = config;
 
-    let result = run_tasks(config, editor, stdout).await;
+    let result = run_tasks(config, main_args.script, editor, stdout).await;
 
     if let Err(err) = &result {
         error!("program exited with error: {err:?}");
@@ -121,7 +125,8 @@ async fn main() -> anyhow::Result<()> {
 }
 
 async fn run_tasks(
-    config: crate::config::PlaneSystemConfig,
+    config: PlaneSystemConfig,
+    script_path: Option<PathBuf>,
     editor: Readline,
     stdout: SharedWriter,
 ) -> anyhow::Result<()> {
@@ -142,7 +147,7 @@ async fn run_tasks(
         Some(c) => {
             debug!("initializing pixhawk task");
             let evt_task =
-                ps_pixhawk::create_task(c).context("failed to initialize pixhawk task")?;
+                ps_pixhawk::create_tasks(c).context("failed to initialize pixhawk task")?;
             let pixhawk_evt_rx = evt_task.events();
             tasks.push(Box::new(evt_task));
             Some(pixhawk_evt_rx)
@@ -172,7 +177,7 @@ async fn run_tasks(
     let csb_evt_rx = None;
 
     debug!("initializing telemetry task");
-    let telem_task = ps_telemetry::create_task(pixhawk_evt_rx, csb_evt_rx)
+    let telem_task = ps_telemetry::create_task(config.telemetry, pixhawk_evt_rx, csb_evt_rx)
         .context("failed to initialize telemetry task")?;
 
     let telem_rx_camera = telem_task.telemetry();
@@ -277,6 +282,14 @@ async fn run_tasks(
         #[cfg(feature = "livestream")]
         livestream_cmd_tx: livestream_cmd_tx,
     };
+
+    if let Some(script_path) = script_path {
+        join_set.spawn(run_script(
+            script_path,
+            cli_channels.clone(),
+            cancellation_token.clone(),
+        ));
+    }
 
     join_set.spawn(run_interactive_cli(
         editor,

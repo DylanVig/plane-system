@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-ps-main-camera-csb = { path = "../main-camera-csb" }
+ps-main-camera-csb = { path = "../main-camera-csb", optional = true }
 ps-pixhawk = { path = "../pixhawk" }
 ps-client = { path = "../client" }
 ps-types = { path = "../types" }
@@ -23,3 +23,5 @@ async-trait = { workspace = true }
 flume = { workspace = true }
 futures = { workspace = true }
 
+[features]
+csb = ["dep:ps-main-camera-csb"]

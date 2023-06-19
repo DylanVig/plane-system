@@ -14,7 +14,15 @@
   "main_camera": {
     "download": {
       "save_path": "./images/"
-    }
+    },
+		"current_sensing": {
+			"gpio_int": 23,
+			"gpio_ack": 24,
+			"i2c": {
+        "bus": 1,
+        "addr": 10
+      }
+		}
   },
   "livestream": null
 }
