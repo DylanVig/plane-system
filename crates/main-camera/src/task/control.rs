@@ -3,7 +3,7 @@ use async_trait::async_trait;
 use chrono::{DateTime, Local};
 use futures::sink::With;
 use num_traits::ToPrimitive;
-use ps_client::{ChannelCommandSink, ChannelCommandSource, Task};
+use ps_client::{CommandReceiver, CommandSender, Task};
 use ptp::{Data, Event};
 use std::{fs, sync::Arc, time::Duration};
 use tokio::{
@@ -56,8 +56,8 @@ pub struct ControlTask {
     ptp_evt_rx: broadcast::Receiver<Event>,
     ctrl_evt_rx: flume::Receiver<ControlEvent>,
     ctrl_evt_tx: flume::Sender<ControlEvent>,
-    cmd_rx: ChannelCommandSource<CameraRequest, CameraResponse>,
-    cmd_tx: ChannelCommandSink<CameraRequest, CameraResponse>,
+    cmd_rx: CommandReceiver<CameraRequest, CameraResponse>,
+    cmd_tx: CommandSender<CameraRequest, CameraResponse>,
     min_focal_length: f32,
 }
 
@@ -81,7 +81,7 @@ impl ControlTask {
         }
     }
 
-    pub fn cmd(&self) -> ChannelCommandSink<CameraRequest, CameraResponse> {
+    pub fn cmd(&self) -> CommandSender<CameraRequest, CameraResponse> {
         self.cmd_tx.clone()
     }
 
@@ -262,7 +262,7 @@ impl Task for ControlTask {
         select! {
           _ = cancel.cancelled() => {}
           res = loop_fut => { res? }
-        };
+        }
 
         Ok(())
     }

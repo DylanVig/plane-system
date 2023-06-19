@@ -1,7 +1,7 @@
 use clap::Parser;
 use futures::{AsyncWriteExt, FutureExt};
 use gimbal::GimbalResponse;
-use ps_client::ChannelCommandSink;
+use ps_client::CommandSender;
 use ps_modes::command::ModeError;
 use ps_modes::command::ModeRequest;
 use ps_modes::command::ModeResponse;
@@ -37,11 +37,10 @@ enum Command {
 
 #[derive(Clone)]
 pub struct CliChannels {
-    pub camera_cmd_tx: Option<ChannelCommandSink<mc::CameraRequest, mc::CameraResponse>>,
+    pub camera_cmd_tx: Option<CommandSender<mc::CameraRequest, mc::CameraResponse>>,
     #[cfg(feature = "livestream")]
-    pub livestream_cmd_tx:
-        Option<ChannelCommandSink<ls::LivestreamRequest, ls::LivestreamResponse>>,
-    pub gimbal_cmd_tx: Option<ChannelCommandSink<gimbal::GimbalRequest, gimbal::GimbalResponse>>,
+    pub livestream_cmd_tx: Option<CommandSender<ls::LivestreamRequest, ls::LivestreamResponse>>,
+    pub gimbal_cmd_tx: Option<CommandSender<gimbal::GimbalRequest, gimbal::GimbalResponse>>,
     pub modes_cmd_tx: Option<
         flume::Sender<(
             ModeRequest,

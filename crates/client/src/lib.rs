@@ -18,12 +18,12 @@ pub trait Task {
     async fn run(self: Box<Self>, cancel: CancellationToken) -> anyhow::Result<()>;
 }
 
-pub type Command<Req, Res> = (Req, oneshot::Sender<anyhow::Result<Res>>);
-pub type ChannelCommandSink<Req, Res> = flume::Sender<Command<Req, Res>>;
-pub type ChannelCommandSource<Req, Res> = flume::Receiver<Command<Req, Res>>;
+pub type Command<Req, Res, Err = anyhow::Error> = (Req, oneshot::Sender<Result<Res, Err>>);
+pub type CommandSender<Req, Res, Err = anyhow::Error> = flume::Sender<Command<Req, Res, Err>>;
+pub type CommandReceiver<Req, Res, Err = anyhow::Error> = flume::Receiver<Command<Req, Res, Err>>;
 
 #[async_trait]
-impl<Req: Send, Res: Send> CommandSink for ChannelCommandSink<Req, Res> {
+impl<Req: Send, Res: Send> CommandSink for CommandSender<Req, Res> {
     type Request = Req;
     type Response = anyhow::Result<Res>;
 

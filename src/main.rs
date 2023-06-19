@@ -251,16 +251,14 @@ async fn run_tasks(
     };
 
     //Initialize plane system modes
-    let modes_cmd_tx = if let (Some(camera_ctrl_tx), Some(gimbal_cntrl_tx), Some(modes_config)) = (
-        camera_ctrl_cmd_tx.clone(),
-        gimbal_cmd_tx.clone(),
-        config.modes,
-    ) {
+    let modes_cmd_tx = if let (Some(camera_ctrl_tx), Some(modes_config)) =
+        (camera_ctrl_cmd_tx.clone(), config.modes)
+    {
         let modes_task = ps_modes::create_tasks(
             modes_config,
             camera_ctrl_tx,
             telem_rx_modes,
-            gimbal_cntrl_tx,
+            gimbal_cmd_tx.clone(),
         )?;
 
         let modes_cmd_tx = Some(modes_task.cmd());

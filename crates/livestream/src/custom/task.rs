@@ -6,7 +6,7 @@ use futures::stream::StreamExt;
 
 use gst::prelude::*;
 use log::*;
-use ps_client::{ChannelCommandSink, ChannelCommandSource, Task};
+use ps_client::{CommandReceiver, CommandSender, Task};
 use tokio::select;
 
 use tokio_util::sync::CancellationToken;
@@ -17,8 +17,8 @@ pub struct CustomTask {
     save_path: PathBuf,
     /// A map from pipeline names to GStreamer pipeline descriptions.
     pipeline_descs: HashMap<String, String>,
-    cmd_tx: ChannelCommandSink<LivestreamRequest, LivestreamResponse>,
-    cmd_rx: ChannelCommandSource<LivestreamRequest, LivestreamResponse>,
+    cmd_tx: CommandSender<LivestreamRequest, LivestreamResponse>,
+    cmd_rx: CommandReceiver<LivestreamRequest, LivestreamResponse>,
 }
 
 pub fn create_task(config: CustomConfig) -> anyhow::Result<CustomTask> {
@@ -49,7 +49,7 @@ pub fn create_task(config: CustomConfig) -> anyhow::Result<CustomTask> {
 }
 
 impl CustomTask {
-    pub fn cmd(&self) -> ChannelCommandSink<LivestreamRequest, LivestreamResponse> {
+    pub fn cmd(&self) -> CommandSender<LivestreamRequest, LivestreamResponse> {
         self.cmd_tx.clone()
     }
 }

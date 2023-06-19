@@ -5,8 +5,8 @@ use crate::task::control::ModeError::CameraRequestError;
 use crate::task::control::ModeError::GimbalRequestError;
 use crate::task::control::ModeError::WaypointError;
 use async_trait::async_trait;
-use ps_client::ChannelCommandSink;
-use ps_client::ChannelCommandSource;
+use ps_client::CommandReceiver;
+use ps_client::CommandSender;
 use ps_client::Task;
 use ps_gimbal::GimbalRequest;
 use ps_gimbal::GimbalResponse;
@@ -45,10 +45,12 @@ pub struct ModesTask {
         tokio::sync::oneshot::Sender<Result<CameraResponse, anyhow::Error>>,
     )>,
     telem_rx: watch::Receiver<Telemetry>,
-    gimbal_tx: flume::Sender<(
-        GimbalRequest,
-        tokio::sync::oneshot::Sender<Result<GimbalResponse, Error>>,
-    )>,
+    gimbal_tx: Option<
+        flume::Sender<(
+            GimbalRequest,
+            tokio::sync::oneshot::Sender<Result<GimbalResponse, Error>>,
+        )>,
+    >,
     modes_config: ModesConfig,
 }
 
@@ -60,10 +62,12 @@ impl ModesTask {
             tokio::sync::oneshot::Sender<Result<CameraResponse, anyhow::Error>>,
         )>,
         telem_rx: watch::Receiver<Telemetry>,
-        gimbal_tx: flume::Sender<(
-            GimbalRequest,
-            tokio::sync::oneshot::Sender<Result<GimbalResponse, Error>>,
-        )>,
+        gimbal_tx: Option<
+            flume::Sender<(
+                GimbalRequest,
+                tokio::sync::oneshot::Sender<Result<GimbalResponse, Error>>,
+            )>,
+        >,
     ) -> Self {
         let (cmd_tx, cmd_rx) = flume::bounded::<(
             ModeRequest,
@@ -117,15 +121,22 @@ async fn time_search(
 
 async fn pan_search(
     gimbal_positions: Vec<GimbalPosition>,
-    gimbal_tx: flume::Sender<(
-        GimbalRequest,
-        tokio::sync::oneshot::Sender<Result<GimbalResponse, Error>>,
-    )>,
+    gimbal_tx: Option<
+        flume::Sender<(
+            GimbalRequest,
+            tokio::sync::oneshot::Sender<Result<GimbalResponse, Error>>,
+        )>,
+    >,
     main_camera_tx: flume::Sender<(
         CameraRequest,
         tokio::sync::oneshot::Sender<Result<CameraResponse, anyhow::Error>>,
     )>,
 ) -> Result<(), ModeError> {
+    let gimbal_tx = match gimbal_tx {
+        Some(gimbal_tx) => gimbal_tx,
+        None => return Err(GimbalRequestError),
+    };
+
     loop {
         for pos in &gimbal_positions {
             // pitch, roll
@@ -230,13 +241,26 @@ impl Task for ModesTask {
                                         .map(|_| ModeResponse::Response)
                                         .map_err(ModeError::Camera)
                                 }
-                                SearchRequest::Panning {} => pan_search(
-                                    self.modes_config.gimbal_positions.clone(),
-                                    self.gimbal_tx.clone(),
-                                    self.camera_ctrl_cmd_tx.clone(),
-                                )
-                                .await
-                                .map(|_| ModeResponse::Response),
+                                SearchRequest::Panning {} => match &self.gimbal_tx {
+                                    None => {
+                                        start_cc(self.camera_ctrl_cmd_tx.clone())
+                                            .await
+                                            .map(|_| ModeResponse::Response)
+                                            .map_err(ModeError::Camera);
+                                        sleep(Duration::new(180, 0)).await;
+                                        end_cc(self.camera_ctrl_cmd_tx.clone())
+                                            .await
+                                            .map(|_| ModeResponse::Response)
+                                            .map_err(ModeError::Camera)
+                                    }
+                                    _ => pan_search(
+                                        self.modes_config.gimbal_positions.clone(),
+                                        self.gimbal_tx.clone(),
+                                        self.camera_ctrl_cmd_tx.clone(),
+                                    )
+                                    .await
+                                    .map(|_| ModeResponse::Response),
+                                },
                             },
                         };
 
