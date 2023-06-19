@@ -156,6 +156,8 @@ fn handle_pixhawk_event(
             }
         }
 
+        telem.timestamp = now;
+
         let threshold = now - retention_period;
 
         while let Some(first) = pixhawk_history.front() {

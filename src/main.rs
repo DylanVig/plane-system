@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use anyhow::Context;
 use clap::Parser;
 use ctrlc;
@@ -7,7 +9,10 @@ use tokio_util::sync::CancellationToken;
 use tracing::metadata::LevelFilter;
 use tracing_subscriber::{filter::Targets, layer::SubscriberExt, util::SubscriberInitExt, Layer};
 
-use crate::cli::interactive::{run_interactive_cli, CliChannels};
+use crate::{
+    cli::interactive::{run_interactive_cli, run_script, CliChannels},
+    config::PlaneSystemConfig,
+};
 
 #[macro_use]
 extern crate tracing;
@@ -104,11 +109,10 @@ async fn main() -> anyhow::Result<()> {
     let main_args: cli::args::MainArgs = cli::args::MainArgs::parse();
 
     debug!("reading config from {:?}", &main_args.config);
-    let config = crate::config::PlaneSystemConfig::read_from_path(&main_args.config)
+    let config = PlaneSystemConfig::read_from_path(&main_args.config)
         .context("failed to read config file")?;
-    let config = config;
 
-    let result = run_tasks(config, editor, stdout).await;
+    let result = run_tasks(config, main_args.script, editor, stdout).await;
 
     if let Err(err) = &result {
         error!("program exited with error: {err:?}");
@@ -120,7 +124,8 @@ async fn main() -> anyhow::Result<()> {
 }
 
 async fn run_tasks(
-    config: crate::config::PlaneSystemConfig,
+    config: PlaneSystemConfig,
+    script_path: Option<PathBuf>,
     editor: Readline,
     stdout: SharedWriter,
 ) -> anyhow::Result<()> {
@@ -254,6 +259,14 @@ async fn run_tasks(
         livestream_cmd_tx,
         gimbal_cmd_tx,
     };
+
+    if let Some(script_path) = script_path {
+        join_set.spawn(run_script(
+            script_path,
+            cli_channels.clone(),
+            cancellation_token.clone(),
+        ));
+    }
 
     join_set.spawn(run_interactive_cli(
         editor,

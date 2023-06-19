@@ -2,12 +2,12 @@ use std::time::Duration;
 
 use anyhow::Context;
 use defer::defer;
-use log::{debug, info, warn, trace};
+use log::{debug, info, trace, warn};
 use rppal::{gpio::*, i2c::*};
 
 use async_trait::async_trait;
 use ps_client::Task;
-use tokio::{select, io::AsyncWriteExt};
+use tokio::{io::AsyncWriteExt, select};
 use tokio_util::sync::CancellationToken;
 
 use crate::{CsbConfig, CsbEvent};
@@ -103,6 +103,8 @@ impl Task for EventTask {
                 let mut file = tokio::fs::File::create("csb.csv").await.unwrap();
                 let mut file = tokio::io::BufWriter::new(file);
 
+                let mut x = 0;
+
                 while !cancel.is_cancelled() {
                     let mut reading = [0u8; 2];
                     // let mut longitude = [0u8; 4];
@@ -112,9 +114,16 @@ impl Task for EventTask {
 
                         let now = chrono::Utc::now();
                         let reading = u16::from_le_bytes(reading);
-    
-                        trace!("i2c says {reading} {reading:x}");
-                        file.write_all(format!("{now},{reading}\n").as_bytes()).await.unwrap();
+
+                        if x % 20 == 0 {
+                            trace!("i2c says {reading} {reading:x}");
+                        }
+
+                        x += 1;
+
+                        file.write_all(format!("{now},{reading}\n").as_bytes())
+                            .await
+                            .unwrap();
                     }
 
                     interval.tick().await;

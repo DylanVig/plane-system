@@ -10,7 +10,6 @@ pub struct PlaneSystemConfig {
     pub gimbal: Option<ps_gimbal::GimbalConfig>,
     #[serde(default)]
     pub telemetry: ps_telemetry::TelemetryConfig,
-
     #[cfg(feature = "livestream")]
     pub livestream: Option<ps_livestream::LivestreamConfig>,
 }
