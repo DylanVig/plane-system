@@ -4,16 +4,17 @@ use anyhow::Context;
 use async_trait::async_trait;
 use flume;
 
-use log::{debug, info, trace, warn};
-
 use ps_client::Task;
 use ps_telemetry::Telemetry;
 use reqwest;
 use serde_json::json;
 use std::path::PathBuf;
+use std::time::Duration;
 use std::{str::FromStr, sync::Arc};
 use tokio::select;
 use tokio_util::sync::CancellationToken;
+use tracing::trace;
+use tracing::{debug, error, info, warn};
 
 ///This is a struct to contain the data to send to the ground server
 pub enum GsCommand {
@@ -98,28 +99,37 @@ impl Task for UploadTask {
                         }
 
                         let mut retries = 0;
-                        while let Err(err) = send_image(
-                            data.as_ref(),
-                            file.file_name()
-                                .expect("invalid image file name")
-                                .to_string_lossy()
-                                .into_owned(),
-                            telemetry,
-                            &http_client,
-                            &base_url,
-                        )
-                        .await
-                        {
-                            error!("image upload failed: {err}");
+                        loop {
+                            let result = send_image(
+                                data.as_ref(),
+                                file.file_name()
+                                    .expect("invalid image file name")
+                                    .to_string_lossy()
+                                    .into_owned(),
+                                telemetry.clone(),
+                                &http_client,
+                                &base_url,
+                            )
+                            .await;
 
-                            if retries > 10 {
-                                warn!("exceeded 10 retries, giving up");
-                                break;
+                            match result {
+                                Ok(_) => {
+                                    info!("image upload successful");
+                                    break;
+                                }
+                                Err(err) => {
+                                    error!("image upload failed: {err}");
+
+                                    if retries > 10 {
+                                        warn!("exceeded 10 retries, giving up");
+                                        break;
+                                    }
+
+                                    tokio::time::sleep(Duration::from_secs(15)).await;
+
+                                    retries += 1;
+                                }
                             }
-
-                            tokio::time::sleep(Duration::from_secs(15)).await;
-
-                            retries += 1;
                         }
                     }
                 };
@@ -224,6 +234,8 @@ async fn send_image(
             bail!("no telemetry information available, cannot upload to ground server");
         }
     };
+
+    debug!("sending json to gs: {json}");
 
     let form = reqwest::multipart::Form::new()
         .part("json", reqwest::multipart::Part::text(json.to_string()))

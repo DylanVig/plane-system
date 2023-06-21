@@ -246,12 +246,12 @@ impl Task for ModesTask {
                                         start_cc(self.camera_ctrl_cmd_tx.clone())
                                             .await
                                             .map(|_| ModeResponse::Response)
-                                            .map_err(ModeError::Camera);
-                                        sleep(Duration::new(180, 0)).await;
-                                        end_cc(self.camera_ctrl_cmd_tx.clone())
-                                            .await
-                                            .map(|_| ModeResponse::Response)
                                             .map_err(ModeError::Camera)
+                                        // sleep(Duration::new(180, 0)).await;
+                                        // end_cc(self.camera_ctrl_cmd_tx.clone())
+                                        //     .await
+                                        //     .map(|_| ModeResponse::Response)
+                                        //     .map_err(ModeError::Camera)
                                     }
                                     _ => pan_search(
                                         self.modes_config.gimbal_positions.clone(),

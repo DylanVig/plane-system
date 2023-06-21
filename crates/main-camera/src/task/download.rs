@@ -182,7 +182,7 @@ impl Task for DownloadTask {
                         let _ = gs_cmd_tx.send(ps_gs::GsCommand::UploadImage {
                             data: Arc::new(data),
                             file: image_path,
-                            telemetry: None,
+                            telemetry: Some(telem.clone()),
                         });
                     } else {
                         info!("not uploading image to gs");

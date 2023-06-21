@@ -1,6 +1,6 @@
 use anyhow::Context;
 use bytes::{Buf, BytesMut};
-use log::*;
+use tracing::*;
 use std::{
     sync::atomic::{AtomicU8, Ordering},
     time::{Duration, Instant, SystemTime},

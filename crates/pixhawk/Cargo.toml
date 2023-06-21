@@ -15,7 +15,7 @@ uom = { workspace = true }
 
 # logging + error handling
 anyhow = { workspace = true }
-log = { workspace = true }
+tracing = { workspace = true }
 
 # async 
 tokio = { workspace = true }

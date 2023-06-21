@@ -5,6 +5,7 @@ use ps_types::{Euler, Point3D, Velocity3D};
 use std::net::SocketAddr;
 use tokio::select;
 use tokio_util::sync::CancellationToken;
+use tracing::info;
 use uom::si::{angle::radian, f32::*, length::meter, velocity::meter_per_second};
 
 use mavlink::{ardupilotmega as apm, common, MavlinkVersion};
@@ -55,6 +56,8 @@ impl Task for EventTask {
 
         let loop_fut = async move {
             let mut interface = PixhawkInterface::connect(address, version).await?;
+            let mut first_gps = true;
+            let mut first_attitude = true;
 
             interface.init().await?;
 
@@ -63,7 +66,7 @@ impl Task for EventTask {
 
                 match message {
                     apm::MavMessage::GLOBAL_POSITION_INT(data) => {
-                        let _ = evt_tx.send(PixhawkEvent::Gps {
+                        let evt = PixhawkEvent::Gps {
                             position: Point3D {
                                 point: geo::Point::new(
                                     data.lon as f32 / 1e7,
@@ -79,12 +82,26 @@ impl Task for EventTask {
                                 data.vx as f32 / 100.,
                                 -data.vz as f32 / 100.,
                             ),
-                        });
+                        };
+
+                        if first_gps {
+                            info!("got first gps event: {evt:#?}");
+                            first_gps = false;
+                        }
+
+                        let _ = evt_tx.send(evt);
                     }
                     apm::MavMessage::ATTITUDE(data) => {
-                        let _ = evt_tx.send(PixhawkEvent::Orientation {
+                        let evt = PixhawkEvent::Orientation {
                             attitude: Euler::new::<radian>(data.roll, data.pitch, data.yaw),
-                        });
+                        };
+
+                        if first_attitude {
+                            info!("got first attitude event: {evt:#?}");
+                            first_attitude = false;
+                        }
+
+                        let _ = evt_tx.send(evt);
                     }
                     _ => {}
                 }
