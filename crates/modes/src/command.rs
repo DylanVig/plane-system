@@ -87,12 +87,12 @@ pub enum SearchRequest {
         #[clap(value_parser = parse_point_list)]
         waypoint: Vec<geo::Point>, //coordinates in [lat,lon]
     },
-    //Switches between active and inactive cature are handled by the user
-    Manual {
-        start: bool, //whether to start or end continous capture (cc)
-    },
     Panning {
         //does a sweeping pan, takes given number of images during ss
+    },
+    //Switches between active and inactive cature are handled by the user
+    Manual {
+        //start: bool, //whether to start or end continous capture (cc)
     },
 }
 

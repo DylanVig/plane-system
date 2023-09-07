@@ -208,6 +208,7 @@ impl Task for ModesTask {
     async fn run(self: Box<Self>, cancel: CancellationToken) -> anyhow::Result<()> {
         let loop_fut = async move {
             let ctrl_evt_tx = self.cmd_tx;
+            let start = true;
             loop {
                 match self.cmd_rx.recv_async().await {
                     Ok((req, ret)) => {
@@ -229,29 +230,27 @@ impl Task for ModesTask {
                                 )
                                 .await
                                 .map(|_| ModeResponse::Response),
-                                SearchRequest::Manual { start } if start => {
+                                SearchRequest::Manual {} if start => {
                                     start_cc(self.camera_ctrl_cmd_tx.clone())
                                         .await
                                         .map(|_| ModeResponse::Response)
                                         .map_err(ModeError::Camera)
                                 }
-                                SearchRequest::Manual { start } => {
-                                    end_cc(self.camera_ctrl_cmd_tx.clone())
-                                        .await
-                                        .map(|_| ModeResponse::Response)
-                                        .map_err(ModeError::Camera)
-                                }
+                                SearchRequest::Manual {} => end_cc(self.camera_ctrl_cmd_tx.clone())
+                                    .await
+                                    .map(|_| ModeResponse::Response)
+                                    .map_err(ModeError::Camera),
                                 SearchRequest::Panning {} => match &self.gimbal_tx {
                                     None => {
                                         start_cc(self.camera_ctrl_cmd_tx.clone())
                                             .await
                                             .map(|_| ModeResponse::Response)
+                                            .map_err(ModeError::Camera);
+                                        sleep(Duration::new(180, 0)).await;
+                                        end_cc(self.camera_ctrl_cmd_tx.clone())
+                                            .await
+                                            .map(|_| ModeResponse::Response)
                                             .map_err(ModeError::Camera)
-                                        // sleep(Duration::new(180, 0)).await;
-                                        // end_cc(self.camera_ctrl_cmd_tx.clone())
-                                        //     .await
-                                        //     .map(|_| ModeResponse::Response)
-                                        //     .map_err(ModeError::Camera)
                                     }
                                     _ => pan_search(
                                         self.modes_config.gimbal_positions.clone(),
