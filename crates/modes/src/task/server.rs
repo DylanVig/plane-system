@@ -2,8 +2,10 @@ use axum::{
     extract::State,
     http::StatusCode,
     response::{IntoResponse, Response},
+    Json,
 };
 use ps_client::CommandSender;
+use serde::Deserialize;
 use tokio::sync::oneshot;
 use tracing::debug;
 
@@ -23,11 +25,11 @@ pub async fn serve(
         .route("/pan-search", get(run_panning))
         .route("/manual-search", get(run_manual))
         .route("/distance-search", get(run_distance))
-        .route("/time-search", get(run_time))
+        .route("/time-search", post(run_time))
         .with_state(ServerState { cmd_tx });
     // maybe need to pass state to each, let's see..
 
-    axum::Server::bind(&"0.0.0.0:4200".parse().unwrap())
+    axum::Server::bind(&"192.168.1.23".parse().unwrap())
         .serve(app.into_make_service())
         .await?;
 
@@ -72,13 +74,16 @@ async fn run_manual(State(state): State<ServerState>) -> Response {
     }
 }
 
-// endpoint sends a distance search request to the plane system 
+// endpoint sends a distance search request to the plane system
 async fn run_distance(State(state): State<ServerState>) -> Response {
     debug!("hit distance http endpoint");
     //TODO: get actual waypoints from autopilot to store in ps_modes for this request
     let mut waypoints: Vec<geo::Point> = Vec::new();
     waypoints.push(geo::Point::new(1.123, 1.5));
-    let req = ModeRequest::Search(SearchRequest::Distance{distance:u64 = 10, waypoint:Vec<geo::Point>= waypoints});
+    let req = ModeRequest::Search(SearchRequest::Distance {
+        distance: 10,
+        waypoint: waypoints,
+    });
     let (ret_tx, ret_rx) = oneshot::channel();
     state.cmd_tx.send_async((req, ret_tx)).await;
 
@@ -93,10 +98,13 @@ async fn run_distance(State(state): State<ServerState>) -> Response {
     }
 }
 
-// endpoint sends a distance search request to the plane system 
-async fn run_time(request: Json<TimeRequest>, State(state): State<ServerState>) -> Response {
+// endpoint sends a distance search request to the plane system
+async fn run_time(State(state): State<ServerState>, request: Json<TimeRequestJSON>) -> Response {
     debug!("hit time http endpoint");
-    let req = ModeRequest::Search(SearchRequest::Time{active: u64 = request.active, inactive: u64 = request.inactive});
+    let req = ModeRequest::Search(SearchRequest::Time {
+        active: request.active,
+        inactive: request.inactive,
+    });
     let (ret_tx, ret_rx) = oneshot::channel();
     state.cmd_tx.send_async((req, ret_tx)).await;
 
@@ -111,7 +119,8 @@ async fn run_time(request: Json<TimeRequest>, State(state): State<ServerState>) 
     }
 }
 
-struct TimeRequest {
+#[derive(Deserialize)]
+struct TimeRequestJSON {
     active: u64,
-    inactive: u64
+    inactive: u64,
 }
