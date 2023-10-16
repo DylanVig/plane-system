@@ -98,7 +98,7 @@ async fn run_distance(State(state): State<ServerState>) -> Response {
     }
 }
 
-// endpoint sends a distance search request to the plane system
+// endpoint sends a timed search request to the plane system
 async fn run_time(State(state): State<ServerState>, request: Json<TimeRequestJSON>) -> Response {
     debug!("hit time http endpoint");
     let req = ModeRequest::Search(SearchRequest::Time {

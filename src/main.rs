@@ -204,7 +204,7 @@ async fn run_tasks(
         let (control_task, evt_task, download_task, live_task) =
             ps_main_camera::create_tasks(c, telem_rx_camera, gs_cmd_tx)
                 .context("failed to initialize camera tasks")?;
-
+        tokio::task::spawn(ps_main_camera::serve(control_task.cmd()));
         let ctrl_cmd_tx = control_task.cmd();
         let mut preview_frame_rx = None;
 
@@ -247,7 +247,7 @@ async fn run_tasks(
     let gimbal_cmd_tx = if let Some(c) = config.gimbal {
         debug!("initializing gimbal task");
         let gimbal_task = ps_gimbal::create_task(c)?;
-        tokio::task::spawn(ps_gimbal::server::serve(gimbal_task.cmd()));
+        tokio::task::spawn(ps_gimbal::serve(gimbal_task.cmd()));
         let gimbal_cmd_tx = gimbal_task.cmd();
         tasks.push(Box::new(gimbal_task));
 

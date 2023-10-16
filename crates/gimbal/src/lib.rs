@@ -2,7 +2,8 @@ pub mod command;
 pub mod config;
 mod interface;
 pub mod task;
-pub mod server;
+mod server;
+pub use server::serve;
 
 pub use command::*;
 pub use interface::GimbalKind;

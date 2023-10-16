@@ -22,7 +22,7 @@ pub async fn serve(
     use axum::routing::*;
 
     let app = axum::Router::new()
-        .route("/set-focal-length", post(control_gimbal))
+        .route("/control-gimbal", post(control_gimbal))
         .with_state(ServerState { cmd_tx });
 
     axum::Server::bind(&"192.168.1.24".parse().unwrap())
@@ -33,7 +33,7 @@ pub async fn serve(
     
 }
 
-// endpoint sends a distance search request to the plane system
+// endpoint sends a gimbal position request to the plane system (pitch and roll)
 async fn control_gimbal(
     State(state): State<ServerState>,
     request: Json<GimbalRequestJSON>,
