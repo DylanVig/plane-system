@@ -247,6 +247,7 @@ async fn run_tasks(
     let gimbal_cmd_tx = if let Some(c) = config.gimbal {
         debug!("initializing gimbal task");
         let gimbal_task = ps_gimbal::create_task(c)?;
+        tokio::task::spawn(ps_gimbal::server::serve(gimbal_task.cmd()));
         let gimbal_cmd_tx = gimbal_task.cmd();
         tasks.push(Box::new(gimbal_task));
 

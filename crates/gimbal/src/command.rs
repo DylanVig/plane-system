@@ -1,5 +1,6 @@
 use clap::Subcommand;
 use serde::Serialize;
+use thiserror::Error;
 
 pub type GimbalCommand = ps_client::Command<GimbalRequest, GimbalResponse>;
 
@@ -19,4 +20,12 @@ pub enum GimbalRequest {
 #[derive(Debug, Clone, Serialize)]
 pub enum GimbalResponse {
     Unit,
+}
+
+
+
+#[derive(Error, Debug)]
+pub enum GimbalError {
+    #[error("could not send request to the gimbal")]
+    GimbalRequestError,
 }

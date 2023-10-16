@@ -5,6 +5,7 @@ pub mod command;
 mod config;
 mod interface;
 pub mod state;
+pub mod server;
 mod task;
 
 pub use command::*;

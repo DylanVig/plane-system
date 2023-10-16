@@ -4,6 +4,8 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+axum = "0.6"
+thiserror = "1.0"
 async-trait = { workspace = true }
 tokio = { workspace = true }
 tokio-util = { workspace = true }
