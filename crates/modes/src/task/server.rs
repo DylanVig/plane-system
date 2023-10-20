@@ -28,7 +28,7 @@ pub async fn serve(
         .route("/time-search", post(run_time))
         .with_state(ServerState { cmd_tx });
 
-    axum::Server::bind(&"192.168.1.23".parse().unwrap())
+    axum::Server::bind(&"192.168.1.23:8080".parse().unwrap())
         .serve(app.into_make_service())
         .await?;
 

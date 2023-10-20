@@ -25,7 +25,7 @@ pub async fn serve(
         .route("/control-gimbal", post(control_gimbal))
         .with_state(ServerState { cmd_tx });
 
-    axum::Server::bind(&"192.168.1.24".parse().unwrap())
+    axum::Server::bind(&"192.168.1.24:8080".parse().unwrap())
         .serve(app.into_make_service())
         .await?;
 
