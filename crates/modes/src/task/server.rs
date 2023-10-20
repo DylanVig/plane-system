@@ -27,7 +27,6 @@ pub async fn serve(
         .route("/distance-search", get(run_distance))
         .route("/time-search", post(run_time))
         .with_state(ServerState { cmd_tx });
-    // maybe need to pass state to each, let's see..
 
     axum::Server::bind(&"192.168.1.23".parse().unwrap())
         .serve(app.into_make_service())

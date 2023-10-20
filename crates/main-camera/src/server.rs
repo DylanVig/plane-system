@@ -5,7 +5,7 @@ use axum::{
     Json,
 };
 use ps_client::CommandSender;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use tokio::sync::oneshot;
 use tracing::debug;
 use crate::command::*;
@@ -104,7 +104,7 @@ async fn capture(State(state): State<ServerState>) -> Response {
 
 
 // sends a request to the plane system to get the current zoom level (does this always work? has this ever been tested?)
-/*async fn get_level(State(state): State<ServerState>) -> Result<Json<LevelResponseJSON>, Error> {
+async fn get_level(State(state): State<ServerState>) -> Response {
     debug!("hit get level http endpoint");
 
     let req = CameraRequest::Get(CameraGetRequest::ZoomLevel);
@@ -117,27 +117,25 @@ async fn capture(State(state): State<ServerState>) -> Response {
     };
 
     match response {
-        Ok(CameraResponse::ZoomLevel(lvl)) => Ok(Json(LevelResponseJSON { /*whats best design here.. how to return the response.. */
+        Ok(CameraResponse::ZoomLevel(lvl)) => Json(LevelResponseJSON { /*whats best design here.. how to return the response.. */
             level : lvl
-        })),    
+        }).into_response(),    
         Err(err) => (StatusCode::INTERNAL_SERVER_ERROR, err.to_string()).into_response(),
         _ => (StatusCode::INTERNAL_SERVER_ERROR, "wrong type of response value recieved at get level endpoint").into_response(),
     }
-} */
+} 
+
 
 #[derive(Deserialize)]
 struct ZoomRequestJSON {
     focal_length: f32,
     level: u8,
-    /*can add timed zoom options if there's a demand for that on the mpp */
+
 } 
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Serialize)]
 struct LevelResponseJSON {
     level: u8,
 } 
 
 
-/*there wouldn't really be a time where all three are sent.. how to split into seperate structures without making a million json structs in this file? */
-/*can you even do this haha */
-/*something to keep an eye out for in a code review at least */
