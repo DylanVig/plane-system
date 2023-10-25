@@ -12,7 +12,7 @@ SCRIPT_DIR="$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
 ROOT_DIR=$( dirname `dirname ${SCRIPT_DIR}` )
 
 case "$1" in
-"rpi3-raspbian" | "rpi4-ubuntu")
+"rpi3-raspbian" | "rpi4-ubuntu" | "rpi4-ubuntu-amd64")
   echo "building plane system for target $1" 
   $RUNTIME run -it --rm -v ${ROOT_DIR}:/app -v ${CARGO_HOME}/registry:/usr/local/cargo/registry -v ${CARGO_HOME}/git:/usr/local/cargo/git dr.cuair.org/x-compiler/$1:v1
   ;;
