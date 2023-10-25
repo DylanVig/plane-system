@@ -25,7 +25,7 @@ pub async fn serve(
         .route("/set-zoom-level", post(set_level))
         .route("/capture", get(capture))
         .route("/set-aperture", post(set_aperture))
-        .route("/set-shutter-speed", post(set_shutter_speed(state, request)))
+        .route("/set-shutter-speed", post(set_shutter_speed))
         .with_state(ServerState { cmd_tx });
 
     axum::Server::bind(&"192.168.1.25:8080".parse().unwrap())
